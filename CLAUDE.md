@@ -27,12 +27,12 @@ This repo contains the **open-source CLI tool only**. The web dashboard lives in
 
 ### Supported Source Tools
 
-| Source Tool | Provider Class | Data Format | Location |
-|-------------|---------------|-------------|----------|
-| Claude Code | `ClaudeCodeProvider` | JSONL | `~/.claude/projects/**/*.jsonl` |
-| Cursor | `CursorProvider` | SQLite (state.vscdb) | `~/Library/Application Support/Cursor/User/workspaceStorage/` |
-| Codex CLI | `CodexProvider` | JSONL (rollout files) | `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` |
-| Copilot CLI | `CopilotCliProvider` | JSONL (events) | `~/.copilot/session-state/{id}/events.jsonl` |
+| Source Tool | Provider ID | Provider Class | Data Format | Location |
+|-------------|-------------|---------------|-------------|----------|
+| Claude Code | `claude-code` | `ClaudeCodeProvider` | JSONL | `~/.claude/projects/**/*.jsonl` |
+| Cursor | `cursor` | `CursorProvider` | SQLite (state.vscdb) | Platform-specific (macOS/Linux/Windows) |
+| Codex CLI | `codex-cli` | `CodexProvider` | JSONL (rollout files) | `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` |
+| Copilot CLI | `copilot-cli` | `CopilotCliProvider` | JSONL (events) | `~/.copilot/session-state/{id}/events.jsonl` |
 
 ## Repository Structure
 
@@ -95,7 +95,7 @@ interface SessionProvider {
 Providers are registered in `providers/registry.ts`. To add a new source tool:
 1. Create `providers/<name>.ts` implementing `SessionProvider`
 2. Register it in `providers/registry.ts`
-3. Update web dashboard (see web CLAUDE.md 5-step checklist)
+3. Update web dashboard (see "Adding a new source tool" in web CLAUDE.md)
 
 ### Directory Structure (`/cli/src/`)
 - `commands/` - CLI commands (init, sync, status, connect, reset, install-hook)
