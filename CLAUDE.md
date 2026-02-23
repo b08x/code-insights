@@ -147,11 +147,14 @@ Web (code-insights-web/src/lib/types.ts) → Reads from Firestore
 |-------|-------|--------|------------|
 | `technical-architect` | opus | Cross-repo architecture, type alignment, code review, LLD standards | Both repos |
 | `fullstack-engineer` | sonnet | Implementation across CLI and web — features, fixes, tests | Both repos |
+| `web-engineer` | sonnet | Web dashboard features, fixes, UI | Web only |
+| `ux-engineer` | opus | UI/UX components, chat views, data visualizations | Web only |
 | `ux-designer` | opus | ASCII wireframes, user flows, personas, UX validation | Design docs |
 | `product-manager` | sonnet | Task tracking (GitHub Issues), sprint planning, ceremony coordination | Both repos |
 | `journey-chronicler` | opus | Capture learning moments, breakthroughs, course corrections | `docs/chronicle/` |
+| `devtools-cofounder` | opus | DevTools strategy, DX critique, competitive positioning | Both repos |
 
-Agent definitions live in `.claude/agents/`.
+Agent definitions live in `../code-insights-web/.claude/agents/`.
 
 ### Orchestrator Role (Main Claude)
 
