@@ -10,7 +10,7 @@ import {
   looksLikeWebConfig,
   looksLikeServiceAccount,
 } from '../utils/firebase-json.js';
-import type { ClaudeInsightConfig, FirebaseWebConfig } from '../types.js';
+import type { ClaudeInsightConfig, FirebaseWebConfig, DataSourcePreference } from '../types.js';
 
 const DEFAULT_DASHBOARD_URL = 'https://code-insights.app';
 
@@ -24,6 +24,11 @@ export interface InitOptions {
  */
 export async function initCommand(options: InitOptions): Promise<void> {
   console.log(chalk.cyan('\n🔧 Code Insights Setup\n'));
+
+  // If --from-json or --web-config provided, auto-set firebase and proceed
+  if (options.fromJson || options.webConfig) {
+    return initFirebaseFlow(options, 'firebase');
+  }
 
   if (isConfigured()) {
     const { overwrite } = await inquirer.prompt([
@@ -41,6 +46,55 @@ export async function initCommand(options: InitOptions): Promise<void> {
     }
   }
 
+  // --- Data Source Choice ---
+  const { dataSource } = await inquirer.prompt([
+    {
+      type: 'list',
+      name: 'dataSource',
+      message: 'How would you like to use Code Insights?',
+      choices: [
+        {
+          name: 'Local only (recommended) — stats from local session files, no cloud setup',
+          value: 'local',
+        },
+        {
+          name: 'Firebase — sync sessions to Firestore + web dashboard',
+          value: 'firebase',
+        },
+      ],
+      default: 'local',
+    },
+  ]);
+
+  if (dataSource === 'local') {
+    const config: ClaudeInsightConfig = {
+      sync: { claudeDir: '~/.claude/projects', excludeProjects: [] },
+      dataSource: 'local',
+    };
+    saveConfig(config);
+
+    console.log(chalk.green('\n✅ Configuration saved!'));
+    console.log(chalk.gray(`Config location: ${getConfigDir()}/config.json`));
+
+    console.log(chalk.cyan('\n🎉 Setup complete! Next steps:\n'));
+    console.log(chalk.white('  1. View your stats:'));
+    console.log(chalk.gray('     code-insights stats\n'));
+    console.log(chalk.white('  2. Check today\'s activity:'));
+    console.log(chalk.gray('     code-insights stats today\n'));
+    console.log(chalk.white('  3. See cost breakdown:'));
+    console.log(chalk.gray('     code-insights stats cost\n'));
+    console.log(chalk.gray('  To switch to Firebase later: code-insights config set-source firebase\n'));
+    return;
+  }
+
+  // Firebase flow
+  return initFirebaseFlow(options, 'firebase');
+}
+
+/**
+ * Firebase initialization flow — service account + web config
+ */
+async function initFirebaseFlow(options: InitOptions, dataSource: DataSourcePreference): Promise<void> {
   // --- Step 1: Service Account ---
   let firebaseConfig: { projectId: string; clientEmail: string; privateKey: string };
 
@@ -196,6 +250,7 @@ export async function initCommand(options: InitOptions): Promise<void> {
       claudeDir: '~/.claude/projects',
       excludeProjects: [],
     },
+    dataSource,
     dashboardUrl: DEFAULT_DASHBOARD_URL,
   };
 

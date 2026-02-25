@@ -184,8 +184,10 @@ export interface InsightMetadata {
   applicability?: string;
 }
 
+export type DataSourcePreference = 'local' | 'firebase';
+
 export interface ClaudeInsightConfig {
-  firebase: {
+  firebase?: {
     projectId: string;
     clientEmail: string;
     privateKey: string;
@@ -196,6 +198,7 @@ export interface ClaudeInsightConfig {
     excludeProjects: string[];
   };
   dashboardUrl?: string;
+  dataSource?: DataSourcePreference;
 }
 
 export interface SyncState {

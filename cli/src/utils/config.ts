@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import type { ClaudeInsightConfig, SyncState, FirebaseWebConfig } from '../types.js';
+import type { ClaudeInsightConfig, SyncState, FirebaseWebConfig, DataSourcePreference } from '../types.js';
 
 const CONFIG_DIR = path.join(os.homedir(), '.code-insights');
 const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
@@ -112,4 +112,24 @@ export function saveWebConfig(config: FirebaseWebConfig): void {
  */
 export function hasWebConfig(): boolean {
   return fs.existsSync(WEB_CONFIG_FILE);
+}
+
+/**
+ * Determine the effective data source preference.
+ * Resolution: config.dataSource > infer from Firebase creds > 'local'
+ */
+export function resolveDataSourcePreference(): DataSourcePreference {
+  const config = loadConfig();
+  if (!config) return 'local';
+  if (config.dataSource) return config.dataSource;
+  if (config.firebase?.projectId) return 'firebase';
+  return 'local';
+}
+
+/**
+ * Check if Firebase is configured (has credentials).
+ */
+export function isFirebaseConfigured(): boolean {
+  const config = loadConfig();
+  return config !== null && config.firebase !== undefined && !!config.firebase.projectId;
 }

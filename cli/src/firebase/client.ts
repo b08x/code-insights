@@ -8,6 +8,10 @@ let db: admin.firestore.Firestore | null = null;
  * Initialize Firebase Admin SDK
  */
 export function initializeFirebase(config: ClaudeInsightConfig): void {
+  if (!config.firebase) {
+    throw new Error('Firebase credentials not configured. Run `code-insights init` to set up.');
+  }
+
   if (admin.apps.length > 0) {
     db = admin.firestore();
     return;
@@ -27,7 +31,7 @@ export function initializeFirebase(config: ClaudeInsightConfig): void {
 /**
  * Get Firestore instance
  */
-function getDb(): admin.firestore.Firestore {
+export function getDb(): admin.firestore.Firestore {
   if (!db) {
     throw new Error('Firebase not initialized. Call initializeFirebase first.');
   }

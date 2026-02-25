@@ -1,5 +1,5 @@
 import chalk from 'chalk';
-import { loadConfig, loadSyncState, isConfigured, getConfigDir, getClaudeDir, hasWebConfig, loadWebConfig } from '../utils/config.js';
+import { loadConfig, loadSyncState, isConfigured, getConfigDir, getClaudeDir, hasWebConfig, loadWebConfig, resolveDataSourcePreference } from '../utils/config.js';
 import { initializeFirebase, getProjects } from '../firebase/client.js';
 import * as fs from 'fs';
 
@@ -11,12 +11,14 @@ export async function statusCommand(): Promise<void> {
 
   // Check configuration
   console.log(chalk.white('Configuration:'));
+  const preference = resolveDataSourcePreference();
   if (isConfigured()) {
     console.log(chalk.green(`  ✓ Configured at ${getConfigDir()}`));
     const config = loadConfig();
     if (config) {
-      console.log(chalk.gray(`    Project: ${config.firebase.projectId}`));
+      console.log(chalk.gray(`    Project: ${config.firebase?.projectId ?? '(local)'}`));
     }
+    console.log(chalk.gray(`    Data source: ${preference}`));
   } else {
     console.log(chalk.red('  ✗ Not configured'));
     console.log(chalk.gray('    Run `code-insights init` to set up'));
@@ -48,43 +50,51 @@ export async function statusCommand(): Promise<void> {
     console.log(chalk.gray('    Run `code-insights sync` to sync'));
   }
 
-  // Check Firebase connection
-  console.log(chalk.white('\nFirebase:'));
-  const config = loadConfig();
-  if (config) {
-    try {
-      initializeFirebase(config);
-      const projects = await getProjects();
-      console.log(chalk.green('  ✓ Connected'));
-      console.log(chalk.gray(`    ${projects.length} projects in Firestore`));
-
-      if (projects.length > 0) {
-        console.log(chalk.white('\nSynced Projects:'));
-        for (const project of projects.slice(0, 5)) {
-          console.log(chalk.gray(`    ${project.name} (${project.sessionCount} sessions)`));
-        }
-        if (projects.length > 5) {
-          console.log(chalk.gray(`    ... and ${projects.length - 5} more`));
-        }
-      }
-    } catch (error) {
-      console.log(chalk.red('  ✗ Connection failed'));
-      console.log(chalk.gray(`    ${error instanceof Error ? error.message : 'Unknown error'}`));
-    }
-  }
-
-  // Check web dashboard config
-  console.log(chalk.white('\nWeb Dashboard:'));
-  if (hasWebConfig()) {
-    const webConfig = loadWebConfig();
-    console.log(chalk.green('  ✓ Configured'));
-    if (webConfig && typeof webConfig.projectId === 'string') {
-      console.log(chalk.gray(`    Project: ${webConfig.projectId}`));
-    }
-    console.log(chalk.gray('    Run "code-insights connect" to get dashboard URL'));
+  if (preference === 'local') {
+    // Local mode — skip Firebase connection check
+    console.log(chalk.white('\nFirebase:'));
+    console.log(chalk.gray('  ○ Not applicable (data source is local)'));
+    console.log(chalk.gray('    Use `code-insights stats --local` for session analytics'));
+    console.log(chalk.gray('    To switch: code-insights config set-source firebase'));
   } else {
-    console.log(chalk.yellow('  ○ Not configured'));
-    console.log(chalk.gray('    Run "code-insights init" to configure'));
+    // Check Firebase connection
+    console.log(chalk.white('\nFirebase:'));
+    const config = loadConfig();
+    if (config) {
+      try {
+        initializeFirebase(config);
+        const projects = await getProjects();
+        console.log(chalk.green('  ✓ Connected'));
+        console.log(chalk.gray(`    ${projects.length} projects in Firestore`));
+
+        if (projects.length > 0) {
+          console.log(chalk.white('\nSynced Projects:'));
+          for (const project of projects.slice(0, 5)) {
+            console.log(chalk.gray(`    ${project.name} (${project.sessionCount} sessions)`));
+          }
+          if (projects.length > 5) {
+            console.log(chalk.gray(`    ... and ${projects.length - 5} more`));
+          }
+        }
+      } catch (error) {
+        console.log(chalk.red('  ✗ Connection failed'));
+        console.log(chalk.gray(`    ${error instanceof Error ? error.message : 'Unknown error'}`));
+      }
+    }
+
+    // Check web dashboard config
+    console.log(chalk.white('\nWeb Dashboard:'));
+    if (hasWebConfig()) {
+      const webConfig = loadWebConfig();
+      console.log(chalk.green('  ✓ Configured'));
+      if (webConfig && typeof webConfig.projectId === 'string') {
+        console.log(chalk.gray(`    Project: ${webConfig.projectId}`));
+      }
+      console.log(chalk.gray('    Run "code-insights connect" to get dashboard URL'));
+    } else {
+      console.log(chalk.yellow('  ○ Not configured'));
+      console.log(chalk.gray('    Run "code-insights init" to configure'));
+    }
   }
 
   console.log('');

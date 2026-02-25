@@ -7,12 +7,14 @@ import { statusCommand } from './commands/status.js';
 import { installHookCommand, uninstallHookCommand } from './commands/install-hook.js';
 import { connectCommand } from './commands/connect.js';
 import { resetCommand } from './commands/reset.js';
+import { statsCommand } from './commands/stats/index.js';
+import { configCommand } from './commands/config.js';
 
 const program = new Command();
 
 program
   .name('code-insights')
-  .description('Sync your AI coding sessions to Firebase for analysis')
+  .description('AI coding session analytics — sync, stats, and insights')
   .version('1.0.0');
 
 program
@@ -31,6 +33,7 @@ program
   .option('--dry-run', 'Show what would be synced without making changes')
   .option('-q, --quiet', 'Suppress output (useful for hooks)')
   .option('--regenerate-titles', 'Regenerate titles for all sessions')
+  .option('--force-remote', 'Force sync even when data source is local')
   .action(syncCommand);
 
 program
@@ -54,5 +57,7 @@ program
   .action(connectCommand);
 
 program.addCommand(resetCommand);
+program.addCommand(statsCommand);
+program.addCommand(configCommand);
 
 program.parse();
