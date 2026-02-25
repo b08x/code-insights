@@ -7,6 +7,7 @@ import { initializeFirebase, uploadSession, uploadMessages, sessionExists, recal
 import { getAllProviders, getProvider } from '../providers/registry.js';
 import type { SessionProvider } from '../providers/types.js';
 import type { SyncState } from '../types.js';
+import { splitVirtualPath } from './stats/data/cache.js';
 
 interface SyncOptions {
   force?: boolean;
@@ -225,22 +226,6 @@ export async function syncCommand(options: SyncOptions = {}): Promise<void> {
     }
     process.exit(1);
   }
-}
-
-/**
- * Extract real filesystem path and optional session fragment from a virtual path.
- * Virtual paths use '#' delimiter: "/path/to/state.vscdb#composerId"
- * Regular paths pass through unchanged.
- */
-function splitVirtualPath(filePath: string): { realPath: string; sessionFragment: string | null } {
-  const hashIndex = filePath.lastIndexOf('#');
-  if (hashIndex > 0) {
-    return {
-      realPath: filePath.slice(0, hashIndex),
-      sessionFragment: filePath.slice(hashIndex + 1),
-    };
-  }
-  return { realPath: filePath, sessionFragment: null };
 }
 
 /**

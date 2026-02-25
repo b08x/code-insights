@@ -34,15 +34,17 @@ export async function todayAction(flags: StatsFlags): Promise<void> {
     }
 
     // Resolve project filter (period is ignored for today — always today)
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
     const opts: SessionQueryOptions = {
       sourceTool: flags.source,
+      periodStart: todayStart,
     };
     if (flags.project) {
       const resolved = await source.resolveProjectId(flags.project);
       opts.projectId = resolved.projectId;
     }
 
-    // Get all sessions (no period filter — computeTodayStats does its own filtering)
     const sessions = await source.getSessions(opts);
     const today = computeTodayStats(sessions);
 
