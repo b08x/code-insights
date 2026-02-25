@@ -33,6 +33,7 @@ program
   .option('--dry-run', 'Show what would be synced without making changes')
   .option('-q, --quiet', 'Suppress output (useful for hooks)')
   .option('--regenerate-titles', 'Regenerate titles for all sessions')
+  .option('--force-remote', 'Force sync even when data source is local')
   .action(syncCommand);
 
 program

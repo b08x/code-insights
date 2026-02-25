@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import chalk from 'chalk';
 import ora from 'ora';
-import { loadConfig, loadSyncState, saveSyncState } from '../utils/config.js';
+import { loadConfig, loadSyncState, saveSyncState, resolveDataSourcePreference } from '../utils/config.js';
 import { initializeFirebase, uploadSession, uploadMessages, sessionExists, recalculateUsageStats } from '../firebase/client.js';
 import { getAllProviders, getProvider } from '../providers/registry.js';
 import type { SessionProvider } from '../providers/types.js';
@@ -10,6 +10,7 @@ import type { SyncState } from '../types.js';
 
 interface SyncOptions {
   force?: boolean;
+  forceRemote?: boolean;
   project?: string;
   dryRun?: boolean;
   quiet?: boolean;
@@ -194,11 +195,19 @@ export async function runSync(options: SyncOptions = {}): Promise<SyncResult> {
  * Sync AI coding sessions to Firestore
  */
 export async function syncCommand(options: SyncOptions = {}): Promise<void> {
+  const log = options.quiet ? () => {} : console.log.bind(console);
+  const preference = resolveDataSourcePreference();
+  if (preference === 'local' && !options.forceRemote) {
+    log(chalk.yellow('\n  ⚠ Data source is set to local. Sync is only used with Firebase.\n'));
+    log(chalk.gray('  To switch to Firebase: code-insights config set-source firebase'));
+    log(chalk.gray('  To sync anyway (one-time): code-insights sync --force-remote\n'));
+    return;
+  }
+
   try {
     const result = await runSync(options);
 
     // Summary (only if not quiet)
-    const log = options.quiet ? () => {} : console.log.bind(console);
     if (result.syncedCount === 0 && result.errorCount === 0) {
       log(chalk.green('\n\u2705 Already up to date!'));
       return;

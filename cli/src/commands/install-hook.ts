@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import chalk from 'chalk';
-import { isConfigured } from '../utils/config.js';
+import { isConfigured, resolveDataSourcePreference } from '../utils/config.js';
 
 const CLAUDE_SETTINGS_DIR = path.join(os.homedir(), '.claude');
 const HOOKS_FILE = path.join(CLAUDE_SETTINGS_DIR, 'settings.json');
@@ -36,6 +36,14 @@ export async function installHookCommand(): Promise<void> {
   if (!isConfigured()) {
     console.log(chalk.red('Not configured. Run `code-insights init` first.'));
     process.exit(1);
+  }
+
+  const preference = resolveDataSourcePreference();
+  if (preference === 'local') {
+    console.log(chalk.yellow('\n  ⚠ Data source is local. The auto-sync hook is only useful with Firebase.\n'));
+    console.log(chalk.gray('  Stats refresh automatically when you run `code-insights stats`.'));
+    console.log(chalk.gray('  To switch to Firebase: code-insights config set-source firebase\n'));
+    return;
   }
 
   // Get CLI path

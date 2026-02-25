@@ -5,7 +5,7 @@ import admin from 'firebase-admin';
 import { existsSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
-import { loadConfig } from '../utils/config.js';
+import { loadConfig, resolveDataSourcePreference } from '../utils/config.js';
 
 const SYNC_STATE_FILE = join(homedir(), '.code-insights', 'sync-state.json');
 
@@ -13,6 +13,14 @@ export const resetCommand = new Command('reset')
   .description('Delete all data from Firestore and reset local sync state')
   .option('--confirm', 'Skip confirmation prompt')
   .action(async (options) => {
+    const preference = resolveDataSourcePreference();
+    if (preference === 'local') {
+      console.log(chalk.yellow('\n  ⚠ Data source is local. Nothing to reset in Firestore.\n'));
+      console.log(chalk.gray('  To clear the local stats cache:'));
+      console.log(chalk.gray('    rm ~/.code-insights/stats-cache.json\n'));
+      process.exit(0);
+    }
+
     console.log(chalk.red.bold('\n⚠️  WARNING: This will permanently delete ALL data from your Firestore database!'));
     console.log(chalk.yellow('Collections to be deleted: projects, sessions, insights, messages\n'));
 
