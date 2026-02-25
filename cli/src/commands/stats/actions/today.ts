@@ -3,20 +3,14 @@
 // ──────────────────────────────────────────────────────
 
 import ora from 'ora';
-import chalk from 'chalk';
 import { resolveDataSource } from '../data/source.js';
 import {
   computeTodayStats,
   shortenModelName,
 } from '../data/aggregation.js';
 import type { StatsFlags, SessionQueryOptions } from '../data/types.js';
-import {
-  ProjectNotFoundError,
-  FirestoreIndexError,
-  ConfigNotFoundError,
-  InvalidPeriodError,
-} from '../data/types.js';
 import { colors } from '../render/colors.js';
+import { handleStatsError } from './error-handler.js';
 import {
   formatMoney,
   formatTokens,
@@ -110,9 +104,9 @@ export async function todayAction(flags: StatsFlags): Promise<void> {
       // Line 2: title
       const title = session.title;
       if (title === 'Untitled Session') {
-        console.log(`  ${''.padEnd(10)}${chalk.gray.italic(title)}`);
+        console.log(`  ${''.padEnd(10)}${colors.label(title)}`);
       } else {
-        console.log(`  ${''.padEnd(10)}${chalk.white.bold(title)}`);
+        console.log(`  ${''.padEnd(10)}${colors.value(title)}`);
       }
 
       // Line 3: character badge, model, message count
@@ -136,35 +130,6 @@ export async function todayAction(flags: StatsFlags): Promise<void> {
     console.log(colors.hint('Run stats cost --period 7d for weekly cost trends'));
     console.log();
   } catch (err) {
-    if (err instanceof InvalidPeriodError) {
-      console.error(`\n  ${colors.error(err.message)}`);
-      console.log(colors.hint('Expected: 7d, 30d, 90d, or all'));
-      process.exit(1);
-    }
-    if (err instanceof ConfigNotFoundError) {
-      console.error(`\n  ${colors.error('\u2717')} ${err.message}`);
-      process.exit(1);
-    }
-    if (err instanceof ProjectNotFoundError) {
-      console.error(`\n  ${colors.error(`Project "${err.projectName}" not found.`)}`);
-      if (err.suggestions.length > 0) {
-        console.log(`\n  Did you mean?`);
-        for (const s of err.suggestions) {
-          console.log(`    ${colors.success('\u25CF')} ${s}`);
-        }
-      }
-      console.log(`\n  Available projects:`);
-      for (const p of err.availableProjects) {
-        console.log(`    ${colors.success('\u25CF')} ${p.name}`);
-      }
-      process.exit(1);
-    }
-    if (err instanceof FirestoreIndexError) {
-      console.error(`\n  ${colors.error('\u2717')} Failed to load stats`);
-      console.log(`\n  ${colors.error('Error:')} Missing Firestore index for sessions query.`);
-      console.log(`  Create it here: ${err.indexUrl}`);
-      process.exit(1);
-    }
-    throw err;
+    handleStatsError(err);
   }
 }
