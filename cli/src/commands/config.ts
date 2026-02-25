@@ -134,7 +134,7 @@ configCommand
       trackEvent('config', true, 'set');
     } else if (key === 'source') {
       setSourceAction(value);
-      trackEvent('config', true, 'set');
+      // trackEvent already called inside setSourceAction
     } else {
       console.error(chalk.red(`\nUnknown config key "${key}". Available: telemetry, source.\n`));
       process.exit(1);
