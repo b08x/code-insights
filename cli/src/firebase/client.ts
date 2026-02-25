@@ -27,7 +27,7 @@ export function initializeFirebase(config: ClaudeInsightConfig): void {
 /**
  * Get Firestore instance
  */
-function getDb(): admin.firestore.Firestore {
+export function getDb(): admin.firestore.Firestore {
   if (!db) {
     throw new Error('Firebase not initialized. Call initializeFirebase first.');
   }
