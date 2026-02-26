@@ -1,4 +1,5 @@
 import { execFile } from 'child_process';
+import path from 'path';
 import chalk from 'chalk';
 import { loadConfig } from '../utils/config.js';
 import { trackEvent } from '../utils/telemetry.js';
@@ -58,9 +59,7 @@ function openInBrowser(url: string): void {
  */
 function getCurrentProjectName(): string | null {
   try {
-    const cwd = process.cwd();
-    const parts = cwd.split('/');
-    return parts[parts.length - 1] || null;
+    return path.basename(process.cwd()) || null;
   } catch {
     return null;
   }
