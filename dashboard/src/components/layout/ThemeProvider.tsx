@@ -30,7 +30,9 @@ interface ThemeProviderProps {
 export function ThemeProvider({ children, defaultTheme = 'system' }: ThemeProviderProps) {
   const [theme, setThemeState] = useState<Theme>(() => {
     try {
-      return (localStorage.getItem(STORAGE_KEY) as Theme) ?? defaultTheme;
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (stored === 'light' || stored === 'dark' || stored === 'system') return stored;
+      return defaultTheme;
     } catch {
       return defaultTheme;
     }

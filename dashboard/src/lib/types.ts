@@ -7,10 +7,10 @@ export interface Project {
   name: string;
   path: string;
   git_remote_url: string | null;
-  project_id_source: 'git-remote' | 'path-hash';
   session_count: number;
   last_activity: string;        // ISO 8601
   created_at: string;           // ISO 8601
+  updated_at: string;           // ISO 8601
   total_input_tokens?: number;
   total_output_tokens?: number;
   cache_creation_tokens?: number;
@@ -83,6 +83,7 @@ export interface Insight {
   created_at: string;           // ISO 8601
   scope: InsightScope;
   analysis_version: string;
+  linked_insight_ids: string | null;
 }
 
 export interface Message {
