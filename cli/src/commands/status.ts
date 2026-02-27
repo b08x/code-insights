@@ -1,8 +1,8 @@
 import chalk from 'chalk';
-import { loadConfig, loadSyncState, isConfigured, getConfigDir, getClaudeDir, hasWebConfig, loadWebConfig, resolveDataSourcePreference } from '../utils/config.js';
-import { initializeFirebase, getProjects } from '../firebase/client.js';
+import { loadConfig, loadSyncState, isConfigured, getConfigDir, hasWebConfig, loadWebConfig, resolveDataSourcePreference } from '../utils/config.js';
+import { initializeFirebase, getProjects, getProjectToolCounts } from '../firebase/client.js';
+import { getAllProviders } from '../providers/registry.js';
 import { trackEvent } from '../utils/telemetry.js';
-import * as fs from 'fs';
 
 /**
  * Show Code Insights status
@@ -26,16 +26,23 @@ export async function statusCommand(): Promise<void> {
     console.log(chalk.gray('    To configure Firebase: code-insights init'));
   }
 
-  // Check Claude directory
-  console.log(chalk.white('\nClaude Code:'));
-  const claudeDir = getClaudeDir();
-  if (fs.existsSync(claudeDir)) {
-    const projectDirs = fs.readdirSync(claudeDir).filter((d) => !d.startsWith('.'));
-    const sessionCount = countJsonlFiles(claudeDir);
-    console.log(chalk.green(`  ✓ Found at ${claudeDir}`));
-    console.log(chalk.gray(`    ${projectDirs.length} projects, ${sessionCount} sessions`));
-  } else {
-    console.log(chalk.yellow(`  ⚠ Not found at ${claudeDir}`));
+  // Discover local sessions across all providers
+  console.log(chalk.white('\nLocal Sessions:'));
+  const providers = getAllProviders();
+  let totalLocal = 0;
+  for (const provider of providers) {
+    try {
+      const files = await provider.discover();
+      if (files.length > 0) {
+        console.log(chalk.green(`  ✓ ${provider.getProviderName()}: ${files.length} sessions`));
+        totalLocal += files.length;
+      }
+    } catch {
+      // Provider not available on this machine (e.g., no Cursor installed)
+    }
+  }
+  if (totalLocal === 0) {
+    console.log(chalk.yellow('  ○ No sessions found from any tool'));
   }
 
   // Check sync state
@@ -64,14 +71,26 @@ export async function statusCommand(): Promise<void> {
     if (config) {
       try {
         initializeFirebase(config);
-        const projects = await getProjects();
+        const [projects, toolCounts] = await Promise.all([
+          getProjects(),
+          getProjectToolCounts(),
+        ]);
         console.log(chalk.green('  ✓ Connected'));
         console.log(chalk.gray(`    ${projects.length} projects in Firestore`));
 
         if (projects.length > 0) {
           console.log(chalk.white('\nSynced Projects:'));
           for (const project of projects.slice(0, 5)) {
-            console.log(chalk.gray(`    ${project.name} (${project.sessionCount} sessions)`));
+            const perTool = toolCounts.get(project.id);
+            if (perTool && perTool.size > 1) {
+              const breakdown = [...perTool.entries()]
+                .sort((a, b) => b[1] - a[1])
+                .map(([tool, count]) => `${tool} ${count}`)
+                .join(', ');
+              console.log(chalk.gray(`    ${project.name} (${project.sessionCount} sessions: ${breakdown})`));
+            } else {
+              console.log(chalk.gray(`    ${project.name} (${project.sessionCount} sessions)`));
+            }
           }
           if (projects.length > 5) {
             console.log(chalk.gray(`    ... and ${projects.length - 5} more`));
@@ -102,22 +121,3 @@ export async function statusCommand(): Promise<void> {
   trackEvent('status', true);
 }
 
-/**
- * Count JSONL files in Claude directory
- */
-function countJsonlFiles(baseDir: string): number {
-  let count = 0;
-  const dirs = fs.readdirSync(baseDir);
-
-  for (const dir of dirs) {
-    if (dir.startsWith('.')) continue;
-    const projectPath = `${baseDir}/${dir}`;
-    const stat = fs.statSync(projectPath);
-    if (!stat.isDirectory()) continue;
-
-    const files = fs.readdirSync(projectPath);
-    count += files.filter((f) => f.endsWith('.jsonl')).length;
-  }
-
-  return count;
-}

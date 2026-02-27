@@ -364,6 +364,34 @@ export async function recalculateUsageStats(): Promise<{
 }
 
 /**
+ * Get per-tool session counts grouped by project.
+ * Uses select() to only fetch projectId and sourceTool fields (efficient).
+ */
+export async function getProjectToolCounts(): Promise<Map<string, Map<string, number>>> {
+  const firestore = getDb();
+  const snapshot = await firestore
+    .collection('sessions')
+    .select('projectId', 'sourceTool')
+    .get();
+
+  const counts = new Map<string, Map<string, number>>();
+
+  for (const doc of snapshot.docs) {
+    const data = doc.data();
+    const projectId = data.projectId as string;
+    const sourceTool = (data.sourceTool as string) || 'claude-code';
+
+    if (!counts.has(projectId)) {
+      counts.set(projectId, new Map());
+    }
+    const toolMap = counts.get(projectId)!;
+    toolMap.set(sourceTool, (toolMap.get(sourceTool) || 0) + 1);
+  }
+
+  return counts;
+}
+
+/**
  * Truncate content to max length
  */
 function truncateContent(content: string, maxLength: number): string {
