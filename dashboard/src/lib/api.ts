@@ -131,6 +131,9 @@ export async function exportMarkdown(body: {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`Export failed: ${res.status}`);
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    throw new Error(`Export failed ${res.status}: ${text}`);
+  }
   return res.text();
 }

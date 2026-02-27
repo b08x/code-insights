@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "tw-animate-css";
 @custom-variant dark (&:where(.dark, .dark *));
 
 /* Map CSS variables to Tailwind v4 theme tokens.
