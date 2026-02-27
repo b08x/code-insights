@@ -1,12 +1,13 @@
 import { Hono } from 'hono';
 import { getDb } from '@code-insights/cli/db/client';
 import { randomUUID } from 'crypto';
+import { parseIntParam } from '../utils.js';
 
 const app = new Hono();
 
 app.get('/', (c) => {
   const db = getDb();
-  const { projectId, sessionId, type, limit = '100', offset = '0' } = c.req.query();
+  const { projectId, sessionId, type, limit, offset } = c.req.query();
 
   const conditions: string[] = [];
   const params: (string | number)[] = [];
@@ -33,7 +34,7 @@ app.get('/', (c) => {
     ${where}
     ORDER BY timestamp DESC
     LIMIT ? OFFSET ?
-  `).all(...params, parseInt(limit, 10), parseInt(offset, 10));
+  `).all(...params, parseIntParam(limit, 100), parseIntParam(offset, 0));
 
   return c.json({ insights });
 });

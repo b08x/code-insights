@@ -10,6 +10,10 @@ app.post('/markdown', async (c) => {
 
   const { sessionIds, projectId } = body;
 
+  if (sessionIds && sessionIds.length > 100) {
+    return c.json({ error: 'Maximum 100 session IDs per export request' }, 400);
+  }
+
   let sessions: Record<string, unknown>[];
   if (sessionIds && sessionIds.length > 0) {
     const placeholders = sessionIds.map(() => '?').join(', ');

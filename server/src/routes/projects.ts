@@ -1,11 +1,12 @@
 import { Hono } from 'hono';
 import { getDb } from '@code-insights/cli/db/client';
+import { parseIntParam } from '../utils.js';
 
 const app = new Hono();
 
 app.get('/', (c) => {
   const db = getDb();
-  const { limit = '100', offset = '0' } = c.req.query();
+  const { limit, offset } = c.req.query();
   const projects = db.prepare(`
     SELECT id, name, path, git_remote_url, session_count, last_activity,
            total_input_tokens, total_output_tokens, cache_creation_tokens,
@@ -13,7 +14,7 @@ app.get('/', (c) => {
     FROM projects
     ORDER BY last_activity DESC
     LIMIT ? OFFSET ?
-  `).all(parseInt(limit, 10), parseInt(offset, 10));
+  `).all(parseIntParam(limit, 100), parseIntParam(offset, 0));
   return c.json({ projects });
 });
 

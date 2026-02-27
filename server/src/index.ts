@@ -29,8 +29,12 @@ export async function startServer(options: ServerOptions): Promise<void> {
 
   const app = new Hono();
 
-  // Global error handler — prevents stack trace leakage to clients
+  // Global error handler — prevents stack trace leakage to clients.
+  // Detects malformed JSON bodies (SyntaxError) and returns 400 instead of 500.
   app.onError((err, c) => {
+    if (err instanceof SyntaxError && err.message.includes('JSON')) {
+      return c.json({ error: 'Invalid JSON in request body' }, 400);
+    }
     console.error(err);
     return c.json({ error: 'Internal server error' }, 500);
   });
@@ -47,6 +51,11 @@ export async function startServer(options: ServerOptions): Promise<void> {
 
   // Health check
   app.get('/api/health', (c) => c.json({ ok: true, version: '0.1.0' }));
+
+  // API 404 catch-all — must come AFTER all /api sub-routers and BEFORE static serving.
+  // Without this, unmatched /api/* routes fall through to the SPA fallback and return
+  // index.html as 200, which breaks API clients expecting JSON errors.
+  app.all('/api/*', (c) => c.json({ error: 'Not found' }, 404));
 
   // Static file serving — only if the dashboard has been built
   if (existsSync(staticDir)) {

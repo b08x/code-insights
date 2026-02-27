@@ -1,11 +1,12 @@
 import { Hono } from 'hono';
 import { getDb } from '@code-insights/cli/db/client';
+import { parseIntParam } from '../utils.js';
 
 const app = new Hono();
 
 app.get('/', (c) => {
   const db = getDb();
-  const { projectId, sourceTool, limit = '50', offset = '0' } = c.req.query();
+  const { projectId, sourceTool, limit, offset } = c.req.query();
 
   const conditions: string[] = [];
   const params: (string | number)[] = [];
@@ -33,7 +34,7 @@ app.get('/', (c) => {
     ${where}
     ORDER BY started_at DESC
     LIMIT ? OFFSET ?
-  `).all(...params, parseInt(limit, 10), parseInt(offset, 10));
+  `).all(...params, parseIntParam(limit, 50), parseIntParam(offset, 0));
 
   return c.json({ sessions });
 });

@@ -5,10 +5,13 @@
 const BASE = '/api';
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...init?.headers },
-    ...init,
-  });
+  // Only set Content-Type when a body is present — setting it on GET requests
+  // adds unnecessary headers and can confuse some intermediaries.
+  const headers: Record<string, string> = { ...(init?.headers as Record<string, string>) };
+  if (init?.body) {
+    headers['Content-Type'] = 'application/json';
+  }
+  const res = await fetch(`${BASE}${path}`, { ...init, headers });
   if (!res.ok) {
     const text = await res.text().catch(() => res.statusText);
     throw new Error(`API ${res.status}: ${text}`);

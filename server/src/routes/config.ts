@@ -21,7 +21,11 @@ app.put('/llm', async (c) => {
     sync: { claudeDir: '', excludeProjects: [] },
   };
   if (body.dashboardPort !== undefined) {
-    config.dashboard = { ...config.dashboard, port: body.dashboardPort };
+    const port = body.dashboardPort;
+    if (typeof port !== 'number' || !Number.isInteger(port) || port < 1 || port > 65535) {
+      return c.json({ error: 'dashboardPort must be an integer between 1 and 65535' }, 400);
+    }
+    config.dashboard = { ...config.dashboard, port };
   }
   saveConfig(config);
   return c.json({ ok: true });
