@@ -227,8 +227,7 @@ Dashboard (dashboard/src/)   -> Reads from Server API
 |-------|-------|--------|
 | `engineer` | sonnet | Implementation across CLI, dashboard, and server — features, fixes, tests |
 | `technical-architect` | opus | Architecture, type alignment, SQLite schema, code review, LLD standards |
-| `ux-engineer` | opus | UI/UX components, chat views, data visualizations |
-| `ux-designer` | opus | ASCII wireframes, user flows, personas, UX validation |
+| `ux-engineer` | opus | UX design (wireframes, flows, specs) and UI implementation (React/Tailwind/shadcn) |
 | `product-manager` | sonnet | Task tracking (GitHub Issues), sprint planning, ceremony coordination |
 | `journey-chronicler` | opus | Capture learning moments, breakthroughs, course corrections |
 | `devtools-cofounder` | opus | DevTools strategy, DX critique, competitive positioning (on-demand, not standard ceremony) |
@@ -436,7 +435,7 @@ Orchestrator MUST NOT directly edit documents it doesn't own. Always delegate.
 | Server code (`server/src/`) | `engineer` | Delegate to engineer |
 | Type alignment decisions | `technical-architect` | Delegate to TA |
 | Architecture docs (`docs/`) | `technical-architect` | Delegate to TA |
-| UX specs (`docs/ux/`) | `ux-designer` | Delegate to UX designer |
+| UX specs (`docs/ux/`) | `ux-engineer` | Delegate to UX engineer |
 | Task tracking, sprints | `product-manager` | Delegate to PM |
 | Journey chronicle (`docs/chronicle/`) | `journey-chronicler` | Delegate to chronicler |
 | PR creation | Dev agent (whoever implemented) | Agent creates PR |
