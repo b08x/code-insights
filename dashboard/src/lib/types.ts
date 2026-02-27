@@ -1,0 +1,113 @@
+// Dashboard-specific types matching the Hono API response format.
+// The server returns SQLite rows as-is — snake_case keys, ISO 8601 date strings.
+// Convert to Date objects only at the component boundary when needed.
+
+export interface Project {
+  id: string;
+  name: string;
+  path: string;
+  git_remote_url: string | null;
+  project_id_source: 'git-remote' | 'path-hash';
+  session_count: number;
+  last_activity: string;        // ISO 8601
+  created_at: string;           // ISO 8601
+  total_input_tokens?: number;
+  total_output_tokens?: number;
+  cache_creation_tokens?: number;
+  cache_read_tokens?: number;
+  estimated_cost_usd?: number;
+}
+
+export type SessionCharacter =
+  | 'deep_focus'
+  | 'bug_hunt'
+  | 'feature_build'
+  | 'exploration'
+  | 'refactor'
+  | 'learning'
+  | 'quick_task';
+
+export type TitleSource = 'claude' | 'user_message' | 'insight' | 'character' | 'fallback';
+
+export interface Session {
+  id: string;
+  project_id: string;
+  project_name: string;
+  project_path: string;
+  git_remote_url: string | null;
+  summary: string | null;
+  custom_title: string | null;
+  generated_title: string | null;
+  title_source: TitleSource | null;
+  session_character: SessionCharacter | null;
+  started_at: string;           // ISO 8601
+  ended_at: string;             // ISO 8601
+  message_count: number;
+  user_message_count: number;
+  assistant_message_count: number;
+  tool_call_count: number;
+  git_branch: string | null;
+  claude_version: string | null;
+  source_tool: string | null;
+  device_id: string | null;
+  device_hostname: string | null;
+  device_platform: string | null;
+  synced_at: string;            // ISO 8601
+  total_input_tokens: number | null;
+  total_output_tokens: number | null;
+  cache_creation_tokens: number | null;
+  cache_read_tokens: number | null;
+  estimated_cost_usd: number | null;
+  models_used: string | null;   // JSON-encoded string array from SQLite
+  primary_model: string | null;
+  usage_source: string | null;
+}
+
+export type InsightType = 'summary' | 'decision' | 'learning' | 'technique' | 'prompt_quality';
+export type InsightScope = 'session' | 'project' | 'overall';
+
+export interface Insight {
+  id: string;
+  session_id: string;
+  project_id: string;
+  project_name: string;
+  type: InsightType;
+  title: string;
+  content: string;
+  summary: string;
+  bullets: string;              // JSON-encoded string array from SQLite
+  confidence: number;
+  source: 'llm';
+  metadata: string;             // JSON-encoded object from SQLite
+  timestamp: string;            // ISO 8601
+  created_at: string;           // ISO 8601
+  scope: InsightScope;
+  analysis_version: string;
+}
+
+export interface Message {
+  id: string;
+  session_id: string;
+  type: 'user' | 'assistant' | 'system';
+  content: string;
+  thinking: string | null;
+  tool_calls: string;           // JSON-encoded array from SQLite
+  tool_results: string;         // JSON-encoded array from SQLite
+  usage: string | null;         // JSON-encoded object from SQLite
+  timestamp: string;            // ISO 8601
+  parent_id: string | null;
+}
+
+// Dashboard stats from /api/analytics/dashboard
+export interface DashboardStats {
+  session_count: number;
+  total_messages: number | null;
+  total_input_tokens: number | null;
+  total_output_tokens: number | null;
+  estimated_cost_usd: number | null;
+}
+
+// LLM config from /api/config/llm
+export interface LLMConfig {
+  dashboardPort: number;
+}
