@@ -51,6 +51,21 @@ export const SESSION_CHARACTER_LABELS: Record<string, string> = {
   quick_task: 'Quick Task',
 };
 
+/** Visual identity for agent participants in chat conversations. */
+export const AGENT_PARTICIPANT_COLORS: Record<string, string> = {
+  'general-purpose': 'bg-blue-500 text-white',
+  'Explore': 'bg-cyan-500 text-white',
+  'Plan': 'bg-indigo-500 text-white',
+  'Bash': 'bg-zinc-700 text-white',
+  'ux-engineer': 'bg-pink-500 text-white',
+  'technical-architect': 'bg-blue-600 text-white',
+  'web-engineer': 'bg-emerald-500 text-white',
+  'code-reviewer': 'bg-amber-500 text-white',
+};
+
+/** Fallback color for unknown agent types. */
+export const AGENT_DEFAULT_COLOR = 'bg-gray-500 text-white';
+
 /** Badge colors for source tool indicators. */
 export const SOURCE_TOOL_COLORS: Record<string, string> = {
   'claude-code': 'bg-orange-500/10 text-orange-600 border-orange-500/20',

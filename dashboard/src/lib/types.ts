@@ -86,6 +86,17 @@ export interface Insight {
   linked_insight_ids: string | null;
 }
 
+export interface ToolCall {
+  id: string;                   // tool_use_id from JSONL
+  name: string;
+  input: string;                // serialized JSON from CLI
+}
+
+export interface ToolResult {
+  toolUseId: string;            // References ToolCall.id
+  output: string;               // Truncated tool output
+}
+
 export interface Message {
   id: string;
   session_id: string;
@@ -97,6 +108,29 @@ export interface Message {
   usage: string | null;         // JSON-encoded object from SQLite
   timestamp: string;            // ISO 8601
   parent_id: string | null;
+}
+
+// Daily stats from /api/analytics/usage
+export interface DailyStats {
+  date: string;
+  session_count: number;
+  message_count: number;
+  insight_count: number;
+  total_tokens?: number;
+  estimated_cost_usd?: number;
+}
+
+/**
+ * Safely parse a JSON string field from the API.
+ * Returns defaultValue if the field is null, empty, or invalid JSON.
+ */
+export function parseJsonField<T>(value: string | null | undefined, defaultValue: T): T {
+  if (!value) return defaultValue;
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return defaultValue;
+  }
 }
 
 // Dashboard stats from /api/analytics/dashboard
