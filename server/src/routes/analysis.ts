@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { getDb } from '@code-insights/cli/db/client';
+import { trackEvent } from '@code-insights/cli/utils/telemetry';
 import { parseIntParam } from '../utils.js';
 import { analyzeSession, analyzePromptQuality, findRecurringInsights } from '../llm/analysis.js';
 import { isLLMConfigured } from '../llm/client.js';
@@ -40,6 +41,7 @@ app.post('/session', async (c) => {
   `).all(body.sessionId) as SQLiteMessageRow[];
 
   const result = await analyzeSession(session, messages);
+  if (result.success) trackEvent('analysis', true, 'session');
   return c.json(result, result.success ? 200 : 422);
 });
 
@@ -76,6 +78,7 @@ app.post('/prompt-quality', async (c) => {
   `).all(body.sessionId) as SQLiteMessageRow[];
 
   const result = await analyzePromptQuality(session, messages);
+  if (result.success) trackEvent('analysis', true, 'prompt-quality');
   return c.json(result, result.success ? 200 : 422);
 });
 
@@ -120,6 +123,7 @@ app.post('/recurring', async (c) => {
   }>;
 
   const result = await findRecurringInsights(insights);
+  if (result.success) trackEvent('analysis', true, 'recurring');
   return c.json(result, result.success ? 200 : 422);
 });
 

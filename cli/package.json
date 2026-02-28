@@ -13,7 +13,8 @@
     "./types": "./dist/types.js",
     "./utils/config": "./dist/utils/config.js",
     "./utils/browser": "./dist/utils/browser.js",
-    "./constants/llm-providers": "./dist/constants/llm-providers.js"
+    "./constants/llm-providers": "./dist/constants/llm-providers.js",
+    "./utils/telemetry": "./dist/utils/telemetry.js"
   },
   "bin": {
     "code-insights": "./dist/index.js"

@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { getDb } from '@code-insights/cli/db/client';
+import { trackEvent } from '@code-insights/cli/utils/telemetry';
 
 const app = new Hono();
 
@@ -53,6 +54,7 @@ app.post('/markdown', async (c) => {
   }
 
   const markdown = lines.join('\n');
+  trackEvent('export', true, 'markdown');
   c.header('Content-Type', 'text/markdown');
   return c.body(markdown);
 });
