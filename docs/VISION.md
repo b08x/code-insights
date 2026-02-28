@@ -2,71 +2,86 @@
 
 ## Philosophy
 
-**Your data, your infrastructure, your insights.**
+**Your data, your machine, your insights.**
 
-Code Insights is a tool that helps Claude Code users understand their AI-assisted development patterns. It's built on a simple principle: developers should own their data completely.
+Code Insights is a free, open-source tool that helps developers who use multiple AI coding tools analyze their sessions, collect insights, track decisions and learnings, and build knowledge over time. It's built on a simple principle: your session data never leaves your machine.
 
 ## Core Beliefs
 
 ### 1. Privacy by Architecture
 
-There is no central Code Insights data server. Users connect the CLI tool to their own Firebase project. Session data never leaves their control. The hosted dashboard only reads from the user's Firestore — authentication is handled by Supabase Auth, and the dashboard collects anonymous aggregate analytics via Vercel Analytics, but never touches your Claude Code data.
+There is no central Code Insights server. No accounts, no sign-ups, no cloud. All session data lives in a local SQLite database at `~/.code-insights/data.db`. The dashboard runs locally at `http://localhost:7890` — it never phones home.
 
 ### 2. Developers Can Handle It
 
-Claude Code users are technical. They can:
-- Create a Firebase project
-- Copy configuration keys
-- Run a CLI command
+Developers using AI coding tools are technical. They can:
+- Run `code-insights init` and answer three questions
+- Install a post-session hook with one command
+- Open a local dashboard that just works
 
 We don't need to hide complexity behind a managed service. Clear documentation beats magic.
 
-### 3. Two-Repo Model
+### 3. Single-Repo, Local-First
 
-- **CLI** (open source, MIT) — The parser and sync engine. Community-driven, transparent.
-- **Web Dashboard** (closed source) — The visualization layer. Hosted on Vercel, free to use.
+Everything ships in one repository:
+- **CLI** (open source, MIT) — the parser, sync engine, and stats commands
+- **Dashboard** (embedded SPA) — served locally by a Hono server via `code-insights dashboard`
+- **Server** (local API) — Hono API on `localhost:7890`, proxies LLM calls server-side
+
+No hosted infrastructure. No Vercel. No Firebase. No Supabase. One install, zero cloud dependencies.
 
 ### 4. Tool, Not Platform
 
 Code Insights is a utility, not a product. It should:
-- Do one thing well (extract insights from Claude sessions)
+- Do one thing well (extract insights from AI coding sessions)
+- Support multiple source tools (Claude Code, Cursor, Codex CLI, Copilot CLI)
 - Be easy to install and configure
 - Stay out of the way once set up
 
 ## Long-Term Direction
 
 ### Phase 1: Foundation ✅
-- CLI tool that parses JSONL → Firestore
+- CLI tool that parses JSONL → SQLite
 - Web dashboard with session views, character classification, smart titles
-- Manual export to Markdown formats
+- Claude Code hook for automatic session sync
 
 ### Phase 2: Integration ✅
-- Claude Code hook for automatic session sync
-- Real-time dashboard updates via Firestore subscriptions
-- CLI `insights` command for quick terminal views
+- Auto-sync via Claude Code post-session hook
+- CLI stats command suite (`stats`, `stats cost`, `stats projects`, `stats today`, `stats models`)
+- Terminal analytics powered by local SQLite
 
 ### Phase 3: Intelligence ✅
 - Multi-provider LLM analysis (OpenAI, Anthropic, Gemini, Ollama)
 - On-demand and bulk session analysis
 - Cross-session insight types (summary, decision, learning, technique)
 
-### Phase 4: Community
-- Shareable insight templates
-- Plugin architecture for custom extractors
-- Community-contributed dashboard widgets
+### Phase 4: Feature Parity ✅
+- Vite + React SPA replacing the hosted web dashboard
+- Hono server embedding the SPA — served via `code-insights dashboard`
+- Multi-source support: Claude Code, Cursor, Codex CLI, Copilot CLI
+- Full feature parity between CLI stats and dashboard views
+
+### Phase 5: Telemetry (In Progress)
+- Anonymous aggregate usage signals (opt-in, local-only export)
+- Depth metrics: sessions analyzed, insights generated, knowledge retained
+
+### Phase 6: Polish & Distribution
+- npm publish as `@code-insights/cli`
+- Static landing page at `code-insights.app`
+- Contribution guidelines and plugin architecture foundation
 
 ## Non-Goals
 
-- **Not a business** - No monetization, no paywall, no premium tier
-- **Not a central platform** - No central database for user session data
-- **Not a dependency** - Users can stop using it anytime, data remains theirs
-- **Not comprehensive** - Focus on Claude Code, not every AI tool
+- **Not a business** — No monetization, no paywall, no premium tier
+- **Not a central platform** — No central database for user session data
+- **Not a dependency** — Users can stop using it anytime, data remains theirs
+- **Not a team tool** — This is a personal learning tool; no org/team features
 
 ## Success Looks Like
 
-A developer installs Code Insights, spends 10 minutes on Firebase setup, and from then on has a personal dashboard showing:
-- What they built with Claude this week
+A developer installs Code Insights, runs `code-insights init`, installs the hook, and from then on has a local dashboard showing:
+- What they built with AI coding tools this week
 - Key decisions and why they made them
-- Patterns in how they use AI assistance
+- Patterns in how they use AI assistance across tools
 
 They own all the data. They can export it. They can delete it. They can modify the CLI tool. Complete autonomy.
