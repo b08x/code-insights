@@ -30,6 +30,8 @@ export function createGeminiClient(apiKey: string, model: string): LLMClient {
         };
       }
 
+      // Gemini REST API requires the API key as a query parameter (not a header).
+      // This is Google's documented authentication pattern for the Generative Language API.
       const response = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
         {
