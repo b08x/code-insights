@@ -143,6 +143,26 @@ function resolveWorkspacePath(wsDir: string): string | null {
 }
 
 /**
+ * Open the Cursor global DB regardless of which DB path was provided.
+ * The global DB stores full composer conversation data in cursorDiskKV.
+ * Returns null if the global DB doesn't exist or can't be opened.
+ */
+function openGlobalDb(anyDbPath: string): InstanceType<typeof Database> | null {
+  const cursorDataDir = getCursorDataDir();
+  if (!cursorDataDir) return null;
+
+  const globalDbPath = path.join(cursorDataDir, 'globalStorage', 'state.vscdb');
+  // Avoid opening the same DB that was already opened by the caller
+  if (!fs.existsSync(globalDbPath) || globalDbPath === anyDbPath) return null;
+
+  try {
+    return new Database(globalDbPath, { readonly: true, fileMustExist: true });
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Get all composer IDs from a Cursor database file.
  * Tries multiple storage strategies to find composer sessions.
  */
@@ -248,10 +268,36 @@ function parseCursorSession(dbPath: string, composerId: string): ParsedSession |
 
     if (!composerData) return null;
 
-    // Extract messages from composer data
+    // Extract messages from composer data.
     // Pass db handle for the fullConversationHeadersOnly format where
     // bubble content is stored in separate cursorDiskKV rows.
-    const messages = extractMessages(composerData, composerId, db);
+    let messages = extractMessages(composerData, composerId, db);
+
+    // Workspace DBs only store composer metadata (composerId, name, timestamps) in ItemTable.
+    // Full conversation data (with bubbles) lives in the global DB's cursorDiskKV table.
+    // If we got no messages from the workspace DB, look up the composer in the global DB.
+    if (messages.length === 0) {
+      const globalDb = openGlobalDb(dbPath);
+      if (globalDb) {
+        try {
+          const globalRow = globalDb.prepare(
+            "SELECT value FROM cursorDiskKV WHERE key = ?"
+          ).get(`composerData:${composerId}`) as { value: string } | undefined;
+
+          if (globalRow?.value) {
+            const globalComposerData = JSON.parse(globalRow.value) as Record<string, unknown>;
+            messages = extractMessages(globalComposerData, composerId, globalDb);
+            // Prefer composerData from global DB for richer metadata
+            if (messages.length > 0) {
+              composerData = globalComposerData;
+            }
+          }
+        } finally {
+          globalDb.close();
+        }
+      }
+    }
+
     if (messages.length === 0) return null;
 
     // Resolve project path from workspace directory

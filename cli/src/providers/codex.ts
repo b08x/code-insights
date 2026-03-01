@@ -233,6 +233,37 @@ function parseCodexSession(filePath: string): ParsedSession | null {
       const innerType = (payload.type as string) || eventType;
 
       switch (innerType) {
+        case 'message': {
+          // response_item events: payload.type = "message", payload.role = "user"|"assistant"|"developer"
+          const role = payload.role as string;
+          if (role === 'user') {
+            flushAssistantTurn();
+            const userContent = extractUserContent(payload);
+            if (userContent) {
+              messages.push({
+                id: (payload.id as string) || `codex-user-${messages.length}`,
+                sessionId: sessionId,
+                type: 'user',
+                content: userContent.slice(0, 10000),
+                thinking: null,
+                toolCalls: [],
+                toolResults: [],
+                usage: null,
+                timestamp: parseTimestamp(payload) || lastTimestamp,
+                parentId: null,
+              });
+              lastTimestamp = messages[messages.length - 1].timestamp;
+            }
+          } else if (role === 'assistant') {
+            const assistantContent = extractUserContent(payload);
+            if (assistantContent) {
+              currentAssistantText += assistantContent + '\n';
+            }
+          }
+          // role === 'developer' = system/context messages — skip
+          break;
+        }
+
         case 'user_message':
         case 'userMessage': {
           // Flush any pending assistant turn
