@@ -44,6 +44,7 @@ export async function runSync(options: SyncOptions = {}): Promise<SyncResult> {
     fail: function() { return this; },
     warn: function() { return this; },
     info: function() { return this; },
+    stop: function() { return this; },
   };
   const createSpinner = options.quiet
     ? () => noopSpinner
@@ -138,7 +139,11 @@ export async function runSync(options: SyncOptions = {}): Promise<SyncResult> {
         continue;
       }
 
-      // Process files
+      // Process files — accumulate per-provider counts, show one summary line after
+      let providerSyncedCount = 0;
+      let providerSkippedCount = 0;
+      let providerMessageCount = 0;
+
       for (const filePath of filesToSync) {
         const fileName = path.basename(filePath);
         spinner.start(`Processing ${fileName}...`);
@@ -147,7 +152,7 @@ export async function runSync(options: SyncOptions = {}): Promise<SyncResult> {
           // Parse session
           const session = await provider.parse(filePath);
           if (!session) {
-            spinner.warn(`Skipped ${fileName} (no valid data)`);
+            providerSkippedCount++;
             continue;
           }
 
@@ -155,9 +160,9 @@ export async function runSync(options: SyncOptions = {}): Promise<SyncResult> {
           if (!options.force) {
             const exists = sessionExists(session.id);
             if (exists) {
-              spinner.info(`Skipped ${fileName} (already synced)`);
               updateSyncState(syncState, filePath, session.id);
               saveSyncState(syncState);
+              providerSkippedCount++;
               continue;
             }
           }
@@ -171,9 +176,10 @@ export async function runSync(options: SyncOptions = {}): Promise<SyncResult> {
           updateSyncState(syncState, filePath, session.id);
           saveSyncState(syncState);
 
+          providerSyncedCount++;
+          providerMessageCount += session.messages.length;
           totalSyncedCount++;
           totalMessageCount += session.messages.length;
-          spinner.succeed(`Synced ${fileName} (${session.messages.length} messages)`);
         } catch (error) {
           totalErrorCount++;
           spinner.fail(`Failed to sync ${fileName}`);
@@ -181,6 +187,18 @@ export async function runSync(options: SyncOptions = {}): Promise<SyncResult> {
             console.error(chalk.red(`  ${error instanceof Error ? error.message : 'Unknown error'}`));
           }
         }
+      }
+
+      // One summary line per provider instead of per-file noise
+      spinner.stop();
+      if (providerSyncedCount > 0 || providerSkippedCount > 0) {
+        const syncedPart = providerSyncedCount > 0
+          ? `${providerSyncedCount} synced (${providerMessageCount.toLocaleString()} messages)`
+          : `0 synced`;
+        const skippedPart = providerSkippedCount > 0
+          ? `, ${providerSkippedCount} skipped`
+          : '';
+        log(chalk.gray(`  ${syncedPart}${skippedPart}`));
       }
     } catch (error) {
       totalErrorCount++;
