@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import type { SessionProvider } from './types.js';
-import type { ParsedSession, ParsedMessage, ToolCall } from '../types.js';
+import type { ParsedSession, ParsedMessage, ToolCall, SessionUsage } from '../types.js';
 import { generateTitle, detectSessionCharacter } from '../parser/titles.js';
 
 /**
@@ -323,6 +323,27 @@ function parseCopilotSession(filePath: string): ParsedSession | null {
     const startedAt = new Date(data.creationDate);
     const endedAt = new Date(data.lastMessageDate || data.creationDate);
 
+    // Collect all unique model IDs across session and per-request model fields.
+    // write.ts reads session.usage?.modelsUsed and session.usage?.primaryModel —
+    // without this, those columns stay null for all Copilot VS Code sessions.
+    const modelIds = new Set<string>();
+    if (modelId) modelIds.add(modelId);
+    for (const request of data.requests) {
+      if (request.modelId) modelIds.add(request.modelId);
+    }
+    const sessionUsage: SessionUsage | undefined = modelIds.size > 0
+      ? {
+          totalInputTokens: 0,
+          totalOutputTokens: 0,
+          cacheCreationTokens: 0,
+          cacheReadTokens: 0,
+          estimatedCostUsd: 0,
+          modelsUsed: Array.from(modelIds),
+          primaryModel: modelId || Array.from(modelIds)[0],
+          usageSource: 'session',
+        }
+      : undefined;
+
     const session: ParsedSession = {
       id: sessionId,
       projectPath,
@@ -340,6 +361,7 @@ function parseCopilotSession(filePath: string): ParsedSession | null {
       gitBranch: null,
       claudeVersion: modelId,
       sourceTool: 'copilot',
+      usage: sessionUsage,
       messages,
     };
 
