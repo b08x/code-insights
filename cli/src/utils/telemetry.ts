@@ -156,6 +156,41 @@ export function classifyError(error: unknown): { error_type: string; error_messa
 }
 
 /**
+ * Parse a Node.js Error.stack into PostHog-compatible stack frames.
+ * Returns frames in caller-first order (PostHog/Sentry convention).
+ */
+function parseStackFrames(stack: string): Array<{
+  filename: string;
+  lineno: number;
+  colno: number;
+  function: string;
+  in_app: boolean;
+}> {
+  const framePattern = /at\s+(?:(.+?)\s+\()?(.*?):(\d+):(\d+)\)?/g;
+  const frames: Array<{
+    filename: string;
+    lineno: number;
+    colno: number;
+    function: string;
+    in_app: boolean;
+  }> = [];
+
+  let match;
+  while ((match = framePattern.exec(stack)) !== null) {
+    const filename = match[2].replace(/^file:\/\//, '');
+    frames.push({
+      filename,
+      lineno: parseInt(match[3], 10),
+      colno: parseInt(match[4], 10),
+      function: match[1] || '<anonymous>',
+      in_app: !filename.includes('node_modules') && !filename.startsWith('node:'),
+    });
+  }
+
+  return frames;
+}
+
+/**
  * Capture an exception in PostHog. Never throws — telemetry must never break the CLI.
  * Respects the same opt-out as trackEvent.
  *
@@ -168,12 +203,25 @@ export function captureError(error: unknown, properties?: Record<string, unknown
 
   try {
     const { error_type, error_message } = classifyError(error);
+    const exceptionType = error instanceof Error ? error.constructor.name : error_type;
+    const stack = error instanceof Error && error.stack ? error.stack : '';
+    const frames = stack ? parseStackFrames(stack) : [];
+
     ph.capture({
       distinctId: getStableMachineId(),
       event: '$exception',
       properties: {
         $exception_message: error_message,
-        $exception_type: error_type,
+        $exception_type: exceptionType,
+        $exception_stack_trace_raw: stack,
+        $exception_list: [
+          {
+            type: exceptionType,
+            value: error_message,
+            mechanism: { type: 'generic', handled: true },
+            ...(frames.length > 0 ? { stacktrace: { frames } } : {}),
+          },
+        ],
         ...(properties ?? {}),
       },
     });

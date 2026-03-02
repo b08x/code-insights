@@ -19,6 +19,7 @@ export function createOpenAIClient(apiKey: string, model: string): LLMClient {
           model,
           messages: messages.map(m => ({ role: m.role, content: m.content })),
           temperature: 0.7,
+          max_tokens: 8192,
         }),
       });
 

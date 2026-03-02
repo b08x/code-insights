@@ -21,7 +21,8 @@
   "dependencies": {
     "@code-insights/cli": "workspace:*",
     "@hono/node-server": "^1.13.7",
-    "hono": "^4.7.4"
+    "hono": "^4.7.4",
+    "jsonrepair": "^3.13.2"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",

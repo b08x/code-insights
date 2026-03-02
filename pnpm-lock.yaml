@@ -145,6 +145,9 @@ importers:
       hono:
         specifier: ^4.7.4
         version: 4.12.3
+      jsonrepair:
+        specifier: ^3.13.2
+        version: 3.13.2
     devDependencies:
       '@types/better-sqlite3':
         specifier: ^7.6.13
@@ -2296,6 +2299,10 @@ packages:
   json5@2.2.3:
     resolution: {integrity: sha512-XmOWe7eyHYH14cLdVPoyg+GOH3rYX++KpzrylJwSW98t3Nk+U8XOl8FWKOgwtzdb8lXGf6zYwDUzeHMWfxasyg==}
     engines: {node: '>=6'}
+    hasBin: true
+
+  jsonrepair@3.13.2:
+    resolution: {integrity: sha512-Leuly0nbM4R+S5SVJk3VHfw1oxnlEK9KygdZvfUtEtTawNDyzB4qa1xWTmFt1aeoA7sXZkVTRuIixJ8bAvqVUg==}
     hasBin: true
 
   lightningcss-android-arm64@1.31.1:
@@ -5160,6 +5167,8 @@ snapshots:
   jsesc@3.1.0: {}
 
   json5@2.2.3: {}
+
+  jsonrepair@3.13.2: {}
 
   lightningcss-android-arm64@1.31.1:
     optional: true

@@ -94,10 +94,6 @@ export function fetchDashboardStats(range: '7d' | '30d' | '90d' | 'all' = '7d') 
   return request<{ range: string; stats: DashboardStats }>(`/analytics/dashboard?range=${range}`);
 }
 
-export function fetchUsageStats() {
-  return request<{ stats: unknown }>('/analytics/usage');
-}
-
 // ── Analysis (Phase 4) ────────────────────────────────────────────────────────
 
 export interface AnalysisApiResult {

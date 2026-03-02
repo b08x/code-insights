@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router';
-import { useDashboardStats, useUsageStats } from '@/hooks/useAnalytics';
+import { useDashboardStats } from '@/hooks/useAnalytics';
 import { useSessions } from '@/hooks/useSessions';
 import { useInsights } from '@/hooks/useInsights';
 import { useProjects } from '@/hooks/useProjects';
@@ -15,7 +15,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import type { DailyStats } from '@/lib/types';
 import { Sparkles, ArrowRight } from 'lucide-react';
 
-type DashboardRange = '30d' | '90d' | 'all';
+type DashboardRange = '7d' | '30d' | '90d' | 'all';
 
 function getGreeting(): string {
   const hour = new Date().getHours();
@@ -25,10 +25,9 @@ function getGreeting(): string {
 }
 
 export default function DashboardPage() {
-  const [range, setRange] = useState<DashboardRange>('30d');
+  const [range, setRange] = useState<DashboardRange>('7d');
 
   const { data: dashStats, isLoading: statsLoading, isError: statsError, refetch: refetchStats } = useDashboardStats(range);
-  const { data: usageStats } = useUsageStats();
   const { data: sessions = [], isLoading: sessionsLoading, isError: sessionsError, refetch: refetchSessions } = useSessions({ limit: 500 });
   const { data: insights = [], isLoading: insightsLoading } = useInsights();
   const { data: projects = [] } = useProjects();
@@ -48,7 +47,7 @@ export default function DashboardPage() {
   // Build daily stats for activity chart
   const dailyStats: DailyStats[] = useMemo(() => {
     const now = Date.now();
-    const rangeDays = range === '30d' ? 30 : range === '90d' ? 90 : Infinity;
+    const rangeDays = range === '7d' ? 7 : range === '30d' ? 30 : range === '90d' ? 90 : Infinity;
     const cutoff = rangeDays === Infinity ? 0 : now - rangeDays * 86_400_000;
 
     const grouped: Record<string, { session_count: number; insight_count: number }> = {};
@@ -74,42 +73,33 @@ export default function DashboardPage() {
       }));
   }, [sessions, insights, range]);
 
-  // Compute stats for hero
-  const usageStatsData = usageStats as {
-    total_input_tokens?: number;
-    total_output_tokens?: number;
-    cache_creation_tokens?: number;
-    cache_read_tokens?: number;
-    estimated_cost_usd?: number;
-  } | null;
+  // Compute stats for hero — all from dashStats (range-filtered)
+  const totalTokens = dashStats
+    ? (dashStats.total_input_tokens ?? 0) +
+      (dashStats.total_output_tokens ?? 0) +
+      (dashStats.cache_creation_tokens ?? 0) +
+      (dashStats.cache_read_tokens ?? 0)
+    : 0;
 
-  const totalTokens = usageStatsData
-    ? (usageStatsData.total_input_tokens ?? 0) +
-      (usageStatsData.total_output_tokens ?? 0) +
-      (usageStatsData.cache_creation_tokens ?? 0) +
-      (usageStatsData.cache_read_tokens ?? 0)
-    : (dashStats?.total_input_tokens ?? 0) + (dashStats?.total_output_tokens ?? 0);
+  const totalCost = dashStats?.estimated_cost_usd ?? 0;
 
-  const totalCost =
-    usageStatsData?.estimated_cost_usd ?? dashStats?.estimated_cost_usd ?? 0;
-
-  const tokenBreakdown = usageStatsData
+  const tokenBreakdown = dashStats
     ? {
-        inputTokens: usageStatsData.total_input_tokens ?? 0,
-        outputTokens: usageStatsData.total_output_tokens ?? 0,
-        cacheCreationTokens: usageStatsData.cache_creation_tokens ?? 0,
-        cacheReadTokens: usageStatsData.cache_read_tokens ?? 0,
+        inputTokens: dashStats.total_input_tokens ?? 0,
+        outputTokens: dashStats.total_output_tokens ?? 0,
+        cacheCreationTokens: dashStats.cache_creation_tokens ?? 0,
+        cacheReadTokens: dashStats.cache_read_tokens ?? 0,
       }
     : undefined;
 
   return (
-    <div className="p-4 lg:p-6 space-y-3">
+    <div className="p-3 lg:p-4 space-y-2">
       {/* Greeting header */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-bold">{getGreeting()}.</h1>
+          <h1 className="text-lg font-bold">{getGreeting()}.</h1>
           {!loading && (
-            <p className="text-muted-foreground text-sm mt-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <p className="text-muted-foreground text-xs animate-in fade-in slide-in-from-bottom-2 duration-300">
               {sessions.length} session{sessions.length !== 1 ? 's' : ''} loaded
               {' '}&middot; {projects.length} project{projects.length !== 1 ? 's' : ''}
             </p>
@@ -134,9 +124,9 @@ export default function DashboardPage() {
           <StatsHero
             totalSessions={dashStats?.session_count ?? sessions.length}
             totalMessages={dashStats?.total_messages ?? 0}
-            totalToolCalls={0}
-            totalDurationMin={0}
-            totalProjects={projects.length}
+            totalToolCalls={dashStats?.total_tool_calls ?? 0}
+            totalDurationMin={dashStats?.total_duration_min ?? 0}
+            totalProjects={dashStats?.active_projects ?? projects.length}
             isExact={true}
             totalTokens={totalTokens > 0 ? totalTokens : undefined}
             totalCost={totalCost > 0 ? totalCost : undefined}
@@ -151,13 +141,14 @@ export default function DashboardPage() {
           <CardHeader className="flex flex-row items-center justify-between pb-1">
             <Skeleton className="h-4 w-16" />
             <div className="flex gap-1">
+              <Skeleton className="h-7 w-8 rounded" />
               <Skeleton className="h-7 w-10 rounded" />
               <Skeleton className="h-7 w-10 rounded" />
               <Skeleton className="h-7 w-8 rounded" />
             </div>
           </CardHeader>
           <CardContent>
-            <Skeleton className="h-[250px] w-full rounded" />
+            <Skeleton className="h-[200px] w-full rounded" />
           </CardContent>
         </Card>
       ) : (
@@ -169,7 +160,7 @@ export default function DashboardPage() {
       {/* Needs Attention banner */}
       {unanalyzedSessions.length > 0 && (
         <Card className="border-amber-500/20 bg-amber-500/5 hover:shadow-md transition-shadow animate-in fade-in slide-in-from-bottom-2 duration-300 delay-75">
-          <CardContent className="flex items-center justify-between py-4">
+          <CardContent className="flex items-center justify-between py-2.5">
             <div className="flex items-center gap-2">
               <Sparkles className="h-4 w-4 text-amber-600" />
               <div>
@@ -193,8 +184,8 @@ export default function DashboardPage() {
           loading ? '' : 'animate-in fade-in slide-in-from-bottom-2 duration-300 delay-300'
         }
       >
-        <div className="flex items-center justify-between mb-2">
-          <h2 className="text-sm font-semibold">Recent Activity</h2>
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="text-xs font-semibold">Recent Activity</h2>
           <Link
             to="/sessions"
             className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
