@@ -2,6 +2,30 @@
 
 All notable changes to `@code-insights/cli` will be documented in this file.
 
+## [3.3.2] - 2026-03-02
+
+### Added
+
+- **Richer analysis prompts (v3.0.0)** — Decomposed insight schemas: decisions now include situation, choice, reasoning, alternatives (with rejection reason), trade-offs, and revisit conditions. Learnings include symptom, root cause, transferable takeaway, and applicability. Summaries include outcome status.
+- **Session traits in prompt quality** — Detects higher-level behavioral patterns: context drift, objective bloat, late context, no planning, and good structure. Each trait includes severity, evidence, and suggestions.
+- **LLM-based session character classification** — Sessions are classified into one of 7 types (deep_focus, bug_hunt, feature_build, exploration, refactor, learning, quick_task) by the LLM during analysis, replacing the heuristic-only approach.
+- **PR link extraction** — GitHub PR links referenced in session messages are automatically detected and displayed as clickable badges on the session detail page.
+- **Few-shot examples in analysis prompt** — Two curated examples (a decision and a learning) set the quality bar for LLM output.
+- **Chain-of-thought pre-analysis** — Prompt quality analysis now uses a 6-step mental walkthrough before scoring.
+
+### Changed
+
+- **Analysis version bumped to 3.0.0** — New decomposed schemas are not backward-compatible with v2 insight format. Re-analyze sessions to generate v3 insights.
+- **Tool result cap raised from 200 to 500 chars** — Better context for error messages in analysis input.
+- **Source tool badge shown for all sessions** — Previously hidden for claude-code sessions.
+
+### Fixed
+
+- **Dashboard compact layout** — Higher information density across dashboard pages.
+- **7-day range filter** — Default range filter applied to dashboard and analytics.
+- **LLM JSON truncation** — 3-layer fix: max_tokens 8192, jsonrepair fallback, conciseness constraints.
+- **PostHog exception tracking** — Stack trace frames included in error reports.
+
 ## [3.3.1] - 2026-03-02
 
 ### Added

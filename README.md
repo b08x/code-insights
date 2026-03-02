@@ -26,7 +26,9 @@ code-insights dashboard # Open the built-in dashboard at localhost:7890
 - **Terminal analytics** — `code-insights stats` shows cost, usage, and activity breakdowns
 - **Built-in dashboard** — browser UI for session browsing, analytics charts, and LLM-powered insights
 - **Auto-sync hook** — `install-hook` keeps your database up to date automatically
-- **LLM analysis** — generates summaries, decisions, learnings, and techniques from session content (via your own API key or local Ollama)
+- **LLM analysis** — generates summaries, decisions (with context, reasoning, and trade-offs), learnings (with root cause and transferable takeaway), and prompt quality analysis with session traits (via your own API key or local Ollama)
+- **Session character** — each session is classified into one of 7 types (deep_focus, bug_hunt, feature_build, exploration, refactor, learning, quick_task) using LLM analysis
+- **PR link detection** — GitHub PR links referenced in sessions are automatically extracted and displayed
 
 ## Supported AI Tools
 

@@ -56,7 +56,7 @@ Opens the built-in React dashboard at `http://localhost:7890`. The dashboard pro
 
 - **Session Browser** — search, filter, and view full session details
 - **Analytics** — usage patterns, cost trends, activity charts
-- **LLM Insights** — AI-generated summaries, decisions, learnings, and techniques
+- **LLM Insights** — AI-generated summaries, decisions (with reasoning and trade-offs), learnings (with root cause analysis), prompt quality scoring with session traits
 - **Settings** — configure your LLM provider for analysis
 
 ### Options
