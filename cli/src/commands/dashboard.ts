@@ -5,6 +5,7 @@ import chalk from 'chalk';
 import ora from 'ora';
 import net from 'net';
 import { trackEvent } from '../utils/telemetry.js';
+import { printBanner } from '../utils/banner.js';
 
 interface DashboardOptions {
   port: string;
@@ -92,6 +93,10 @@ export async function dashboardCommand(options: DashboardOptions): Promise<void>
     const { startServer } = await import(pathToFileURL(serverEntryPath).href) as ServerModule;
 
     spinner.stop();
+    printBanner();
+    console.log(chalk.white(`  Dashboard:  `) + chalk.cyan.underline(`http://localhost:${port}`));
+    console.log(chalk.dim(`  Press Ctrl+C to stop`));
+    console.log('');
 
     trackEvent('cli_dashboard', { port: port, success: true });
     await startServer({ port, staticDir, openBrowser: options.open });
