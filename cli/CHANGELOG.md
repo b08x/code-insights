@@ -2,6 +2,35 @@
 
 All notable changes to `@code-insights/cli` will be documented in this file.
 
+## [3.3.0] - 2026-03-02
+
+### Changed
+
+- **Telemetry migrated from Supabase to PostHog** — Replaces the custom Supabase Edge Function with PostHog for product analytics. Provides retention charts, feature funnels, and a real analytics dashboard instead of raw event storage.
+- **Stable machine identity** — Machine IDs no longer rotate monthly, enabling accurate unique user counts and retention analysis. IDs remain anonymous (SHA-256 hash, no PII).
+- **Expanded event schema** — All CLI commands now include `duration_ms` for performance tracking. Sync events include exact session counts and per-provider breakdowns. Analysis events capture LLM provider and model.
+- **Dashboard telemetry** — Page views and load timing tracked via `posthog-js` (client-side). Configured with `autocapture: false`, `persistence: 'memory'`, `ip: false` for privacy.
+- **`trackEvent` signature change** — Now accepts `(event: TelemetryEventName, properties?)` instead of `(command, success, subcommand?)`. Typed event names for autocomplete and typo prevention.
+
+### Added
+
+- **`GET /api/telemetry/identity`** — New server endpoint returns shared `distinct_id` for dashboard SPA initialization.
+- **`shutdownTelemetry()`** — Graceful PostHog flush on server shutdown with 3-second timeout guard.
+- **`posthog-node`** dependency in CLI (~20KB, lazy-initialized)
+- **`posthog-js`** dependency in dashboard (~45KB, memory-only persistence)
+- **Analysis failure tracking** — `analysis_run` events now fire on both success and failure for observability.
+
+### Removed
+
+- Supabase Edge Function endpoint, HMAC signing key, and `signPayload()`
+- Monthly-rotating machine ID (`getMachineId()` with date salt)
+- `getSessionCountBucket()` — replaced by exact `total_sessions` person property
+- `getDataSource()` — always 'local', provided no value
+
+### Fixed
+
+- **`RecurringInsightResult.groups`** — Fixed type error using `.insights` instead of `.groups` for recurring insight count.
+
 ## [3.1.1] - 2026-03-02
 
 ### Fixed
