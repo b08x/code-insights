@@ -3,6 +3,7 @@ import * as path from 'path';
 import chalk from 'chalk';
 import { ensureConfigDir, getConfigDir } from './config.js';
 import { getAllProviders } from '../providers/registry.js';
+import { printBanner } from './banner.js';
 
 const WELCOME_MARKER = '.welcome-shown';
 
@@ -26,9 +27,7 @@ export async function showWelcomeIfFirstRun(): Promise<boolean> {
 
     const sessionCount = await countAllSessions();
 
-    console.log('');
-    console.log(chalk.bold.cyan('  Welcome to Code Insights!'));
-    console.log('');
+    printBanner();
 
     if (sessionCount > 0) {
       console.log(
