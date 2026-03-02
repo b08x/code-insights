@@ -107,8 +107,12 @@ export async function startServer(options: ServerOptions): Promise<void> {
 
   // Graceful shutdown: flush PostHog events before exit, then let the process
   // 'exit' handler in cli/src/db/client.ts run WAL checkpoint via closeDb().
+  // 3s timeout guards against PostHog SDK stalling on network issues.
   const shutdown = async () => {
-    await shutdownTelemetry();
+    await Promise.race([
+      shutdownTelemetry(),
+      new Promise<void>((resolve) => setTimeout(resolve, 3000)),
+    ]);
     process.exit(0);
   };
   process.on('SIGINT', () => { void shutdown(); });

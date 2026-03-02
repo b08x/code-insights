@@ -6,8 +6,8 @@
 //
 // Config choices:
 //   autocapture: false — we don't want PostHog to auto-capture clicks/DOM events
-//   capture_pageview: true — posthog-js will send $pageview on init; we add route
-//     tracking manually in App.tsx via capturePageView()
+//   capture_pageview: false — we track page views manually on route change in
+//     App.tsx via capturePageView() to match SPA navigation correctly
 //   persistence: 'memory' — no localStorage/cookies, privacy-first
 //   disable_session_recording: true — no video replay
 //   ip: false — PostHog discards IP before storing
