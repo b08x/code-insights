@@ -61,14 +61,20 @@ Code Insights is a utility, not a product. It should:
 - Multi-source support: Claude Code, Cursor, Codex CLI, Copilot CLI
 - Full feature parity between CLI stats and dashboard views
 
-### Phase 5: Telemetry (In Progress)
-- Anonymous aggregate usage signals (opt-in, local-only export)
-- Depth metrics: sessions analyzed, insights generated, knowledge retained
+### Phase 5: Telemetry ✅
+- Anonymous aggregate usage signals via PostHog (opt-in, disabled by default)
+- Events: dashboard started, analysis run, export run
 
-### Phase 6: Polish & Distribution
-- npm publish as `@code-insights/cli`
-- Static landing page at `code-insights.app`
-- Contribution guidelines and plugin architecture foundation
+### Phase 6: Polish & Distribution ✅
+- Published as `@code-insights/cli` on npm (v3.0.0 – v3.3.0)
+- Landing page and docs at `code-insights.app`
+- README, CONTRIBUTING.md, MIGRATION.md, CHANGELOG.md
+
+### What's Next
+- Cross-session pattern detection and learning journal
+- Markdown export (session, day, week, project)
+- Test suite (Vitest)
+- Slash commands for quick insights from the terminal
 
 ## Non-Goals
 
