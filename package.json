@@ -13,6 +13,7 @@
     "pnpm": ">=8.0.0"
   },
   "devDependencies": {
+    "@vitest/coverage-v8": "^4.0.18",
     "vitest": "^4.0.18"
   }
 }

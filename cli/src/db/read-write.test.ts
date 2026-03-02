@@ -37,7 +37,7 @@ vi.mock('../utils/device.js', () => ({
 
 // Dynamic imports AFTER mocks are declared — vitest hoists vi.mock()
 // above these imports, so the modules receive the mocked dependencies.
-const { sessionExists, getSessions, getProjects } = await import('./read.js');
+const { sessionExists, getSessions, getProjects, getLastSession, getSessionCount, getProjectList } = await import('./read.js');
 const { insertSessionWithProject, insertMessages } = await import('./write.js');
 
 // ──────────────────────────────────────────────────────
@@ -388,6 +388,255 @@ describe('Database read/write operations', () => {
         .get('msg-think') as { thinking: string | null };
 
       expect(row.thinking).toBe('Let me consider the options...');
+    });
+  });
+
+  // ────────────────────────────────────────────────────
+  // getLastSession
+  // ────────────────────────────────────────────────────
+
+  describe('getLastSession', () => {
+    it('returns null when no sessions exist', () => {
+      expect(getLastSession()).toBeNull();
+    });
+
+    it('returns the most recent session', () => {
+      const older = makeParsedSession({
+        id: 'sess-older',
+        startedAt: new Date('2025-06-10T09:00:00Z'),
+        endedAt: new Date('2025-06-10T10:00:00Z'),
+      });
+      const newer = makeParsedSession({
+        id: 'sess-newer',
+        startedAt: new Date('2025-06-15T09:00:00Z'),
+        endedAt: new Date('2025-06-15T10:00:00Z'),
+      });
+
+      insertSessionWithProject(older);
+      insertSessionWithProject(newer);
+
+      const result = getLastSession();
+      expect(result).not.toBeNull();
+      expect(result!.id).toBe('sess-newer');
+    });
+
+    it('filters by sourceTool', () => {
+      const claude = makeParsedSession({
+        id: 'sess-last-claude',
+        sourceTool: 'claude-code',
+        startedAt: new Date('2025-06-15T09:00:00Z'),
+        endedAt: new Date('2025-06-15T10:00:00Z'),
+      });
+      const cursor = makeParsedSession({
+        id: 'sess-last-cursor',
+        sourceTool: 'cursor',
+        startedAt: new Date('2025-06-16T09:00:00Z'),
+        endedAt: new Date('2025-06-16T10:00:00Z'),
+      });
+
+      insertSessionWithProject(claude);
+      insertSessionWithProject(cursor);
+
+      const claudeResult = getLastSession({ sourceTool: 'claude-code' });
+      expect(claudeResult).not.toBeNull();
+      expect(claudeResult!.id).toBe('sess-last-claude');
+      expect(claudeResult!.sourceTool).toBe('claude-code');
+
+      const cursorResult = getLastSession({ sourceTool: 'cursor' });
+      expect(cursorResult).not.toBeNull();
+      expect(cursorResult!.id).toBe('sess-last-cursor');
+    });
+
+    it('filters by projectId', () => {
+      // The mock generateStableProjectId returns 'proj-' + last path segment,
+      // so different projectPath tail segments produce different projectIds.
+      const sessionA = makeParsedSession({
+        id: 'sess-proj-a',
+        projectPath: '/projects/alpha',
+        projectName: 'alpha',
+        startedAt: new Date('2025-06-15T09:00:00Z'),
+        endedAt: new Date('2025-06-15T10:00:00Z'),
+      });
+      const sessionB = makeParsedSession({
+        id: 'sess-proj-b',
+        projectPath: '/projects/beta',
+        projectName: 'beta',
+        startedAt: new Date('2025-06-16T09:00:00Z'),
+        endedAt: new Date('2025-06-16T10:00:00Z'),
+      });
+
+      insertSessionWithProject(sessionA);
+      insertSessionWithProject(sessionB);
+
+      const result = getLastSession({ projectId: 'proj-alpha' });
+      expect(result).not.toBeNull();
+      expect(result!.id).toBe('sess-proj-a');
+      expect(result!.projectName).toBe('alpha');
+    });
+
+    it('returns correct field mapping for a known session', () => {
+      const session = makeParsedSession({
+        id: 'sess-fields',
+        projectName: 'my-project',
+        startedAt: new Date('2025-06-15T09:00:00Z'),
+        endedAt: new Date('2025-06-15T10:00:00Z'),
+        sourceTool: 'claude-code',
+        generatedTitle: 'The Title',
+        sessionCharacter: 'feature_build',
+      });
+
+      insertSessionWithProject(session);
+
+      const result = getLastSession();
+      expect(result).not.toBeNull();
+      expect(result!.id).toBe('sess-fields');
+      expect(result!.projectName).toBe('my-project');
+      expect(result!.startedAt).toBeInstanceOf(Date);
+      expect(result!.sourceTool).toBe('claude-code');
+      expect(result!.generatedTitle).toBe('The Title');
+      expect(result!.sessionCharacter).toBe('feature_build');
+    });
+  });
+
+  // ────────────────────────────────────────────────────
+  // getSessionCount
+  // ────────────────────────────────────────────────────
+
+  describe('getSessionCount', () => {
+    it('returns 0 when no sessions exist', () => {
+      expect(getSessionCount()).toBe(0);
+    });
+
+    it('returns correct count for all sessions', () => {
+      insertSessionWithProject(makeParsedSession({ id: 'cnt-sess-1' }));
+      insertSessionWithProject(makeParsedSession({ id: 'cnt-sess-2' }));
+      insertSessionWithProject(makeParsedSession({ id: 'cnt-sess-3' }));
+
+      expect(getSessionCount()).toBe(3);
+    });
+
+    it('filters by periodStart', () => {
+      const old = makeParsedSession({
+        id: 'cnt-old',
+        startedAt: new Date('2025-01-01T00:00:00Z'),
+        endedAt: new Date('2025-01-01T01:00:00Z'),
+      });
+      const recent = makeParsedSession({
+        id: 'cnt-recent',
+        startedAt: new Date('2025-06-15T00:00:00Z'),
+        endedAt: new Date('2025-06-15T01:00:00Z'),
+      });
+
+      insertSessionWithProject(old);
+      insertSessionWithProject(recent);
+
+      const count = getSessionCount({ periodStart: new Date('2025-06-01T00:00:00Z') });
+      expect(count).toBe(1);
+    });
+
+    it('filters by sourceTool', () => {
+      insertSessionWithProject(makeParsedSession({ id: 'cnt-claude-1', sourceTool: 'claude-code' }));
+      insertSessionWithProject(makeParsedSession({ id: 'cnt-claude-2', sourceTool: 'claude-code' }));
+      insertSessionWithProject(makeParsedSession({ id: 'cnt-cursor-1', sourceTool: 'cursor' }));
+
+      expect(getSessionCount({ sourceTool: 'claude-code' })).toBe(2);
+      expect(getSessionCount({ sourceTool: 'cursor' })).toBe(1);
+    });
+
+    it('filters by projectId', () => {
+      // Different projectPath tails -> different projectIds via the mock
+      const sessAlpha1 = makeParsedSession({
+        id: 'cnt-alpha-1',
+        projectPath: '/projects/cnt-alpha',
+        projectName: 'cnt-alpha',
+      });
+      const sessAlpha2 = makeParsedSession({
+        id: 'cnt-alpha-2',
+        projectPath: '/projects/cnt-alpha',
+        projectName: 'cnt-alpha',
+      });
+      const sessBeta = makeParsedSession({
+        id: 'cnt-beta-1',
+        projectPath: '/projects/cnt-beta',
+        projectName: 'cnt-beta',
+      });
+
+      insertSessionWithProject(sessAlpha1);
+      insertSessionWithProject(sessAlpha2);
+      insertSessionWithProject(sessBeta);
+
+      expect(getSessionCount({ projectId: 'proj-cnt-alpha' })).toBe(2);
+      expect(getSessionCount({ projectId: 'proj-cnt-beta' })).toBe(1);
+    });
+  });
+
+  // ────────────────────────────────────────────────────
+  // getProjectList
+  // ────────────────────────────────────────────────────
+
+  describe('getProjectList', () => {
+    it('returns empty array when no sessions exist', () => {
+      expect(getProjectList()).toEqual([]);
+    });
+
+    it('returns distinct project names from sessions', () => {
+      // Two sessions for the same project path -> same projectId, should appear once
+      insertSessionWithProject(makeParsedSession({
+        id: 'pl-sess-1',
+        projectPath: '/projects/my-project',
+        projectName: 'my-project',
+      }));
+      insertSessionWithProject(makeParsedSession({
+        id: 'pl-sess-2',
+        projectPath: '/projects/my-project',
+        projectName: 'my-project',
+      }));
+      // A second distinct project
+      insertSessionWithProject(makeParsedSession({
+        id: 'pl-sess-3',
+        projectPath: '/projects/other-project',
+        projectName: 'other-project',
+      }));
+
+      const list = getProjectList();
+      expect(list).toHaveLength(2);
+    });
+
+    it('returns sorted by project_name', () => {
+      insertSessionWithProject(makeParsedSession({
+        id: 'pl-sort-zebra',
+        projectPath: '/projects/zebra',
+        projectName: 'zebra',
+      }));
+      insertSessionWithProject(makeParsedSession({
+        id: 'pl-sort-apple',
+        projectPath: '/projects/apple',
+        projectName: 'apple',
+      }));
+      insertSessionWithProject(makeParsedSession({
+        id: 'pl-sort-mango',
+        projectPath: '/projects/mango',
+        projectName: 'mango',
+      }));
+
+      const list = getProjectList();
+      expect(list).toHaveLength(3);
+      expect(list[0].name).toBe('apple');
+      expect(list[1].name).toBe('mango');
+      expect(list[2].name).toBe('zebra');
+    });
+
+    it('returns id and name fields for each entry', () => {
+      insertSessionWithProject(makeParsedSession({
+        id: 'pl-fields-sess',
+        projectPath: '/projects/pl-fields',
+        projectName: 'pl-fields',
+      }));
+
+      const list = getProjectList();
+      expect(list).toHaveLength(1);
+      expect(list[0].id).toBe('proj-pl-fields');
+      expect(list[0].name).toBe('pl-fields');
     });
   });
 });

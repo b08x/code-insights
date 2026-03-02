@@ -161,11 +161,12 @@ describe('parseAnalysisResponse', () => {
 }
 </json>`;
     const result = parseAnalysisResponse(response);
-    expect(result).not.toBeNull();
-    expect(result!.summary.title).toBe('Implemented auth');
-    expect(result!.summary.bullets).toHaveLength(2);
-    expect(result!.decisions).toEqual([]);
-    expect(result!.learnings).toEqual([]);
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.data.summary.title).toBe('Implemented auth');
+    expect(result.data.summary.bullets).toHaveLength(2);
+    expect(result.data.decisions).toEqual([]);
+    expect(result.data.learnings).toEqual([]);
   });
 
   it('parses raw JSON without tags', () => {
@@ -175,27 +176,33 @@ describe('parseAnalysisResponse', () => {
   "learnings": []
 }`;
     const result = parseAnalysisResponse(response);
-    expect(result).not.toBeNull();
-    expect(result!.summary.title).toBe('Test');
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.data.summary.title).toBe('Test');
   });
 
-  it('returns null for completely malformed response', () => {
+  it('returns error for completely malformed response', () => {
     const result = parseAnalysisResponse('This is not JSON at all');
-    expect(result).toBeNull();
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.error.error_type).toBe('no_json_found');
   });
 
-  it('returns null for JSON missing required summary.title', () => {
+  it('returns error for JSON missing required summary.title', () => {
     const response = '<json>{ "summary": { "content": "no title" }, "decisions": [], "learnings": [] }</json>';
     const result = parseAnalysisResponse(response);
-    expect(result).toBeNull();
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.error.error_type).toBe('invalid_structure');
   });
 
   it('defaults decisions and learnings to empty arrays when missing', () => {
     const response = '<json>{ "summary": { "title": "Test", "content": "c", "bullets": [] } }</json>';
     const result = parseAnalysisResponse(response);
-    expect(result).not.toBeNull();
-    expect(result!.decisions).toEqual([]);
-    expect(result!.learnings).toEqual([]);
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.data.decisions).toEqual([]);
+    expect(result.data.learnings).toEqual([]);
   });
 });
 
@@ -214,27 +221,33 @@ describe('parsePromptQualityResponse', () => {
       "tips": ["Be more specific"]
     }</json>`;
     const result = parsePromptQualityResponse(response);
-    expect(result).not.toBeNull();
-    expect(result!.efficiencyScore).toBe(85);
-    expect(result!.tips).toHaveLength(1);
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.data.efficiencyScore).toBe(85);
+    expect(result.data.tips).toHaveLength(1);
   });
 
   it('clamps efficiency score to 0-100 range', () => {
     const response = '<json>{ "efficiencyScore": 150, "wastedTurns": [], "antiPatterns": [], "tips": [] }</json>';
     const result = parsePromptQualityResponse(response);
-    expect(result).not.toBeNull();
-    expect(result!.efficiencyScore).toBe(100);
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.data.efficiencyScore).toBe(100);
   });
 
-  it('returns null for missing efficiencyScore', () => {
+  it('returns error for missing efficiencyScore', () => {
     const response = '<json>{ "overallAssessment": "no score" }</json>';
     const result = parsePromptQualityResponse(response);
-    expect(result).toBeNull();
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.error.error_type).toBe('invalid_structure');
   });
 
-  it('returns null for completely invalid response', () => {
+  it('returns error for completely invalid response', () => {
     const result = parsePromptQualityResponse('not json');
-    expect(result).toBeNull();
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.error.error_type).toBe('no_json_found');
   });
 });
 
