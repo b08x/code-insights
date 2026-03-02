@@ -4,7 +4,7 @@ import ora from 'ora';
 import { existsSync, unlinkSync } from 'fs';
 import { getDb, getDbPath } from '../db/client.js';
 import { getSyncStatePath } from '../utils/config.js';
-import { trackEvent } from '../utils/telemetry.js';
+import { trackEvent, captureError, classifyError } from '../utils/telemetry.js';
 
 export const resetCommand = new Command('reset')
   .description('Delete all synced data from the local SQLite database and reset sync state')
@@ -53,6 +53,9 @@ export const resetCommand = new Command('reset')
       dbSpinner.fail(`Failed to clear database: ${error instanceof Error ? error.message : error}`);
       console.error(chalk.red('\nAborted. Sync state was NOT deleted to avoid inconsistency.'));
       console.error(chalk.dim('Run `code-insights doctor` if the problem persists.'));
+      const { error_type, error_message } = classifyError(error);
+      trackEvent('cli_reset', { success: false, error_type, error_message });
+      captureError(error, { command: 'reset', error_type });
       process.exit(1);
     }
 

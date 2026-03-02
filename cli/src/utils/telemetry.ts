@@ -138,6 +138,51 @@ export function showTelemetryNoticeIfNeeded(): boolean {
 }
 
 /**
+ * Classify an error into a structured error_type + error_message pair.
+ * Used to enrich trackEvent calls and captureError calls with consistent error metadata.
+ */
+export function classifyError(error: unknown): { error_type: string; error_message: string } {
+  if (error instanceof Error) {
+    if (error.name === 'AbortError') {
+      return { error_type: 'abort', error_message: error.message };
+    }
+    // SyntaxError from JSON.parse
+    if (error instanceof SyntaxError) {
+      return { error_type: 'json_parse_error', error_message: error.message };
+    }
+    return { error_type: 'api_error', error_message: error.message };
+  }
+  return { error_type: 'unknown', error_message: String(error) };
+}
+
+/**
+ * Capture an exception in PostHog. Never throws — telemetry must never break the CLI.
+ * Respects the same opt-out as trackEvent.
+ *
+ * @param error - The caught error (or unknown value)
+ * @param properties - Additional context properties (provider, model, etc.)
+ */
+export function captureError(error: unknown, properties?: Record<string, unknown>): void {
+  const ph = getPostHogClient();
+  if (!ph) return;
+
+  try {
+    const { error_type, error_message } = classifyError(error);
+    ph.capture({
+      distinctId: getStableMachineId(),
+      event: '$exception',
+      properties: {
+        $exception_message: error_message,
+        $exception_type: error_type,
+        ...(properties ?? {}),
+      },
+    });
+  } catch {
+    // Swallow all errors — telemetry failures are silent
+  }
+}
+
+/**
  * Send a telemetry event. Never throws — telemetry must never break the CLI.
  *
  * @param event - Event name from TelemetryEventName union

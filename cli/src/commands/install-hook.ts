@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import chalk from 'chalk';
-import { trackEvent } from '../utils/telemetry.js';
+import { trackEvent, captureError, classifyError } from '../utils/telemetry.js';
 
 const CLAUDE_SETTINGS_DIR = path.join(os.homedir(), '.claude');
 const HOOKS_FILE = path.join(CLAUDE_SETTINGS_DIR, 'settings.json');
@@ -32,59 +32,66 @@ function getHookCommand(hook: string | { type: string; command: string }): strin
 export async function installHookCommand(): Promise<void> {
   console.log(chalk.cyan('\n🔗 Install Code Insights Hook\n'));
 
-  // Get CLI path
-  const cliPath = process.argv[1];
-  const syncCommand = `node ${cliPath} sync -q`;
+  try {
+    // Get CLI path
+    const cliPath = process.argv[1];
+    const syncCommand = `node ${cliPath} sync -q`;
 
-  console.log(chalk.gray('This will add a Claude Code hook that syncs sessions automatically.'));
-  console.log(chalk.gray(`Hook command: ${syncCommand}\n`));
+    console.log(chalk.gray('This will add a Claude Code hook that syncs sessions automatically.'));
+    console.log(chalk.gray(`Hook command: ${syncCommand}\n`));
 
-  // Load existing settings
-  let settings: ClaudeSettings = {};
-  if (fs.existsSync(HOOKS_FILE)) {
-    try {
-      const content = fs.readFileSync(HOOKS_FILE, 'utf-8');
-      settings = JSON.parse(content);
-    } catch {
-      console.log(chalk.yellow('Could not parse existing settings.json, creating new one.'));
+    // Load existing settings
+    let settings: ClaudeSettings = {};
+    if (fs.existsSync(HOOKS_FILE)) {
+      try {
+        const content = fs.readFileSync(HOOKS_FILE, 'utf-8');
+        settings = JSON.parse(content);
+      } catch {
+        console.log(chalk.yellow('Could not parse existing settings.json, creating new one.'));
+      }
     }
+
+    // Initialize hooks structure
+    if (!settings.hooks) {
+      settings.hooks = {};
+    }
+
+    // Add Stop hook (runs when Claude finishes responding)
+    const stopHook: HookConfig = {
+      hooks: [{ type: 'command', command: syncCommand }],
+    };
+
+    // Check if hook already exists
+    const existingStopHooks = settings.hooks.Stop || [];
+    const hookExists = existingStopHooks.some(
+      (h) => h.hooks.some((hook) => getHookCommand(hook).includes('code-insights'))
+    );
+
+    if (hookExists) {
+      console.log(chalk.yellow('Code Insights hook already installed.'));
+      console.log(chalk.gray('To reinstall, first run `code-insights uninstall-hook`'));
+      return;
+    }
+
+    settings.hooks.Stop = [...existingStopHooks, stopHook];
+
+    // Write settings
+    fs.mkdirSync(CLAUDE_SETTINGS_DIR, { recursive: true });
+    fs.writeFileSync(HOOKS_FILE, JSON.stringify(settings, null, 2));
+
+    console.log(chalk.green('Hook installed successfully!'));
+    console.log(chalk.gray(`\nConfiguration saved to: ${HOOKS_FILE}`));
+    console.log(chalk.cyan('\nHow it works:'));
+    console.log(chalk.white('  When a Claude Code session ends, the hook runs automatically'));
+    console.log(chalk.white('  Sessions are synced to your local database (~/.code-insights/data.db)'));
+    console.log(chalk.white('  Run `code-insights stats` anytime to see your analytics'));
+    trackEvent('cli_install_hook', { success: true });
+  } catch (error) {
+    console.log(chalk.red(`Failed to install hook: ${error instanceof Error ? error.message : 'Unknown error'}`));
+    const { error_type, error_message } = classifyError(error);
+    trackEvent('cli_install_hook', { success: false, error_type, error_message });
+    captureError(error, { command: 'install_hook', error_type });
   }
-
-  // Initialize hooks structure
-  if (!settings.hooks) {
-    settings.hooks = {};
-  }
-
-  // Add Stop hook (runs when Claude finishes responding)
-  const stopHook: HookConfig = {
-    hooks: [{ type: 'command', command: syncCommand }],
-  };
-
-  // Check if hook already exists
-  const existingStopHooks = settings.hooks.Stop || [];
-  const hookExists = existingStopHooks.some(
-    (h) => h.hooks.some((hook) => getHookCommand(hook).includes('code-insights'))
-  );
-
-  if (hookExists) {
-    console.log(chalk.yellow('Code Insights hook already installed.'));
-    console.log(chalk.gray('To reinstall, first run `code-insights uninstall-hook`'));
-    return;
-  }
-
-  settings.hooks.Stop = [...existingStopHooks, stopHook];
-
-  // Write settings
-  fs.mkdirSync(CLAUDE_SETTINGS_DIR, { recursive: true });
-  fs.writeFileSync(HOOKS_FILE, JSON.stringify(settings, null, 2));
-
-  console.log(chalk.green('Hook installed successfully!'));
-  console.log(chalk.gray(`\nConfiguration saved to: ${HOOKS_FILE}`));
-  console.log(chalk.cyan('\nHow it works:'));
-  console.log(chalk.white('  When a Claude Code session ends, the hook runs automatically'));
-  console.log(chalk.white('  Sessions are synced to your local database (~/.code-insights/data.db)'));
-  console.log(chalk.white('  Run `code-insights stats` anytime to see your analytics'));
-  trackEvent('cli_install_hook', { success: true });
 }
 
 /**

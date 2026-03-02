@@ -178,6 +178,16 @@ export interface AnalysisResponse {
   }>;
 }
 
+export interface ParseError {
+  error_type: 'json_parse_error' | 'no_json_found' | 'invalid_structure';
+  error_message: string;
+  response_length: number;
+}
+
+export type ParseResult<T> =
+  | { success: true; data: T }
+  | { success: false; error: ParseError };
+
 function extractJsonPayload(response: string): string | null {
   const tagged = response.match(/<json>\s*([\s\S]*?)\s*<\/json>/i);
   if (tagged?.[1]) return tagged[1].trim();
@@ -188,29 +198,42 @@ function extractJsonPayload(response: string): string | null {
 /**
  * Parse the LLM response into structured insights.
  */
-export function parseAnalysisResponse(response: string): AnalysisResponse | null {
-  try {
-    const jsonPayload = extractJsonPayload(response);
-    if (!jsonPayload) {
-      console.error('No JSON found in analysis response');
-      return null;
-    }
+export function parseAnalysisResponse(response: string): ParseResult<AnalysisResponse> {
+  const response_length = response.length;
 
-    const parsed = JSON.parse(jsonPayload) as AnalysisResponse;
-
-    if (!parsed.summary || typeof parsed.summary.title !== 'string') {
-      console.error('Invalid analysis response structure');
-      return null;
-    }
-
-    parsed.decisions = parsed.decisions || [];
-    parsed.learnings = parsed.learnings || [];
-
-    return parsed;
-  } catch (error) {
-    console.error('Failed to parse analysis response:', error);
-    return null;
+  const jsonPayload = extractJsonPayload(response);
+  if (!jsonPayload) {
+    console.error('No JSON found in analysis response');
+    return {
+      success: false,
+      error: { error_type: 'no_json_found', error_message: 'No JSON found in analysis response', response_length },
+    };
   }
+
+  let parsed: AnalysisResponse;
+  try {
+    parsed = JSON.parse(jsonPayload) as AnalysisResponse;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('Failed to parse analysis response:', err);
+    return {
+      success: false,
+      error: { error_type: 'json_parse_error', error_message: msg, response_length },
+    };
+  }
+
+  if (!parsed.summary || typeof parsed.summary.title !== 'string') {
+    console.error('Invalid analysis response structure');
+    return {
+      success: false,
+      error: { error_type: 'invalid_structure', error_message: 'Missing or invalid summary field', response_length },
+    };
+  }
+
+  parsed.decisions = parsed.decisions || [];
+  parsed.learnings = parsed.learnings || [];
+
+  return { success: true, data: parsed };
 }
 
 // --- Prompt Quality Analysis ---
@@ -305,31 +328,44 @@ export interface PromptQualityResponse {
   tips: string[];
 }
 
-export function parsePromptQualityResponse(response: string): PromptQualityResponse | null {
-  try {
-    const jsonPayload = extractJsonPayload(response);
-    if (!jsonPayload) {
-      console.error('No JSON found in prompt quality response');
-      return null;
-    }
+export function parsePromptQualityResponse(response: string): ParseResult<PromptQualityResponse> {
+  const response_length = response.length;
 
-    const parsed = JSON.parse(jsonPayload) as PromptQualityResponse;
-
-    if (typeof parsed.efficiencyScore !== 'number') {
-      console.error('Invalid prompt quality response: missing efficiencyScore');
-      return null;
-    }
-
-    parsed.efficiencyScore = Math.max(0, Math.min(100, Math.round(parsed.efficiencyScore)));
-    parsed.potentialMessageReduction = parsed.potentialMessageReduction || 0;
-    parsed.overallAssessment = parsed.overallAssessment || '';
-    parsed.wastedTurns = parsed.wastedTurns || [];
-    parsed.antiPatterns = parsed.antiPatterns || [];
-    parsed.tips = parsed.tips || [];
-
-    return parsed;
-  } catch (error) {
-    console.error('Failed to parse prompt quality response:', error);
-    return null;
+  const jsonPayload = extractJsonPayload(response);
+  if (!jsonPayload) {
+    console.error('No JSON found in prompt quality response');
+    return {
+      success: false,
+      error: { error_type: 'no_json_found', error_message: 'No JSON found in prompt quality response', response_length },
+    };
   }
+
+  let parsed: PromptQualityResponse;
+  try {
+    parsed = JSON.parse(jsonPayload) as PromptQualityResponse;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('Failed to parse prompt quality response:', err);
+    return {
+      success: false,
+      error: { error_type: 'json_parse_error', error_message: msg, response_length },
+    };
+  }
+
+  if (typeof parsed.efficiencyScore !== 'number') {
+    console.error('Invalid prompt quality response: missing efficiencyScore');
+    return {
+      success: false,
+      error: { error_type: 'invalid_structure', error_message: 'Missing or invalid efficiencyScore field', response_length },
+    };
+  }
+
+  parsed.efficiencyScore = Math.max(0, Math.min(100, Math.round(parsed.efficiencyScore)));
+  parsed.potentialMessageReduction = parsed.potentialMessageReduction || 0;
+  parsed.overallAssessment = parsed.overallAssessment || '';
+  parsed.wastedTurns = parsed.wastedTurns || [];
+  parsed.antiPatterns = parsed.antiPatterns || [];
+  parsed.tips = parsed.tips || [];
+
+  return { success: true, data: parsed };
 }

@@ -4,7 +4,7 @@ import { existsSync } from 'fs';
 import chalk from 'chalk';
 import ora from 'ora';
 import net from 'net';
-import { trackEvent } from '../utils/telemetry.js';
+import { trackEvent, captureError, classifyError } from '../utils/telemetry.js';
 
 interface DashboardOptions {
   port: string;
@@ -98,6 +98,9 @@ export async function dashboardCommand(options: DashboardOptions): Promise<void>
   } catch (err) {
     spinner.fail('Failed to start dashboard server.');
     console.error(chalk.red(err instanceof Error ? err.message : String(err)));
+    const { error_type, error_message } = classifyError(err);
+    trackEvent('cli_dashboard', { success: false, error_type, error_message });
+    captureError(err, { command: 'dashboard', error_type });
     process.exit(1);
   }
 }

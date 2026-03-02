@@ -3,7 +3,7 @@ import * as path from 'path';
 import chalk from 'chalk';
 import ora from 'ora';
 import { loadSyncState, saveSyncState } from '../utils/config.js';
-import { trackEvent, identifyUser } from '../utils/telemetry.js';
+import { trackEvent, identifyUser, captureError, classifyError } from '../utils/telemetry.js';
 import { insertSessionWithProjectAndReturnIsNew, insertMessages, recalculateUsageStats } from '../db/write.js';
 import { getDb } from '../db/client.js';
 import { getAllProviders, getProvider } from '../providers/registry.js';
@@ -291,6 +291,7 @@ export async function syncCommand(options: SyncOptions = {}): Promise<void> {
     });
   } catch (error) {
     const duration_ms = Date.now() - startTime;
+    const { error_type, error_message } = classifyError(error);
     trackEvent('cli_sync', {
       duration_ms,
       sessions_synced: 0,
@@ -298,7 +299,10 @@ export async function syncCommand(options: SyncOptions = {}): Promise<void> {
       errors: 1,
       source_filter: options.source ?? null,
       success: false,
+      error_type,
+      error_message,
     });
+    captureError(error, { command: 'sync', error_type, source_filter: options.source ?? null });
     if (!options.quiet) {
       console.error(chalk.red(error instanceof Error ? error.message : 'Sync failed'));
     }

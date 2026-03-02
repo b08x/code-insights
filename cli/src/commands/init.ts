@@ -2,7 +2,7 @@ import inquirer from 'inquirer';
 import chalk from 'chalk';
 import { saveConfig, getConfigDir, isConfigured } from '../utils/config.js';
 import { getDb } from '../db/client.js';
-import { trackEvent } from '../utils/telemetry.js';
+import { trackEvent, captureError, classifyError } from '../utils/telemetry.js';
 import type { ClaudeInsightConfig } from '../types.js';
 
 export interface InitOptions {
@@ -44,6 +44,9 @@ export async function initCommand(_options: InitOptions = {}): Promise<void> {
     console.log(chalk.green('\n  Database initialized at ~/.code-insights/data.db'));
   } catch (error) {
     console.log(chalk.red(`\n  Database initialization failed: ${error instanceof Error ? error.message : 'Unknown error'}`));
+    const { error_type, error_message } = classifyError(error);
+    trackEvent('cli_init', { success: false, error_type, error_message });
+    captureError(error, { command: 'init', error_type });
     process.exit(1);
   }
 

@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { getDb } from '@code-insights/cli/db/client';
-import { trackEvent } from '@code-insights/cli/utils/telemetry';
+import { trackEvent, captureError } from '@code-insights/cli/utils/telemetry';
 import { parseIntParam } from '../utils.js';
 import { loadLLMConfig, isLLMConfigured } from '../llm/client.js';
 import { analyzeSession, analyzePromptQuality, findRecurringInsights } from '../llm/analysis.js';
@@ -44,14 +44,23 @@ app.post('/session', async (c) => {
   const llmConfig = loadLLMConfig();
   const startTime = Date.now();
   const result = await analyzeSession(session, messages);
-  trackEvent('analysis_run', {
+  const baseProperties = {
     type: 'session',
     llm_provider: llmConfig?.provider,
     llm_model: llmConfig?.model,
     duration_ms: Date.now() - startTime,
     success: result.success,
-  });
-  if (result.success) {
+  };
+  if (!result.success) {
+    const errorProperties = {
+      ...baseProperties,
+      error_type: result.error_type,
+      error_message: result.error,
+    };
+    trackEvent('analysis_run', errorProperties);
+    captureError(new Error(result.error ?? 'analysis_run failed'), errorProperties);
+  } else {
+    trackEvent('analysis_run', baseProperties);
     trackEvent('insight_generated', {
       type: 'session',
       count: result.insights.length,
@@ -119,14 +128,27 @@ app.get('/session/stream', async (c) => {
         },
       });
 
-      trackEvent('analysis_run', {
+      const streamBaseProperties = {
         type: 'session',
         llm_provider: llmConfig?.provider,
         llm_model: llmConfig?.model,
         duration_ms: Date.now() - streamStart,
         success: result.success,
-      });
-      if (result.success) {
+      };
+      if (!result.success) {
+        const streamErrorProperties = {
+          ...streamBaseProperties,
+          error_type: result.error_type,
+          error_message: result.error,
+        };
+        trackEvent('analysis_run', streamErrorProperties);
+        captureError(new Error(result.error ?? 'analysis_run stream failed'), streamErrorProperties);
+        await stream.writeSSE({
+          event: 'error',
+          data: JSON.stringify({ error: result.error ?? 'Analysis failed' }),
+        });
+      } else {
+        trackEvent('analysis_run', streamBaseProperties);
         trackEvent('insight_generated', {
           type: 'session',
           count: result.insights.length,
@@ -141,14 +163,10 @@ app.get('/session/stream', async (c) => {
             suggestedTitle: summaryInsight?.title ?? null,
           }),
         });
-      } else {
-        await stream.writeSSE({
-          event: 'error',
-          data: JSON.stringify({ error: result.error ?? 'Analysis failed' }),
-        });
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
+      captureError(err, { type: 'session_stream', llm_provider: llmConfig?.provider, llm_model: llmConfig?.model });
       await stream.writeSSE({
         event: 'error',
         data: JSON.stringify({ error: message }),
@@ -192,14 +210,23 @@ app.post('/prompt-quality', async (c) => {
   const llmConfig = loadLLMConfig();
   const pqStart = Date.now();
   const result = await analyzePromptQuality(session, messages);
-  trackEvent('analysis_run', {
+  const pqBaseProperties = {
     type: 'prompt-quality',
     llm_provider: llmConfig?.provider,
     llm_model: llmConfig?.model,
     duration_ms: Date.now() - pqStart,
     success: result.success,
-  });
-  if (result.success) {
+  };
+  if (!result.success) {
+    const pqErrorProperties = {
+      ...pqBaseProperties,
+      error_type: result.error_type,
+      error_message: result.error,
+    };
+    trackEvent('analysis_run', pqErrorProperties);
+    captureError(new Error(result.error ?? 'prompt_quality analysis failed'), pqErrorProperties);
+  } else {
+    trackEvent('analysis_run', pqBaseProperties);
     trackEvent('insight_generated', {
       type: 'prompt_quality',
       count: result.insights.length,
@@ -265,14 +292,27 @@ app.get('/prompt-quality/stream', async (c) => {
         },
       });
 
-      trackEvent('analysis_run', {
+      const pqStreamBaseProperties = {
         type: 'prompt-quality',
         llm_provider: llmConfig?.provider,
         llm_model: llmConfig?.model,
         duration_ms: Date.now() - pqStreamStart,
         success: result.success,
-      });
-      if (result.success) {
+      };
+      if (!result.success) {
+        const pqStreamErrorProperties = {
+          ...pqStreamBaseProperties,
+          error_type: result.error_type,
+          error_message: result.error,
+        };
+        trackEvent('analysis_run', pqStreamErrorProperties);
+        captureError(new Error(result.error ?? 'prompt_quality stream failed'), pqStreamErrorProperties);
+        await stream.writeSSE({
+          event: 'error',
+          data: JSON.stringify({ error: result.error ?? 'Prompt quality analysis failed' }),
+        });
+      } else {
+        trackEvent('analysis_run', pqStreamBaseProperties);
         trackEvent('insight_generated', {
           type: 'prompt_quality',
           count: result.insights.length,
@@ -286,14 +326,10 @@ app.get('/prompt-quality/stream', async (c) => {
             suggestedTitle: null,
           }),
         });
-      } else {
-        await stream.writeSSE({
-          event: 'error',
-          data: JSON.stringify({ error: result.error ?? 'Prompt quality analysis failed' }),
-        });
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
+      captureError(err, { type: 'prompt_quality_stream', llm_provider: llmConfig?.provider, llm_model: llmConfig?.model });
       await stream.writeSSE({
         event: 'error',
         data: JSON.stringify({ error: message }),
@@ -345,14 +381,23 @@ app.post('/recurring', async (c) => {
   const llmConfig = loadLLMConfig();
   const recurringStart = Date.now();
   const result = await findRecurringInsights(insights);
-  trackEvent('analysis_run', {
+  const recurringBaseProperties = {
     type: 'recurring',
     llm_provider: llmConfig?.provider,
     llm_model: llmConfig?.model,
     duration_ms: Date.now() - recurringStart,
     success: result.success,
-  });
-  if (result.success) {
+  };
+  if (!result.success) {
+    const recurringErrorProperties = {
+      ...recurringBaseProperties,
+      error_type: 'api_error',
+      error_message: result.error,
+    };
+    trackEvent('analysis_run', recurringErrorProperties);
+    captureError(new Error(result.error ?? 'recurring insights failed'), recurringErrorProperties);
+  } else {
+    trackEvent('analysis_run', recurringBaseProperties);
     trackEvent('insight_generated', {
       type: 'recurring',
       count: result.groups.length,
