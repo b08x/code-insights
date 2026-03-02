@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router';
-import { useDashboardStats, useUsageStats } from '@/hooks/useAnalytics';
+import { useDashboardStats } from '@/hooks/useAnalytics';
 import { useSessions } from '@/hooks/useSessions';
 import { useInsights } from '@/hooks/useInsights';
 import { useProjects } from '@/hooks/useProjects';
@@ -28,7 +28,6 @@ export default function DashboardPage() {
   const [range, setRange] = useState<DashboardRange>('30d');
 
   const { data: dashStats, isLoading: statsLoading, isError: statsError, refetch: refetchStats } = useDashboardStats(range);
-  const { data: usageStats } = useUsageStats();
   const { data: sessions = [], isLoading: sessionsLoading, isError: sessionsError, refetch: refetchSessions } = useSessions({ limit: 500 });
   const { data: insights = [], isLoading: insightsLoading } = useInsights();
   const { data: projects = [] } = useProjects();
@@ -74,31 +73,22 @@ export default function DashboardPage() {
       }));
   }, [sessions, insights, range]);
 
-  // Compute stats for hero
-  const usageStatsData = usageStats as {
-    total_input_tokens?: number;
-    total_output_tokens?: number;
-    cache_creation_tokens?: number;
-    cache_read_tokens?: number;
-    estimated_cost_usd?: number;
-  } | null;
+  // Compute stats for hero — all from dashStats (range-filtered)
+  const totalTokens = dashStats
+    ? (dashStats.total_input_tokens ?? 0) +
+      (dashStats.total_output_tokens ?? 0) +
+      (dashStats.cache_creation_tokens ?? 0) +
+      (dashStats.cache_read_tokens ?? 0)
+    : 0;
 
-  const totalTokens = usageStatsData
-    ? (usageStatsData.total_input_tokens ?? 0) +
-      (usageStatsData.total_output_tokens ?? 0) +
-      (usageStatsData.cache_creation_tokens ?? 0) +
-      (usageStatsData.cache_read_tokens ?? 0)
-    : (dashStats?.total_input_tokens ?? 0) + (dashStats?.total_output_tokens ?? 0);
+  const totalCost = dashStats?.estimated_cost_usd ?? 0;
 
-  const totalCost =
-    usageStatsData?.estimated_cost_usd ?? dashStats?.estimated_cost_usd ?? 0;
-
-  const tokenBreakdown = usageStatsData
+  const tokenBreakdown = dashStats
     ? {
-        inputTokens: usageStatsData.total_input_tokens ?? 0,
-        outputTokens: usageStatsData.total_output_tokens ?? 0,
-        cacheCreationTokens: usageStatsData.cache_creation_tokens ?? 0,
-        cacheReadTokens: usageStatsData.cache_read_tokens ?? 0,
+        inputTokens: dashStats.total_input_tokens ?? 0,
+        outputTokens: dashStats.total_output_tokens ?? 0,
+        cacheCreationTokens: dashStats.cache_creation_tokens ?? 0,
+        cacheReadTokens: dashStats.cache_read_tokens ?? 0,
       }
     : undefined;
 
@@ -136,7 +126,7 @@ export default function DashboardPage() {
             totalMessages={dashStats?.total_messages ?? 0}
             totalToolCalls={dashStats?.total_tool_calls ?? 0}
             totalDurationMin={dashStats?.total_duration_min ?? 0}
-            totalProjects={projects.length}
+            totalProjects={dashStats?.active_projects ?? projects.length}
             isExact={true}
             totalTokens={totalTokens > 0 ? totalTokens : undefined}
             totalCost={totalCost > 0 ? totalCost : undefined}

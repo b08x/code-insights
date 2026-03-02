@@ -136,11 +136,14 @@ export function parseJsonField<T>(value: string | null | undefined, defaultValue
 // Dashboard stats from /api/analytics/dashboard
 export interface DashboardStats {
   session_count: number;
+  active_projects: number;
   total_messages: number | null;
   total_tool_calls: number | null;
   total_duration_min: number | null;
   total_input_tokens: number | null;
   total_output_tokens: number | null;
+  cache_creation_tokens: number | null;
+  cache_read_tokens: number | null;
   estimated_cost_usd: number | null;
 }
 
