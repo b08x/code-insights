@@ -5,7 +5,53 @@ import type {
   SessionCharacter,
   TitleCandidate,
   GeneratedTitle,
+  ToolCall,
 } from '../types.js';
+
+// ---------------------------------------------------------------------------
+// Tool name sets — provider-agnostic classification
+// Each provider uses different tool names for the same semantic operation.
+// ---------------------------------------------------------------------------
+
+// Tools that modify or create file content
+const EDIT_TOOLS = new Set([
+  'Edit', 'Write',                                    // Claude Code
+  'replace_string_in_file', 'copilot_replaceString',  // Copilot VS Code
+  'create_file', 'copilot_createFile',                // Copilot VS Code
+  'edit', 'write_file', 'patch',                      // Codex CLI / generic
+]);
+
+// Tools that read, search, or browse file content
+const READ_TOOLS = new Set([
+  'Read', 'Grep', 'Glob',                             // Claude Code
+  'read_file', 'copilot_readFile',                    // Copilot VS Code
+  'grep_search', 'copilot_findTextInFiles',           // Copilot VS Code
+  'copilot_searchCodebase', 'semantic_search',        // Copilot VS Code
+  'file_search', 'copilot_findFiles',                 // Copilot VS Code
+  'list_dir', 'copilot_listDirectory',                // Copilot VS Code
+  'grep', 'view',                                     // Copilot CLI / Codex
+]);
+
+function isEditTool(name: string): boolean {
+  return EDIT_TOOLS.has(name);
+}
+
+function isReadTool(name: string): boolean {
+  return READ_TOOLS.has(name);
+}
+
+/**
+ * Extract a file path from a tool call, handling different provider input shapes.
+ * Claude Code uses `file_path`, Copilot uses `filePath`, `path`, or `file`.
+ */
+function extractToolFilePath(tc: ToolCall): string | undefined {
+  return (
+    (tc.input?.file_path as string | undefined) ||
+    (tc.input?.filePath as string | undefined) ||
+    (tc.input?.path as string | undefined) ||
+    (tc.input?.file as string | undefined)
+  );
+}
 
 // Skip patterns - generic responses that make poor titles
 const SKIP_PATTERNS = [
@@ -143,24 +189,28 @@ export function detectSessionCharacter(session: ParsedSession): SessionCharacter
   const filesModified = new Set<string>();
   const filesCreated = new Set<string>();
 
+  let editCount = 0;
+  let readCount = 0;
+
   for (const msg of messages) {
     for (const tc of msg.toolCalls) {
       toolCounts[tc.name] = (toolCounts[tc.name] || 0) + 1;
 
-      if (tc.name === 'Edit' || tc.name === 'Write') {
-        const filePath = tc.input?.file_path as string | undefined;
+      if (isEditTool(tc.name)) {
+        editCount++;
+        const filePath = extractToolFilePath(tc);
         if (filePath) {
           filesModified.add(filePath);
-          if (tc.name === 'Write') {
+          // Create-only tools (Write, create_file, copilot_createFile) track new files
+          if (tc.name === 'Write' || tc.name === 'create_file' || tc.name === 'copilot_createFile') {
             filesCreated.add(filePath);
           }
         }
+      } else if (isReadTool(tc.name)) {
+        readCount++;
       }
     }
   }
-
-  const editCount = (toolCounts['Edit'] || 0) + (toolCounts['Write'] || 0);
-  const readCount = (toolCounts['Read'] || 0) + (toolCounts['Grep'] || 0) + (toolCounts['Glob'] || 0);
 
   if (messageCount >= 50 && filesModified.size <= 3 && filesModified.size > 0) {
     return 'deep_focus';
@@ -212,8 +262,8 @@ function generateCharacterTitle(
   const fileCounts: Record<string, number> = {};
   for (const msg of session.messages) {
     for (const tc of msg.toolCalls) {
-      if (tc.name === 'Edit' || tc.name === 'Write') {
-        const filePath = tc.input?.file_path as string | undefined;
+      if (isEditTool(tc.name)) {
+        const filePath = extractToolFilePath(tc);
         if (filePath) {
           const fileName = path.basename(filePath) || filePath;
           fileCounts[fileName] = (fileCounts[fileName] || 0) + 1;
