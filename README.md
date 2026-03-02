@@ -1,4 +1,8 @@
-# Code Insights
+<p align="center">
+  <img src="docs/assets/logo.svg" width="120" height="120" alt="Code Insights logo" />
+</p>
+
+<h1 align="center">Code Insights</h1>
 
 A free, open-source, local-first tool for analyzing AI coding sessions.
 

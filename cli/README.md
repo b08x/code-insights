@@ -1,4 +1,8 @@
-# Code Insights CLI
+<p align="center">
+  <img src="../docs/assets/logo.svg" width="80" height="80" alt="Code Insights logo" />
+</p>
+
+<h1 align="center">Code Insights CLI</h1>
 
 Analyze AI coding sessions from the terminal. Parses session history from Claude Code, Cursor, Codex CLI, and Copilot CLI — stores everything in a local SQLite database — and serves a built-in browser dashboard.
 
