@@ -14,10 +14,10 @@ Code Insights was built to capture insights from Claude Code sessions. But devel
 
 | Tool | Type | Storage Format | Local? | Feasibility |
 |------|------|---------------|--------|-------------|
-| Claude Code | CLI | JSONL | Yes | **Already supported** |
-| Cursor | IDE (VS Code fork) | SQLite + JSON blobs | Yes | **High** (Phase 1) |
-| OpenAI Codex CLI | CLI | JSONL | Yes | **High** (Phase 2) |
-| GitHub Copilot | VS Code extension | JSON in workspaceStorage | Yes | **Medium-Low** (Phase 3) |
+| Claude Code | CLI | JSONL | Yes | **Shipped** |
+| Cursor | IDE (VS Code fork) | SQLite + JSON blobs | Yes | **Shipped** |
+| OpenAI Codex CLI | CLI | JSONL | Yes | **Shipped** |
+| GitHub Copilot CLI | CLI | JSONL (events) | Yes | **Shipped** (as `copilot-cli`) |
 | Gemini CLI | CLI | TBD (investigate) | TBD | **Unknown** (Phase 4) |
 
 ---
@@ -108,7 +108,7 @@ The CLI needs a **provider abstraction** — a common interface that each tool's
 │                                                          │
 │  ┌─────────────┐    ┌──────────────┐    ┌────────────┐  │
 │  │  Discovery   │───▶│   Parser     │───▶│  Sync to   │  │
-│  │  (find files)│    │  (normalize) │    │  Firestore │  │
+│  │  (find files)│    │  (normalize) │    │   SQLite   │  │
 │  └─────────────┘    └──────────────┘    └────────────┘  │
 │         │                  │                              │
 │         ▼                  ▼                              │
@@ -138,15 +138,14 @@ Each provider must normalize its native format into the existing `ParsedSession`
 | `timestamp` | `entry.timestamp` | `bubble.createdAt` | Event timestamp | TBD |
 | `projectPath` | Encoded in directory name | Workspace hash → resolve | CWD from thread.started | Workspace hash → resolve |
 
-### New Firestore Fields
+### SQLite Schema (Implemented)
 
-To track multi-tool sessions, add to the `sessions` collection:
+The `sessions` table includes a `source_tool` column to track which AI coding tool generated each session:
 
 ```typescript
 {
   // ... existing fields ...
-  source: 'claude-code' | 'cursor' | 'codex-cli' | 'copilot'  // NEW
-  sourceVersion?: string  // e.g., "cursor-0.49", "codex-1.2.0"
+  source_tool: 'claude-code' | 'cursor' | 'codex-cli' | 'copilot-cli'
 }
 ```
 
@@ -183,25 +182,23 @@ The CLI currently works on **macOS** and should work on **Linux** without change
 
 ---
 
-## Phased Rollout
+## Rollout Status
 
-### Phase 1: Cursor Integration (Target first)
+### ✅ Phase 1: Cursor Integration — Shipped
 
-**Why first:** Largest user base among AI coding tools, data is locally accessible, community parsers exist as reference.
+`CursorProvider` parses sessions from Cursor's local SQLite state (`state.vscdb`). Supports macOS and Linux paths, read-only access while Cursor is running.
 
-### Phase 2: Codex CLI
+### ✅ Phase 2: Codex CLI — Shipped
 
-**Why second:** Lowest implementation effort — same JSONL philosophy as Claude Code. Date-organized, local-first, similar pipeline architecture.
+`CodexProvider` parses JSONL rollout files from `~/.codex/sessions/`. Reuses ~70% of the Claude Code parsing pipeline.
 
-**Effort estimate:** Parser reuse ~70% of existing Claude Code pipeline.
+### ✅ Phase 3: Copilot CLI — Shipped
 
-### Phase 3: GitHub Copilot
+`CopilotCliProvider` parses event JSONL files from `~/.copilot/session-state/`. Named `copilot-cli` to distinguish from the VS Code extension.
 
-**Why third:** Wait for GitHub to improve their export/history story. In the meantime, consider supporting the SpecStory extension's `.specstory/` directory format as an interim solution.
+### Phase 4: Gemini CLI + Others (Future)
 
-### Phase 4: Gemini CLI + Others
-
-**Why last:** Emerging tools, formats may still be changing. Revisit when they stabilize.
+Emerging tools — formats may still be changing. Revisit when they stabilize.
 
 ---
 
@@ -233,10 +230,14 @@ The core philosophy remains unchanged: your data, your infrastructure, your insi
 
 ---
 
+## Resolved Questions
+
+1. **CLI naming**: ✅ Published as `@code-insights/cli` — tool-agnostic branding from the start.
+2. **Dashboard UX**: ✅ Source filter dropdown, color-coded source badges (`SOURCE_TOOL_COLORS`), per-tool avatars (`getAssistantConfig()`).
+3. **Hook integration**: ✅ Claude Code uses post-session hook for auto-sync. Other tools rely on `code-insights sync --source <tool>` (manual or cron).
+4. **Title generation**: ✅ Each provider implements its own title generation strategy within the `parse()` method.
+
 ## Open Questions
 
-1. **CLI naming**: The npm package is `@code-insights/cli`, not `claude-insights`. Already tool-agnostic in branding.
-2. **Dashboard UX**: How to filter/visualize sessions from different tools? New filter? Color-coded by source?
-3. **Hook integration**: Claude Code uses hooks for auto-sync. Cursor/Codex have no equivalent — need a watcher or cron-based approach?
-4. **Session merging**: If a user works on the same project in both Claude Code and Cursor, should we detect and link related sessions?
-5. **Title generation**: Current smart title algorithm is Claude-specific. Need tool-specific title generation strategies.
+1. **Session merging**: If a user works on the same project in both Claude Code and Cursor, should we detect and link related sessions?
+2. **Gemini CLI**: Format TBD — revisit when the tool stabilizes.

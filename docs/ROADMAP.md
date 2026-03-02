@@ -147,16 +147,17 @@ This roadmap outlines the development phases for Code Insights. Timelines are fl
 
 ---
 
-## Phase 5: Telemetry (In Progress)
+## Phase 5: Telemetry ✅
 
 **Goal:** Anonymous, opt-in usage signals to improve the tool without compromising privacy
 
 ### Milestones
 
-- [ ] **5.1 Anonymous Aggregate Signals**
+- [x] **5.1 Anonymous Aggregate Signals**
   - Opt-in only, disabled by default
-  - Local export only — no phone-home during normal usage
-  - Depth metrics: sessions analyzed, insights generated
+  - PostHog integration for anonymous event tracking (v3.3.0)
+  - Events: `dashboard_started`, `analysis_run`, `export_run`
+  - No PII collected — anonymous device ID only
 
 - [ ] **5.2 Slash Commands**
   - `/insights` — Quick summary of recent sessions
@@ -164,36 +165,37 @@ This roadmap outlines the development phases for Code Insights. Timelines are fl
   - `/insights decisions` — Recent architectural decisions
 
 ### Deliverables
-- Anonymous telemetry (opt-in, pending)
+- ✅ Anonymous telemetry via PostHog (opt-in)
 - Slash commands (pending)
 
 ---
 
-## Phase 6: Polish & Distribution
+## Phase 6: Polish & Distribution ✅
 
 **Goal:** Production-ready distribution and community foundation
 
 ### Milestones
 
-- [ ] **6.1 npm Distribution**
-  - Publish as `@code-insights/cli`
+- [x] **6.1 npm Distribution**
+  - Published as `@code-insights/cli` on npm
   - Binary: `code-insights`
   - Pre-built dashboard SPA bundled in the package
+  - Server runtime (`hono`, `@hono/node-server`) included as dependencies
 
-- [ ] **6.2 Plugin Architecture**
+- [x] **6.2 Documentation & Landing Page**
+  - Landing page live at `code-insights.app`
+  - 16 docs pages with MDX (next-mdx-remote + rehype-pretty-code)
+  - README, MIGRATION.md, CONTRIBUTING.md, CHANGELOG.md
+
+- [ ] **6.3 Plugin Architecture** (deferred)
   - Custom insight extractors
   - Dashboard widget API
   - Theme support
 
-- [ ] **6.3 Community**
-  - Static landing page at `code-insights.app`
-  - Comprehensive setup guide and API documentation
-  - Community-contributed export templates
-
 ### Deliverables
-- Published npm package
-- Plugin architecture foundation
-- Community documentation
+- ✅ Published npm package (v3.0.0 – v3.3.0)
+- ✅ Landing page and documentation site
+- Plugin architecture (deferred)
 
 ---
 
@@ -207,8 +209,10 @@ This roadmap outlines the development phases for Code Insights. Timelines are fl
 | 0.4.0 | 3 | Multi-LLM analysis, bulk analyze | ✅ Done |
 | 0.5.0 | 4 | Vite SPA + Hono server, embedded dashboard | ✅ Done |
 | 0.6.0 | 4 | Multi-source support (Cursor, Codex, Copilot CLI) | ✅ Done |
-| 0.7.0 | 4-5 | Markdown export, slash commands | Planned |
-| 1.0.0 | 6 | npm publish, plugin architecture | Planned |
+| 3.0.0 | 6 | npm publish, local-first migration, README rewrite | ✅ Done |
+| 3.1.0 | 6 | Server runtime deps fix, dashboard path fallback | ✅ Done |
+| 3.2.0 | 4 | Dashboard polish — skeletons, ErrorCard, toasts, bundle audit | ✅ Done |
+| 3.3.0 | 5 | PostHog anonymous telemetry (opt-in) | ✅ Done |
 
 ---
 

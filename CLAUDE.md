@@ -59,11 +59,8 @@ code-insights/
 │   └── src/
 │       ├── routes/         # REST API endpoints
 │       └── index.ts        # Server entry point
-├── docs/                   # Product docs, plans, architecture, roadmap
-│   ├── architecture/       # Architecture docs, ADRs
-│   ├── plans/              # Design plans, migration plans
-│   ├── chronicle/          # Journey moments, thematic arcs
-│   └── archive/            # Archived content from previous architecture
+├── docs/                   # Product docs, plans, roadmap
+│   └── plans/              # Design plans (pending implementation only)
 └── .claude/                # Agent definitions, commands, hookify rules
     ├── agents/             # Agent definitions (engineer, TA, PM, etc.)
     └── commands/           # Team commands (start-feature, start-review)
@@ -431,10 +428,8 @@ Orchestrator MUST NOT directly edit documents it doesn't own. Always delegate.
 | Dashboard code (`dashboard/src/`) | `engineer` | Delegate to engineer |
 | Server code (`server/src/`) | `engineer` | Delegate to engineer |
 | Type alignment decisions | `technical-architect` | Delegate to TA |
-| Architecture docs (`docs/`) | `technical-architect` | Delegate to TA |
-| UX specs (`docs/ux/`) | `ux-engineer` | Delegate to UX engineer |
+| Product docs (`docs/`) | `technical-architect` | Delegate to TA |
 | Task tracking, sprints | `product-manager` | Delegate to PM |
-| Journey chronicle (`docs/chronicle/`) | `journey-chronicler` | Delegate to chronicler |
 | PR creation | Dev agent (whoever implemented) | Agent creates PR |
 
 **Why delegation matters:** Each agent has git hygiene rules — they commit AND push immediately. Orchestrator editing code directly bypasses these safeguards.
