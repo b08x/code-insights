@@ -24,7 +24,7 @@ export function createAnthropicClient(apiKey: string, model: string): LLMClient 
         signal: options?.signal,
         body: JSON.stringify({
           model,
-          max_tokens: 4096,
+          max_tokens: 8192,
           system: systemMessage?.content,
           messages: chatMessages.map(m => ({ role: m.role, content: m.content })),
         }),

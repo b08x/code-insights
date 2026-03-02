@@ -1,6 +1,8 @@
 // Analysis prompts and response parsers for LLM session analysis.
 // Ported from web repo (src/lib/llm/prompts.ts) with SQLite-aware message formatting.
 
+import { jsonrepair } from 'jsonrepair';
+
 // SQLite row format for messages — snake_case with JSON-encoded arrays.
 // This matches the shape returned by server/src/routes/messages.ts.
 export interface SQLiteMessageRow {
@@ -94,6 +96,14 @@ Quality Standards:
 - It is better to return 0 insights in a category than to include generic or trivial ones
 - If a session is straightforward with no notable decisions or learnings, say so in the summary and leave other categories empty
 - The summary must mention the most important concrete artifact changed (file, endpoint, or test) if any
+
+Conciseness (CRITICAL — your response MUST fit within token limits):
+- Summary content: max 3 sentences
+- Decision/learning content: max 2 sentences each
+- Evidence: max 2 short quotes per insight
+- Alternatives: max 2 per decision
+- Keep all string values under 200 characters
+- Prefer brevity — omit filler words
 
 DO NOT include insights like these (too generic/trivial):
 - "Used debugging techniques to fix an issue"
@@ -221,13 +231,18 @@ export function parseAnalysisResponse(response: string): ParseResult<AnalysisRes
   let parsed: AnalysisResponse;
   try {
     parsed = JSON.parse(jsonPayload) as AnalysisResponse;
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error('Failed to parse analysis response:', err);
-    return {
-      success: false,
-      error: { error_type: 'json_parse_error', error_message: msg, response_length, response_preview: preview },
-    };
+  } catch {
+    // Attempt repair — handles trailing commas, unclosed braces, truncated output
+    try {
+      parsed = JSON.parse(jsonrepair(jsonPayload)) as AnalysisResponse;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('Failed to parse analysis response (after jsonrepair):', err);
+      return {
+        success: false,
+        error: { error_type: 'json_parse_error', error_message: msg, response_length, response_preview: preview },
+      };
+    }
   }
 
   if (!parsed.summary || typeof parsed.summary.title !== 'string') {
@@ -263,6 +278,13 @@ Guidelines:
 - Consider the context: some clarification exchanges are normal and expected
 - A score of 100 means every user message was perfectly clear and complete
 - A score of 50 means about half the messages could have been more efficient
+
+Conciseness (CRITICAL — your response MUST fit within token limits):
+- Max 5 wasted turns, max 3 anti-patterns, max 5 tips
+- Keep all string values under 200 characters
+- suggestedRewrite: max 1 sentence
+- overallAssessment: max 3 sentences
+- Prefer brevity — omit filler words
 
 Respond with valid JSON only, wrapped in <json>...</json> tags. Do not include any other text.`;
 
@@ -353,13 +375,17 @@ export function parsePromptQualityResponse(response: string): ParseResult<Prompt
   let parsed: PromptQualityResponse;
   try {
     parsed = JSON.parse(jsonPayload) as PromptQualityResponse;
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error('Failed to parse prompt quality response:', err);
-    return {
-      success: false,
-      error: { error_type: 'json_parse_error', error_message: msg, response_length, response_preview: preview },
-    };
+  } catch {
+    try {
+      parsed = JSON.parse(jsonrepair(jsonPayload)) as PromptQualityResponse;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('Failed to parse prompt quality response (after jsonrepair):', err);
+      return {
+        success: false,
+        error: { error_type: 'json_parse_error', error_message: msg, response_length, response_preview: preview },
+      };
+    }
   }
 
   if (typeof parsed.efficiencyScore !== 'number') {
