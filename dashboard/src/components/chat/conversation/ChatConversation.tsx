@@ -4,6 +4,7 @@ import type { Message, ToolResult } from '@/lib/types';
 import { parseJsonField } from '@/lib/types';
 import { DateSeparator } from './DateSeparator';
 import { LoadMoreSentinel } from './LoadMoreSentinel';
+import { isAgentMessage } from '../message/preprocess';
 
 interface ChatConversationProps {
   messages: Message[];
@@ -69,7 +70,16 @@ export function ChatConversation({
 
   const shouldShowHeader = (index: number): boolean => {
     if (index === 0) return true;
-    return messages[index - 1].type !== messages[index].type;
+    const prev = messages[index - 1];
+    const curr = messages[index];
+    if (prev.type !== curr.type) return true;
+    // Break grouping when transitioning between real user messages and agent messages
+    if (curr.type === 'user' && curr.content && prev.content) {
+      const currIsAgent = isAgentMessage(curr.content);
+      const prevIsAgent = isAgentMessage(prev.content);
+      if (currIsAgent !== prevIsAgent) return true;
+    }
+    return false;
   };
 
   return (

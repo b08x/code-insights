@@ -75,6 +75,20 @@ export const SOURCE_TOOL_COLORS: Record<string, string> = {
   'copilot': 'bg-violet-500/10 text-violet-600 border-violet-500/20',
 };
 
+/** Border + background colors for teammate message cards, keyed by the `color` attribute from <teammate-message>. */
+export const TEAMMATE_BORDER_COLORS: Record<string, { border: string; bg: string; text: string }> = {
+  green: { border: 'border-green-500/40', bg: 'bg-green-500/5', text: 'text-green-500' },
+  blue: { border: 'border-blue-500/40', bg: 'bg-blue-500/5', text: 'text-blue-500' },
+  red: { border: 'border-red-500/40', bg: 'bg-red-500/5', text: 'text-red-500' },
+  yellow: { border: 'border-yellow-500/40', bg: 'bg-yellow-500/5', text: 'text-yellow-500' },
+  purple: { border: 'border-purple-500/40', bg: 'bg-purple-500/5', text: 'text-purple-500' },
+  cyan: { border: 'border-cyan-500/40', bg: 'bg-cyan-500/5', text: 'text-cyan-500' },
+  orange: { border: 'border-orange-500/40', bg: 'bg-orange-500/5', text: 'text-orange-500' },
+  pink: { border: 'border-pink-500/40', bg: 'bg-pink-500/5', text: 'text-pink-500' },
+};
+
+export const TEAMMATE_DEFAULT_COLORS = { border: 'border-gray-500/40', bg: 'bg-gray-500/5', text: 'text-gray-500' };
+
 /**
  * Hex color values for Recharts SVG elements (stroke, fill, Cell fill).
  * Using hex literals avoids hsl(var(--...)) / oklch incompatibility where
