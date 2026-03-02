@@ -62,12 +62,13 @@ function getCodexHome(): string | null {
  * Format A lives at: sessions/YYYY/MM/DD/rollout-<timestamp>-<uuid>.jsonl
  * Format B lives at: sessions/rollout-<date>-<uuid>.json (flat)
  */
-function collectRolloutFiles(dir: string, files: string[]): void {
+function collectRolloutFiles(dir: string, files: string[], depth = 0): void {
+  if (depth > 10) return; // Guard against symlink loops
   const entries = fs.readdirSync(dir, { withFileTypes: true });
   for (const entry of entries) {
     const fullPath = path.join(dir, entry.name);
     if (entry.isDirectory()) {
-      collectRolloutFiles(fullPath, files);
+      collectRolloutFiles(fullPath, files, depth + 1);
     } else if (
       (entry.name.startsWith('rollout-') && entry.name.endsWith('.jsonl')) ||
       (entry.name.startsWith('rollout-') && entry.name.endsWith('.json'))
@@ -143,6 +144,7 @@ interface FormatBSession {
   session: {
     timestamp: string;
     id: string;
+    cwd?: string;
     instructions?: string;
     model?: string;
   };
@@ -175,12 +177,13 @@ function parseCodexSession(filePath: string): ParsedSession | null {
     const content = fs.readFileSync(filePath, 'utf-8').trim();
     if (!content) return null;
 
-    // Detect format: Format B starts with '{' (single JSON object)
-    if (content.startsWith('{')) {
-      return parseFormatB(filePath, content);
+    // Detect format by file extension — content-sniffing is unreliable because
+    // JSONL files also start with '{' on line 1 (the session_meta object).
+    if (filePath.endsWith('.json')) {
+      return parseFormatB(content);
     }
 
-    return parseFormatA(filePath, content);
+    return parseFormatA(content);
   } catch {
     return null;
   }
@@ -190,7 +193,7 @@ function parseCodexSession(filePath: string): ParsedSession | null {
 // Format A parser (v0.104.0+ JSONL with envelope/payload structure)
 // ---------------------------------------------------------------------------
 
-function parseFormatA(filePath: string, content: string): ParsedSession | null {
+function parseFormatA(content: string): ParsedSession | null {
   const lines = content.split('\n').filter(line => line.trim());
   if (lines.length === 0) return null;
 
@@ -273,25 +276,7 @@ function parseFormatA(filePath: string, content: string): ParsedSession | null {
           break;
         }
 
-        if (role === 'user') {
-          flushAssistantTurn();
-          const userContent = extractContent(payload);
-          if (userContent && !isSystemContextMessage(userContent)) {
-            messages.push({
-              id: (payload.id as string) || `codex-user-${messages.length}`,
-              sessionId: sessionId,
-              type: 'user',
-              content: userContent.slice(0, 10000),
-              thinking: null,
-              toolCalls: [],
-              toolResults: [],
-              usage: null,
-              timestamp: parseEnvelopeTimestamp(event) || lastTimestamp,
-              parentId: null,
-            });
-            lastTimestamp = messages[messages.length - 1].timestamp;
-          }
-        } else if (role === 'assistant') {
+        if (role === 'assistant') {
           // response_item assistant message: content has output_text items
           const assistantContent = extractContent(payload);
           if (assistantContent) {
@@ -299,6 +284,9 @@ function parseFormatA(filePath: string, content: string): ParsedSession | null {
           }
           lastTimestamp = parseEnvelopeTimestamp(event) || lastTimestamp;
         }
+        // Skip role === 'user' — handled by event_msg/user_message case.
+        // Both response_item/message(role=user) and event_msg/user_message fire for
+        // every user prompt, so only capturing from one source avoids doubling the count.
         break;
       }
 
@@ -327,9 +315,9 @@ function parseFormatA(filePath: string, content: string): ParsedSession | null {
       }
 
       case 'agent_message': {
-        // event_msg/agent_message: primary source of assistant text output
-        const agentText = (payload.message as string) || '';
-        if (agentText) currentAssistantText += agentText + '\n';
+        // event_msg/agent_message fires alongside response_item/message(role=assistant).
+        // Text is already captured via that handler — only update timestamp here to
+        // avoid duplicating assistant content.
         lastTimestamp = parseEnvelopeTimestamp(event) || lastTimestamp;
         break;
       }
@@ -458,6 +446,9 @@ function parseFormatA(filePath: string, content: string): ParsedSession | null {
       case 'turn_context':
         // Lifecycle/telemetry events — skip
         break;
+
+      default:
+        break;
     }
   }
 
@@ -471,7 +462,7 @@ function parseFormatA(filePath: string, content: string): ParsedSession | null {
 // Format B parser (pre-2025 single JSON object: { session, items })
 // ---------------------------------------------------------------------------
 
-function parseFormatB(filePath: string, content: string): ParsedSession | null {
+function parseFormatB(content: string): ParsedSession | null {
   let parsed: FormatBSession;
   try {
     parsed = JSON.parse(content) as FormatBSession;
@@ -601,7 +592,8 @@ function parseFormatB(filePath: string, content: string): ParsedSession | null {
   // Flush any remaining assistant content
   flushAssistantTurn();
 
-  return buildSession(sessionId, 'codex://unknown', null, sessionTimestamp, messages, usageEntries, model);
+  const projectPath = parsed.session.cwd || 'codex://unknown';
+  return buildSession(sessionId, projectPath, null, sessionTimestamp, messages, usageEntries, model);
 }
 
 // ---------------------------------------------------------------------------
