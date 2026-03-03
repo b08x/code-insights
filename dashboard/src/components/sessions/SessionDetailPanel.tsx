@@ -496,18 +496,12 @@ export function SessionDetailPanel({ sessionId }: SessionDetailPanelProps) {
       )}
 
       {/* Tabs: Insights | Prompt Quality | Conversation */}
-      <Tabs defaultValue="insights" className="flex flex-col flex-1 overflow-hidden">
-        <TabsList className="shrink-0 bg-transparent border-b rounded-none h-auto w-full justify-start gap-4 px-6">
-          <TabsTrigger
-            value="insights"
-            className="relative h-10 rounded-none border-b-2 border-transparent bg-transparent px-0 pb-3 pt-2 font-medium text-muted-foreground shadow-none data-[state=active]:border-foreground data-[state=active]:text-foreground data-[state=active]:shadow-none"
-          >
-            Insights
+      <Tabs defaultValue="insights" className="flex flex-col flex-1 overflow-hidden pt-2">
+        <TabsList variant="line" className="shrink-0 w-full justify-start gap-4 px-6 border-b">
+          <TabsTrigger value="insights" className="px-0">
+            Insights{nonPromptInsights.length > 0 && ` (${nonPromptInsights.length})`}
           </TabsTrigger>
-          <TabsTrigger
-            value="prompt-quality"
-            className="relative h-10 rounded-none border-b-2 border-transparent bg-transparent px-0 pb-3 pt-2 font-medium text-muted-foreground shadow-none data-[state=active]:border-foreground data-[state=active]:text-foreground data-[state=active]:shadow-none"
-          >
+          <TabsTrigger value="prompt-quality" className="px-0">
             <span className="flex items-center gap-1.5" aria-label={promptQualityScore != null ? `Prompt Quality, score ${promptQualityScore} out of 100` : 'Prompt Quality'}>
               Prompt Quality
               {promptQualityScore != null && (
@@ -520,10 +514,7 @@ export function SessionDetailPanel({ sessionId }: SessionDetailPanelProps) {
               )}
             </span>
           </TabsTrigger>
-          <TabsTrigger
-            value="conversation"
-            className="relative h-10 rounded-none border-b-2 border-transparent bg-transparent px-0 pb-3 pt-2 font-medium text-muted-foreground shadow-none data-[state=active]:border-foreground data-[state=active]:text-foreground data-[state=active]:shadow-none"
-          >
+          <TabsTrigger value="conversation" className="px-0">
             Conversation ({session.message_count})
           </TabsTrigger>
         </TabsList>
