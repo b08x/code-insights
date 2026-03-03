@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useMemo } from 'react';
 import { MessageBubble } from '../message/MessageBubble';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
@@ -39,6 +39,18 @@ export function ChatConversation({
   messages, loading, loadingMore, hasMore, onLoadMore, error, sourceTool, highlightMessageId, searchQuery,
 }: ChatConversationProps) {
   const highlightRef = useRef<HTMLDivElement>(null);
+
+  // Only pass searchQuery to messages that actually match, so the highlight
+  // walker doesn't run on every message in large conversations (1000+).
+  const matchingMessageIds = useMemo(() => {
+    if (!searchQuery) return new Set<string>();
+    const lowerQuery = searchQuery.toLowerCase();
+    return new Set(
+      messages
+        .filter((m) => m.content.toLowerCase().includes(lowerQuery))
+        .map((m) => m.id)
+    );
+  }, [messages, searchQuery]);
 
   useEffect(() => {
     if (highlightMessageId && highlightRef.current) {
@@ -114,7 +126,7 @@ export function ChatConversation({
               message={message}
               showHeader={shouldShowHeader(index)}
               sourceTool={sourceTool}
-              searchQuery={searchQuery}
+              searchQuery={matchingMessageIds.has(message.id) ? searchQuery : undefined}
               nextToolResults={
                 messages[index + 1]?.type === 'user'
                   ? parseJsonField<ToolResult[]>(messages[index + 1].tool_results, [])

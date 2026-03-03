@@ -39,6 +39,7 @@ import {
   X,
   FileText,
   BookOpen,
+  GitBranch,
   GitCommit,
   GitPullRequest,
   BarChart2,
@@ -325,6 +326,15 @@ export function SessionDetailPanel({ sessionId }: SessionDetailPanelProps) {
             </a>
           ) : (
             <span>{session.project_name}</span>
+          )}
+          {session.git_branch && (
+            <>
+              <span>&middot;</span>
+              <span className="flex items-center gap-1">
+                <GitBranch className="h-3 w-3" />
+                <span className="font-mono text-[11px] truncate max-w-[160px]">{session.git_branch}</span>
+              </span>
+            </>
           )}
           {session.source_tool && (
             <>

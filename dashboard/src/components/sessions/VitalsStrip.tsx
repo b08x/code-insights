@@ -1,9 +1,6 @@
-import { Badge } from '@/components/ui/badge';
-import { SOURCE_TOOL_COLORS } from '@/lib/constants/colors';
 import { formatDuration, formatModelName, formatTokenCount } from '@/lib/utils';
 import { parseJsonField } from '@/lib/types';
 import type { Session } from '@/lib/types';
-import { GitBranch } from 'lucide-react';
 
 interface VitalsStripProps {
   session: Session;
@@ -35,7 +32,7 @@ export function VitalsStrip({ session }: VitalsStripProps) {
         />
       </div>
 
-      {/* Token breakdown row */}
+      {/* Token breakdown + model row */}
       {session.total_input_tokens != null && (
         <div className="flex items-center gap-3 text-xs text-muted-foreground">
           <span className="font-medium text-foreground/70">Tokens</span>
@@ -48,31 +45,16 @@ export function VitalsStrip({ session }: VitalsStripProps) {
           )}
           <span className="text-muted-foreground/30">&middot;</span>
           <span>{formatTokenCount(session.total_output_tokens ?? 0)} output</span>
+          {modelsUsed.length > 0 && (
+            <>
+              <span className="text-muted-foreground/30">&middot;</span>
+              <span className="bg-muted px-1.5 py-0.5 rounded text-[11px]">
+                {modelsUsed.map(formatModelName).join(', ')}
+              </span>
+            </>
+          )}
         </div>
       )}
-
-      {/* Model / Branch / Source metadata */}
-      <div className="flex items-center gap-2 flex-wrap text-xs text-muted-foreground">
-        {modelsUsed.length > 0 && (
-          <span className="bg-muted px-1.5 py-0.5 rounded text-[11px]">
-            {modelsUsed.map(formatModelName).join(', ')}
-          </span>
-        )}
-        {session.git_branch && (
-          <span className="flex items-center gap-1">
-            <GitBranch className="h-3 w-3" />
-            <span className="font-mono truncate max-w-[160px] text-[11px]">{session.git_branch}</span>
-          </span>
-        )}
-        {session.source_tool && (
-          <Badge
-            variant="outline"
-            className={`text-[11px] capitalize ${SOURCE_TOOL_COLORS[session.source_tool] ?? 'bg-muted text-muted-foreground'}`}
-          >
-            {session.source_tool}
-          </Badge>
-        )}
-      </div>
     </div>
   );
 }
