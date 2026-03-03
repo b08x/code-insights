@@ -3,6 +3,8 @@ import type { ToolCall, ToolResult } from '@/lib/types';
 import { parseToolInput } from '../utils';
 import { usePreviewLines } from '../usePreview';
 import { ToolPanelHeader } from './ToolPanelHeader';
+import { CollapsibleToolPanel } from '../CollapsibleToolPanel';
+import { Badge } from '@/components/ui/badge';
 
 interface SearchToolPanelProps {
   toolCall: ToolCall;
@@ -22,8 +24,23 @@ export function SearchToolPanel({ toolCall, result }: SearchToolPanelProps) {
   const PREVIEW_LINES = 15;
   const { hasMore, previewLines, showFull, toggle } = usePreviewLines(resultLines, PREVIEW_LINES);
 
+  const summary = (
+    <>
+      <Badge variant="outline" className="text-[10px] py-0 shrink-0 font-mono bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20">
+        {pattern.length > 30 ? pattern.slice(0, 30) + '...' : pattern}
+      </Badge>
+      <span className="text-[10px] text-muted-foreground shrink-0">
+        {resultLines.length} result{resultLines.length !== 1 ? 's' : ''}
+      </span>
+    </>
+  );
+
   return (
-    <div className="my-2 rounded-lg border border-border overflow-hidden">
+    <CollapsibleToolPanel
+      icon={<Icon className="h-3.5 w-3.5 text-amber-500 shrink-0" />}
+      label={isGrep ? 'Search' : 'Find Files'}
+      summary={summary}
+    >
       <ToolPanelHeader
         className="bg-muted/60 border-border"
         icon={<Icon className="h-3.5 w-3.5 text-amber-500 shrink-0" />}
@@ -63,6 +80,6 @@ export function SearchToolPanel({ toolCall, result }: SearchToolPanelProps) {
           No matches found
         </div>
       )}
-    </div>
+    </CollapsibleToolPanel>
   );
 }

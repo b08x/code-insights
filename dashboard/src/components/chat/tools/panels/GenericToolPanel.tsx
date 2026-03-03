@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Terminal } from 'lucide-react';
 import type { ToolCall, ToolResult } from '@/lib/types';
 import { ToolPanelHeader } from './ToolPanelHeader';
+import { CollapsibleToolPanel } from '../CollapsibleToolPanel';
 
 interface GenericToolPanelProps {
   toolCall: ToolCall;
@@ -17,8 +18,23 @@ export function GenericToolPanel({ toolCall, result }: GenericToolPanelProps) {
   const resultText = result?.output || '';
   const hasResult = resultText.length > 0;
 
+  const inputPreview = formattedInput.length > 60
+    ? formattedInput.slice(0, 60) + '...'
+    : formattedInput;
+
+  const summary = (
+    <>
+      <span className="text-xs font-medium text-muted-foreground shrink-0">{toolCall.name}</span>
+      <span className="text-[10px] text-muted-foreground/60 truncate">{inputPreview}</span>
+    </>
+  );
+
   return (
-    <div className="my-2 rounded-lg border border-border overflow-hidden">
+    <CollapsibleToolPanel
+      icon={<Terminal className="h-3.5 w-3.5 text-muted-foreground shrink-0" />}
+      label="Tool"
+      summary={summary}
+    >
       <ToolPanelHeader
         className="bg-muted/60 border-border"
         icon={<Terminal className="h-3.5 w-3.5 text-muted-foreground shrink-0" />}
@@ -42,6 +58,6 @@ export function GenericToolPanel({ toolCall, result }: GenericToolPanelProps) {
           )}
         </div>
       )}
-    </div>
+    </CollapsibleToolPanel>
   );
 }
