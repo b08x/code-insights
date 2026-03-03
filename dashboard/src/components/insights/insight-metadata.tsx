@@ -1,6 +1,20 @@
 import { Badge } from '@/components/ui/badge';
-import { CheckCircle2, AlertCircle, XCircle, Ban } from 'lucide-react';
+import {
+  CheckCircle2,
+  AlertCircle,
+  XCircle,
+  Ban,
+  HelpCircle,
+  Lightbulb,
+  CalendarClock,
+  FileText,
+  Scale,
+  GitFork,
+  ArrowRightLeft,
+  Clock,
+} from 'lucide-react';
 import type { InsightType, InsightMetadata } from '@/lib/types';
+import type { LucideIcon } from 'lucide-react';
 
 // --- Outcome Badge ---
 
@@ -23,13 +37,40 @@ export function OutcomeBadge({ outcome }: { outcome: string }) {
   );
 }
 
+// --- Field icon config ---
+
+const FIELD_CONFIG: Record<string, { icon: LucideIcon; color: string }> = {
+  'What Happened': { icon: AlertCircle, color: 'text-muted-foreground' },
+  'Why': { icon: HelpCircle, color: 'text-muted-foreground' },
+  'Takeaway': { icon: Lightbulb, color: 'text-yellow-500' },
+  'Applies When': { icon: CalendarClock, color: 'text-muted-foreground' },
+  'Situation': { icon: FileText, color: 'text-muted-foreground' },
+  'Choice': { icon: CheckCircle2, color: 'text-blue-500' },
+  'Reasoning': { icon: Scale, color: 'text-muted-foreground' },
+  'Alternatives Considered': { icon: GitFork, color: 'text-muted-foreground' },
+  'Trade-offs': { icon: ArrowRightLeft, color: 'text-muted-foreground' },
+  'Revisit When': { icon: Clock, color: 'text-muted-foreground' },
+};
+
 // --- Shared metadata helpers ---
 
 export function MetadataSection({ label, children, prominent }: { label: string; children: React.ReactNode; prominent?: boolean }) {
+  const fieldConfig = FIELD_CONFIG[label];
+  const FieldIcon = fieldConfig?.icon;
+
   return (
     <div className="space-y-0.5">
-      <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/70">{label}</span>
-      <p className={prominent ? 'text-sm font-medium text-foreground' : 'text-sm text-muted-foreground'}>{children}</p>
+      <span className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
+        {FieldIcon && <FieldIcon className={`h-3 w-3 ${fieldConfig.color}`} />}
+        {label}
+      </span>
+      {prominent ? (
+        <div className="rounded-md bg-muted/30 px-3 py-2">
+          <p className="text-sm font-medium text-foreground">{children}</p>
+        </div>
+      ) : (
+        <p className="text-sm text-muted-foreground">{children}</p>
+      )}
     </div>
   );
 }
@@ -54,7 +95,24 @@ export function DecisionContent({ metadata }: { metadata: InsightMetadata }) {
       {metadata.choice && <MetadataSection label="Choice" prominent>{metadata.choice}</MetadataSection>}
       {metadata.reasoning && <MetadataSection label="Reasoning">{metadata.reasoning}</MetadataSection>}
       {metadata.alternatives && metadata.alternatives.length > 0 && (
-        <MetadataSection label="Alternatives Considered">{formatAlternatives(metadata.alternatives)}</MetadataSection>
+        <div className="space-y-0.5">
+          <span className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
+            <GitFork className="h-3 w-3 text-muted-foreground" />
+            Alternatives Considered
+          </span>
+          <div className="flex flex-wrap gap-1.5 pt-0.5">
+            {metadata.alternatives.map((alt, i) => {
+              const label = typeof alt === 'string' ? alt : alt.option;
+              const reason = typeof alt === 'string' ? undefined : alt.rejected_because;
+              return (
+                <Badge key={i} variant="outline" className="text-xs font-normal" title={reason ? `Rejected: ${reason}` : undefined}>
+                  {label}
+                  {reason && <span className="ml-1 text-muted-foreground/60">- {reason}</span>}
+                </Badge>
+              );
+            })}
+          </div>
+        </div>
       )}
       {metadata.trade_offs && <MetadataSection label="Trade-offs">{metadata.trade_offs}</MetadataSection>}
       {metadata.revisit_when && metadata.revisit_when !== 'N/A' && (

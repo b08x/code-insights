@@ -85,10 +85,14 @@ function CollapsibleInsightItem({ insight }: { insight: Insight }) {
         ) : (
           <span className="w-4 shrink-0" />
         )}
+        <span className={cn('w-1.5 h-1.5 rounded-full shrink-0', insight.type === 'decision' ? 'bg-blue-500' : 'bg-green-500')} />
         <p className="flex-1 min-w-0 text-sm font-medium line-clamp-2">{previewText}</p>
       </button>
       {expanded && (
-        <div className="ml-6 mr-3 mb-2 pl-3 border-l-2 border-muted">
+        <div className={cn(
+          'ml-6 mr-3 mb-2 pl-3 pr-3 py-2 border-l-2 bg-muted/20 rounded-r-md',
+          insight.type === 'decision' ? 'border-blue-500/40' : 'border-green-500/40'
+        )}>
           {insight.type === 'decision' ? (
             <DecisionContent metadata={metadata} />
           ) : (
@@ -597,7 +601,7 @@ export function SessionDetailPanel({ sessionId }: SessionDetailPanelProps) {
                 return (
                   <div>
                     <div className="flex items-center gap-2 mb-3">
-                      <BookOpen className="h-4 w-4 text-muted-foreground" />
+                      <BookOpen className="h-4 w-4 text-green-500" />
                       <h3 className="text-sm font-medium">Learnings</h3>
                       <Badge variant="secondary" className="text-xs">
                         {learningInsights.length}
@@ -618,7 +622,7 @@ export function SessionDetailPanel({ sessionId }: SessionDetailPanelProps) {
                 return (
                   <div>
                     <div className="flex items-center gap-2 mb-3">
-                      <GitCommit className="h-4 w-4 text-muted-foreground" />
+                      <GitCommit className="h-4 w-4 text-blue-500" />
                       <h3 className="text-sm font-medium">Decisions</h3>
                       <Badge variant="secondary" className="text-xs">
                         {decisionInsights.length}
