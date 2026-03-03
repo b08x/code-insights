@@ -87,7 +87,7 @@ function buildPatternGroups(insights: Insight[]): Map<string, Set<string>> {
 }
 
 export default function InsightsPage() {
-  const [filters, setFilter, clearFilters] = useFilterParams({
+  const [filters, setFilter, , clearFilters] = useFilterParams({
     q: '',
     project: 'all',
     type: 'all',

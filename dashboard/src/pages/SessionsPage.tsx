@@ -1,75 +1,33 @@
-import { useMemo } from 'react';
-import { Link } from 'react-router';
-import { formatDistanceToNow } from 'date-fns';
+import { useMemo, useCallback } from 'react';
 import { useSessions } from '@/hooks/useSessions';
 import { useProjects } from '@/hooks/useProjects';
 import { useInsights } from '@/hooks/useInsights';
-import { SESSION_CHARACTER_COLORS, SOURCE_TOOL_COLORS } from '@/lib/constants/colors';
-import { formatDuration, formatModelName, getSessionTitle, getDateGroup, DATE_GROUP_ORDER } from '@/lib/utils';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
+import { useFilterParams } from '@/hooks/useFilterParams';
+import { ProjectNav } from '@/components/sessions/ProjectNav';
+import { SessionListPanel } from '@/components/sessions/SessionListPanel';
+import { SessionDetailPanel } from '@/components/sessions/SessionDetailPanel';
 import { Button } from '@/components/ui/button';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { useFilterParams } from '@/hooks/useFilterParams';
-import { SessionCardSkeleton } from '@/components/skeletons/SessionCardSkeleton';
-import { ErrorCard } from '@/components/ErrorCard';
-import { OutcomeBadge } from '@/components/insights/InsightCard';
-import {
-  MessageSquare,
-  Wrench,
-  Clock,
-  SearchX,
-  Terminal,
-  GitBranch,
-  DollarSign,
-  Sparkles,
-} from 'lucide-react';
-import type { Session, Insight, InsightMetadata } from '@/lib/types';
-import { parseJsonField } from '@/lib/types';
-
-const SESSION_CHARACTERS = [
-  'deep_focus',
-  'bug_hunt',
-  'feature_build',
-  'exploration',
-  'refactor',
-  'learning',
-  'quick_task',
-] as const;
-
-
-/** Short type abbreviations for compact insight count display */
-const INSIGHT_TYPE_ABBREV: Record<string, string> = {
-  summary: 'S',
-  decision: 'D',
-  learning: 'L',
-  technique: 'L',
-  prompt_quality: 'PQ',
-};
-
-function getCostColor(cost: number): string {
-  if (cost < 0.10) return 'bg-green-500/10 text-green-600 border-green-500/20';
-  if (cost < 0.50) return 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20';
-  return 'bg-red-500/10 text-red-600 border-red-500/20';
-}
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from '@/components/ui/sheet';
+import { ArrowLeft, ChevronDown, MousePointerClick } from 'lucide-react';
 
 export default function SessionsPage() {
-  const [filters, setFilter, clearFilters] = useFilterParams({
+  const [filters, setFilter, setFilters, clearFilters] = useFilterParams({
     q: '',
     project: 'all',
     source: 'all',
     character: 'all',
     status: 'all',
+    session: '',
   });
 
   const { data: projects = [], isLoading: projectsLoading } = useProjects();
-
 
   const sessionParams = useMemo(() => {
     const params: { projectId?: string; sourceTool?: string; limit?: number } = { limit: 200 };
@@ -78,331 +36,163 @@ export default function SessionsPage() {
     return params;
   }, [filters.project, filters.source]);
 
-  const { data: sessions = [], isLoading: sessionsLoading, isError: sessionsError, refetch: refetchSessions } = useSessions(sessionParams);
+  const { data: sessions = [], isLoading: sessionsLoading } = useSessions(sessionParams);
   const { data: insights = [], isLoading: insightsLoading } = useInsights();
 
-  const analyzedSessionIds = useMemo(
-    () => new Set(insights.map((i) => i.session_id)),
-    [insights]
-  );
+  const loading = sessionsLoading || projectsLoading || insightsLoading;
 
-  // Build insight counts per session: Map<sessionId, Record<type, count>>
-  const insightCountsBySession = useMemo(() => {
-    const map = new Map<string, Record<string, number>>();
-    for (const insight of insights) {
-      const counts = map.get(insight.session_id) || {};
-      counts[insight.type] = (counts[insight.type] || 0) + 1;
-      map.set(insight.session_id, counts);
-    }
-    return map;
-  }, [insights]);
-
-  // Build session outcome map from summary insights
-  const sessionOutcomes = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const insight of insights) {
-      if (insight.type === 'summary') {
-        const metadata = parseJsonField<InsightMetadata>(insight.metadata, {});
-        if (metadata.outcome) {
-          map.set(insight.session_id, metadata.outcome);
+  const handleSelectProject = useCallback(
+    (projectId: string) => {
+      const currentSessionId = filters.session;
+      if (currentSessionId && projectId !== 'all') {
+        const currentSession = sessions.find((s) => s.id === currentSessionId);
+        if (currentSession && currentSession.project_id !== projectId) {
+          setFilters({ project: projectId, session: '' });
+          return;
         }
       }
-    }
-    return map;
-  }, [insights]);
+      setFilter('project', projectId);
+    },
+    [filters.session, sessions, setFilter, setFilters]
+  );
 
-  const filteredSessions = useMemo(() => {
-    return sessions.filter((s) => {
-      if (filters.character !== 'all' && s.session_character !== filters.character) return false;
-      if (filters.status === 'analyzed' && !analyzedSessionIds.has(s.id)) return false;
-      if (filters.status === 'unanalyzed' && analyzedSessionIds.has(s.id)) return false;
-      if (filters.q) {
-        const q = filters.q.toLowerCase();
-        const title = getSessionTitle(s).toLowerCase();
-        if (!title.includes(q) && !s.project_name.toLowerCase().includes(q)) return false;
-      }
-      return true;
-    });
-  }, [sessions, filters.character, filters.status, filters.q, analyzedSessionIds]);
+  const handleSelectSession = useCallback(
+    (sessionId: string) => {
+      setFilter('session', sessionId);
+    },
+    [setFilter]
+  );
 
-  const groupedSessions = useMemo(() => {
-    const groups: Record<string, Session[]> = {};
-    for (const s of filteredSessions) {
-      const group = getDateGroup(s.started_at);
-      if (!groups[group]) groups[group] = [];
-      groups[group].push(s);
-    }
-    return DATE_GROUP_ORDER.filter((g) => groups[g]).map((g) => ({ group: g, sessions: groups[g] }));
-  }, [filteredSessions]);
+  const handleFilterChange = useCallback(
+    (key: 'q' | 'character' | 'status', value: string) => {
+      setFilter(key, value);
+    },
+    [setFilter]
+  );
 
-  const loading = sessionsLoading || projectsLoading || insightsLoading;
-  const hasClientFilters = filters.character !== 'all' || filters.status !== 'all' || !!filters.q;
-  const hasAnyFilter = hasClientFilters || filters.project !== 'all' || filters.source !== 'all';
+  const handleClearFilters = useCallback(() => {
+    setFilters({ q: '', character: 'all', status: 'all' });
+  }, [setFilters]);
+
+  const selectedProjectName = useMemo(() => {
+    if (filters.project === 'all') return 'All Projects';
+    return projects.find((p) => p.id === filters.project)?.name ?? 'Project';
+  }, [filters.project, projects]);
+
+  const showProject = filters.project === 'all';
 
   return (
-    <div className="p-6 space-y-4">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold">Sessions</h1>
-        {!loading && (
-          <p className="text-muted-foreground text-sm">
-            {hasClientFilters
-              ? `${filteredSessions.length} matching of `
-              : ''}
-            {sessions.length} session{sessions.length !== 1 ? 's' : ''} across {projects.length} project{projects.length !== 1 ? 's' : ''}
-          </p>
+    <div className="flex h-[calc(100vh-3.5rem)]">
+      {/* Panel A: Project Nav — visible at xl, Sheet at lg, hidden below */}
+      <aside className="hidden xl:flex w-[220px] shrink-0 border-r bg-background overflow-y-auto">
+        <div className="w-full">
+          <ProjectNav
+            projects={projects}
+            selectedProject={filters.project}
+            selectedSource={filters.source}
+            onSelectProject={handleSelectProject}
+            onSelectSource={(source) => setFilter('source', source)}
+          />
+        </div>
+      </aside>
+
+      {/* Panel B: Session List */}
+      <div className="w-full lg:w-80 shrink-0 lg:border-r bg-background flex flex-col overflow-hidden">
+        {/* Project selector for lg (Sheet trigger) and below xl */}
+        <div className="xl:hidden shrink-0 px-3 pt-3 pb-1">
+          <Sheet>
+            <SheetTrigger asChild>
+              <Button variant="outline" size="sm" className="w-full justify-between text-xs h-8">
+                <span className="truncate">{selectedProjectName}</span>
+                <ChevronDown className="h-3 w-3 shrink-0 ml-1" />
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="left" className="w-[260px] p-0">
+              <SheetHeader className="px-4 py-3 border-b">
+                <SheetTitle className="text-sm font-semibold">Projects</SheetTitle>
+                <SheetDescription className="sr-only">Select a project</SheetDescription>
+              </SheetHeader>
+              <ProjectNav
+                projects={projects}
+                selectedProject={filters.project}
+                selectedSource={filters.source}
+                onSelectProject={handleSelectProject}
+                onSelectSource={(source) => setFilter('source', source)}
+              />
+            </SheetContent>
+          </Sheet>
+        </div>
+
+        <SessionListPanel
+          sessions={sessions}
+          insights={insights}
+          selectedSessionId={filters.session}
+          showProject={showProject}
+          filters={{
+            q: filters.q,
+            character: filters.character,
+            status: filters.status,
+          }}
+          onFilterChange={handleFilterChange}
+          onClearFilters={handleClearFilters}
+          onSelectSession={handleSelectSession}
+          loading={loading}
+        />
+      </div>
+
+      {/* Panel C: Session Detail — visible at lg+, Sheet at md, hidden below */}
+      <div className="hidden lg:flex flex-1 min-w-0 bg-background overflow-hidden">
+        {filters.session ? (
+          <div className="flex-1 overflow-y-auto" key={filters.session}>
+            <SessionDetailPanel sessionId={filters.session} />
+          </div>
+        ) : (
+          <EmptyDetailState />
         )}
       </div>
 
-      {/* Filters */}
-      <div className="space-y-2">
-        <Input
-          placeholder="Search sessions..."
-          value={filters.q}
-          onChange={(e) => setFilter('q', e.target.value)}
-          className="max-w-sm"
-        />
-        <div className="flex flex-wrap gap-2">
-          <Select value={filters.project} onValueChange={(v) => setFilter('project', v)}>
-            <SelectTrigger className="w-[160px]">
-              <SelectValue placeholder="All Projects" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Projects</SelectItem>
-              {projects.map((p) => (
-                <SelectItem key={p.id} value={p.id}>
-                  {p.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select value={filters.character} onValueChange={(v) => setFilter('character', v)}>
-            <SelectTrigger className="w-[160px]">
-              <SelectValue placeholder="All Types" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Types</SelectItem>
-              {SESSION_CHARACTERS.map((c) => (
-                <SelectItem key={c} value={c} className="capitalize">
-                  {c.replace(/_/g, ' ')}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select value={filters.status} onValueChange={(v) => setFilter('status', v)}>
-            <SelectTrigger className="w-[160px]">
-              <SelectValue placeholder="All Status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Status</SelectItem>
-              <SelectItem value="analyzed">Analyzed</SelectItem>
-              <SelectItem value="unanalyzed">Not Analyzed</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <Select value={filters.source} onValueChange={(v) => setFilter('source', v)}>
-            <SelectTrigger className="w-[160px]">
-              <SelectValue placeholder="All Sources" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Sources</SelectItem>
-              <SelectItem value="claude-code">Claude Code</SelectItem>
-              <SelectItem value="cursor">Cursor</SelectItem>
-              <SelectItem value="codex-cli">Codex CLI</SelectItem>
-              <SelectItem value="copilot-cli">Copilot CLI</SelectItem>
-              <SelectItem value="copilot">Copilot</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
-      {/* Session groups */}
-      {sessionsError && !loading ? (
-        <ErrorCard message="Failed to load sessions" onRetry={refetchSessions} />
-      ) : loading ? (
-        <div className="space-y-3">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <SessionCardSkeleton key={i} />
-          ))}
-        </div>
-      ) : filteredSessions.length === 0 ? (
-        hasAnyFilter ? (
-          <div className="flex flex-col items-center justify-center py-16 text-center space-y-3">
-            <SearchX className="h-8 w-8 text-muted-foreground" />
-            <p className="font-medium">No sessions match your filters</p>
-            <p className="text-sm text-muted-foreground">
-              Try adjusting or clearing your search and filter criteria.
-            </p>
-            <Button variant="outline" size="sm" onClick={clearFilters}>
-              Clear filters
-            </Button>
-          </div>
-        ) : (
-          <div className="flex flex-col items-center justify-center py-16 text-center space-y-3">
-            <Terminal className="h-8 w-8 text-muted-foreground" />
-            <p className="font-medium">No sessions yet</p>
-            <p className="text-sm text-muted-foreground">
-              Install the CLI and run code-insights sync to get started.
-            </p>
-            <Link to="/settings">
-              <Button variant="outline" size="sm">
-                Go to Settings
+      {/* Below lg: Session detail as Sheet from right */}
+      {filters.session && (
+        <Sheet
+          open={!!filters.session}
+          onOpenChange={(open) => {
+            if (!open) setFilter('session', '');
+          }}
+        >
+          <SheetContent side="right" className="w-full sm:w-[85vw] lg:hidden p-0 flex flex-col">
+            <SheetHeader className="sr-only">
+              <SheetTitle>Session Detail</SheetTitle>
+              <SheetDescription>Session detail view</SheetDescription>
+            </SheetHeader>
+            <div className="shrink-0 px-3 pt-3">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs gap-1"
+                onClick={() => setFilter('session', '')}
+              >
+                <ArrowLeft className="h-3 w-3" />
+                Back to list
               </Button>
-            </Link>
-          </div>
-        )
-      ) : (
-        <div className="space-y-6">
-          {groupedSessions.map(({ group, sessions: groupSessions }) => (
-            <div key={group}>
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-                {group}
-              </h2>
-              <div className="space-y-2">
-                {groupSessions.map((session) => (
-                  <SessionRow
-                    key={session.id}
-                    session={session}
-                    insightCounts={insightCountsBySession.get(session.id)}
-                    outcome={sessionOutcomes.get(session.id)}
-                  />
-                ))}
-              </div>
             </div>
-          ))}
-        </div>
+            <div className="flex-1 overflow-y-auto">
+              <SessionDetailPanel sessionId={filters.session} />
+            </div>
+          </SheetContent>
+        </Sheet>
       )}
     </div>
   );
 }
 
-function InsightCountBadge({ counts }: { counts: Record<string, number> | undefined }) {
-  if (!counts) {
-    return (
-      <span className="flex items-center gap-1 text-xs text-muted-foreground">
-        <Sparkles className="h-3 w-3" />
-        Not analyzed
-      </span>
-    );
-  }
-
-  // Exclude summary from count — it renders as its own section, not an insight card
-  const countEntries = Object.entries(counts).filter(([type]) => type !== 'summary');
-  const total = countEntries.reduce((sum, [, n]) => sum + n, 0);
-  if (total === 0) {
-    return (
-      <span className="flex items-center gap-1 text-xs text-muted-foreground">
-        <Sparkles className="h-3 w-3" />
-        Not analyzed
-      </span>
-    );
-  }
-  const breakdown = countEntries
-    .sort(([, a], [, b]) => b - a)
-    .map(([type, count]) => `${count}${INSIGHT_TYPE_ABBREV[type] || type[0].toUpperCase()}`)
-    .join(' ');
-
+function EmptyDetailState() {
   return (
-    <span className="flex items-center gap-1 text-xs text-muted-foreground">
-      <Sparkles className="h-3 w-3 text-purple-500" />
-      {total} insight{total !== 1 ? 's' : ''}
-      {breakdown && <span className="text-muted-foreground/70">({breakdown})</span>}
-    </span>
-  );
-}
-
-function SessionRow({
-  session,
-  insightCounts,
-  outcome,
-}: {
-  session: Session;
-  insightCounts: Record<string, number> | undefined;
-  outcome: string | undefined;
-}) {
-  const startedAt = new Date(session.started_at);
-  const endedAt = new Date(session.ended_at);
-  const displayTitle = getSessionTitle(session);
-  const characterColor = session.session_character
-    ? (SESSION_CHARACTER_COLORS[session.session_character] ?? 'bg-muted text-muted-foreground')
-    : null;
-
-  return (
-    <Link to={`/sessions/${session.id}`} className="block group">
-      <div className="rounded-lg border bg-card px-4 py-3 hover:bg-accent/40 transition-colors">
-        {/* Row 1: Title + badges */}
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0 flex-1">
-            <p className="font-medium text-sm line-clamp-1 group-hover:text-primary transition-colors">
-              {displayTitle}
-            </p>
-            {/* Summary preview */}
-            {session.summary && (
-              <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">
-                {session.summary}
-              </p>
-            )}
-            <div className="flex items-center gap-2 mt-1 flex-wrap">
-              {session.session_character && characterColor && (
-                <Badge variant="outline" className={`text-xs capitalize ${characterColor}`}>
-                  {session.session_character.replace(/_/g, ' ')}
-                </Badge>
-              )}
-              <span className="text-xs text-muted-foreground">{session.project_name}</span>
-              {outcome && <OutcomeBadge outcome={outcome} />}
-            </div>
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            {session.source_tool && (
-              <Badge
-                variant="outline"
-                className={`text-xs capitalize ${SOURCE_TOOL_COLORS[session.source_tool] ?? 'bg-muted text-muted-foreground'}`}
-              >
-                {session.source_tool}
-              </Badge>
-            )}
-            <InsightCountBadge counts={insightCounts} />
-            <span className="text-xs text-muted-foreground">
-              {formatDistanceToNow(startedAt, { addSuffix: true })}
-            </span>
-          </div>
-        </div>
-
-        {/* Row 2: Metadata stats */}
-        <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground flex-wrap">
-          <span className="flex items-center gap-1">
-            <MessageSquare className="h-3 w-3" />
-            {session.message_count} messages
-          </span>
-          <span className="flex items-center gap-1">
-            <Wrench className="h-3 w-3" />
-            {session.tool_call_count} tools
-          </span>
-          <span className="flex items-center gap-1">
-            <Clock className="h-3 w-3" />
-            {formatDuration(startedAt, endedAt)}
-          </span>
-          {session.estimated_cost_usd != null && (
-            <Badge variant="outline" className={`text-xs py-0 ${getCostColor(session.estimated_cost_usd)}`}>
-              <DollarSign className="h-3 w-3 mr-0.5" />
-              {session.estimated_cost_usd.toFixed(2)}
-            </Badge>
-          )}
-          {session.primary_model && (
-            <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-              {formatModelName(session.primary_model)}
-            </span>
-          )}
-          {session.git_branch && (
-            <span className="flex items-center gap-1">
-              <GitBranch className="h-3 w-3" />
-              <span className="font-mono text-xs truncate max-w-[120px]">{session.git_branch}</span>
-            </span>
-          )}
-        </div>
-      </div>
-    </Link>
+    <div className="flex-1 flex flex-col items-center justify-center text-center px-8">
+      <MousePointerClick className="h-10 w-10 text-muted-foreground/40 mb-3" />
+      <p className="text-sm font-medium text-muted-foreground">Select a session to view details</p>
+      <p className="text-xs text-muted-foreground/60 mt-1">
+        Choose a session from the list to see its overview, insights, and conversation.
+      </p>
+    </div>
   );
 }

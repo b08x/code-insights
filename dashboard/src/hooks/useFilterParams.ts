@@ -29,9 +29,29 @@ export function useFilterParams<T extends FilterConfig>(defaults: T) {
     [setSearchParams, defaults]
   );
 
+  const setFilters = useCallback(
+    (updates: Partial<T>) => {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          for (const [key, value] of Object.entries(updates)) {
+            if (value === defaults[key as keyof T]) {
+              next.delete(key);
+            } else {
+              next.set(key, value as string);
+            }
+          }
+          return next;
+        },
+        { replace: false }
+      );
+    },
+    [setSearchParams, defaults]
+  );
+
   const clearFilters = useCallback(() => {
     setSearchParams({}, { replace: true });
   }, [setSearchParams]);
 
-  return [filters, setFilter, clearFilters] as const;
+  return [filters, setFilter, setFilters, clearFilters] as const;
 }
