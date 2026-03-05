@@ -231,13 +231,6 @@ export interface SessionFacet {
   analysisVersion: string;
 }
 
-export interface ComputedFacets {
-  toolsUsed: string[];
-  dominantToolPattern: 'read-heavy' | 'edit-heavy' | 'bash-heavy' | 'balanced';
-  messageCount: number;
-  sessionDurationMinutes: number;
-}
-
 // === Reflect / Patterns types ===
 
 export type ReflectSection = 'friction-wins' | 'rules-skills' | 'working-style';

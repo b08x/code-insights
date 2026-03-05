@@ -56,9 +56,12 @@ export function normalizeFrictionCategory(category: string): string {
   }
   if (bestMatch) return bestMatch;
 
-  // 3. Substring match
+  // 3. Substring match — only if the shorter string is a significant portion of the longer
+  // to avoid false positives like "type" matching "type-error"
   for (const canonical of CANONICAL_FRICTION_CATEGORIES) {
-    if (lower.includes(canonical) || canonical.includes(lower)) {
+    const shorter = lower.length < canonical.length ? lower : canonical;
+    const longer = lower.length < canonical.length ? canonical : lower;
+    if (shorter.length >= 5 && longer.includes(shorter)) {
       return canonical;
     }
   }

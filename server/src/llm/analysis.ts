@@ -838,8 +838,8 @@ function saveFacetsToDb(
     facets.had_course_correction ? 1 : 0,
     facets.course_correction_reason,
     facets.iteration_count,
-    JSON.stringify(facets.friction_points || []),
-    JSON.stringify(facets.effective_patterns || []),
+    JSON.stringify(Array.isArray(facets.friction_points) ? facets.friction_points : []),
+    JSON.stringify(Array.isArray(facets.effective_patterns) ? facets.effective_patterns : []),
     analysisVersion
   );
 }

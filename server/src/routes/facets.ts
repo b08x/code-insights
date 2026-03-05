@@ -4,9 +4,11 @@ import { getDb } from '@code-insights/cli/db/client';
 import { isLLMConfigured } from '../llm/client.js';
 import { extractFacetsOnly } from '../llm/analysis.js';
 import type { SQLiteMessageRow, SessionData } from '../llm/analysis.js';
-import { normalizeFrictionCategory } from '../llm/friction-normalize.js';
+import { buildWhereClause, getAggregatedData } from './shared-aggregation.js';
 
 const app = new Hono();
+
+const MAX_BACKFILL_SESSIONS = 200;
 
 interface FacetRow {
   session_id: string;
@@ -21,14 +23,6 @@ interface FacetRow {
   analysis_version: string;
 }
 
-function buildPeriodFilter(period: string): string | null {
-  const now = new Date();
-  if (period === '7d') return new Date(now.getTime() - 7 * 86400000).toISOString();
-  if (period === '30d') return new Date(now.getTime() - 30 * 86400000).toISOString();
-  if (period === '90d') return new Date(now.getTime() - 90 * 86400000).toISOString();
-  return null; // 'all'
-}
-
 // GET /api/facets
 // Query params: project (project_id), period (7d|30d|90d|all), source (source_tool filter)
 // Returns: { facets, missingCount, totalSessions }
@@ -38,24 +32,7 @@ app.get('/', (c) => {
   const period = c.req.query('period') || '7d';
   const source = c.req.query('source');
 
-  const conditions: string[] = [];
-  const params: (string | number)[] = [];
-
-  const periodStart = buildPeriodFilter(period);
-  if (periodStart) {
-    conditions.push('s.started_at >= ?');
-    params.push(periodStart);
-  }
-  if (project) {
-    conditions.push('s.project_id = ?');
-    params.push(project);
-  }
-  if (source) {
-    conditions.push('s.source_tool = ?');
-    params.push(source);
-  }
-
-  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  const { where, params } = buildWhereClause(period, project, source);
 
   // Total sessions in scope
   const totalRow = db.prepare(
@@ -79,145 +56,17 @@ app.get('/', (c) => {
 
 // GET /api/facets/aggregated
 // Returns pre-aggregated friction categories and effective patterns for synthesis.
-// Uses json_each() to unpack JSON arrays stored in session_facets.friction_points
-// and session_facets.effective_patterns — aggregation done in SQL, not by LLM.
+// Uses the shared getAggregatedData function to avoid duplication with reflect routes.
 app.get('/aggregated', (c) => {
   const db = getDb();
   const project = c.req.query('project');
   const period = c.req.query('period') || '7d';
   const source = c.req.query('source');
 
-  const conditions: string[] = [];
-  const params: (string | number)[] = [];
+  const { where, params } = buildWhereClause(period, project, source);
+  const aggregated = getAggregatedData(db, where, params);
 
-  const periodStart = buildPeriodFilter(period);
-  if (periodStart) {
-    conditions.push('s.started_at >= ?');
-    params.push(periodStart);
-  }
-  if (project) {
-    conditions.push('s.project_id = ?');
-    params.push(project);
-  }
-  if (source) {
-    conditions.push('s.source_tool = ?');
-    params.push(source);
-  }
-
-  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-
-  // Friction point aggregation using json_each to unpack the stored JSON array.
-  // avg_severity maps text values to numeric weights (high=3, medium=2, low=1)
-  // so we can rank categories by combined frequency × severity.
-  const frictionCategories = db.prepare(`
-    SELECT
-      json_extract(je.value, '$.category') as category,
-      COUNT(*) as count,
-      AVG(CASE
-        WHEN json_extract(je.value, '$.severity') = 'high' THEN 3
-        WHEN json_extract(je.value, '$.severity') = 'medium' THEN 2
-        ELSE 1
-      END) as avg_severity,
-      json_group_array(json_extract(je.value, '$.description')) as examples
-    FROM session_facets sf
-    JOIN sessions s ON sf.session_id = s.id
-    CROSS JOIN json_each(sf.friction_points) je
-    ${where}
-    GROUP BY category
-    ORDER BY count DESC, avg_severity DESC
-  `).all(...params) as Array<{
-    category: string;
-    count: number;
-    avg_severity: number;
-    examples: string;
-  }>;
-
-  // Effective pattern aggregation — group identical descriptions across sessions
-  const effectivePatterns = db.prepare(`
-    SELECT
-      json_extract(je.value, '$.description') as description,
-      COUNT(*) as frequency,
-      AVG(json_extract(je.value, '$.confidence')) as avg_confidence
-    FROM session_facets sf
-    JOIN sessions s ON sf.session_id = s.id
-    CROSS JOIN json_each(sf.effective_patterns) je
-    ${where}
-    GROUP BY description
-    ORDER BY frequency DESC, avg_confidence DESC
-  `).all(...params) as Array<{
-    description: string;
-    frequency: number;
-    avg_confidence: number;
-  }>;
-
-  // Outcome distribution — indexed column, fast
-  const outcomeDistribution = db.prepare(`
-    SELECT outcome_satisfaction, COUNT(*) as count
-    FROM session_facets sf
-    JOIN sessions s ON sf.session_id = s.id
-    ${where}
-    GROUP BY outcome_satisfaction
-  `).all(...params) as Array<{ outcome_satisfaction: string; count: number }>;
-
-  // Workflow distribution — indexed column, fast; NULL rows excluded
-  const workflowDistribution = db.prepare(`
-    SELECT workflow_pattern, COUNT(*) as count
-    FROM session_facets sf
-    JOIN sessions s ON sf.session_id = s.id
-    ${where}
-    ${conditions.length > 0 ? 'AND' : 'WHERE'} sf.workflow_pattern IS NOT NULL
-    GROUP BY workflow_pattern
-  `).all(...params) as Array<{ workflow_pattern: string; count: number }>;
-
-  // Session character from sessions table (not facets)
-  const characterDistribution = db.prepare(`
-    SELECT session_character, COUNT(*) as count
-    FROM sessions s
-    ${where}
-    ${conditions.length > 0 ? 'AND' : 'WHERE'} s.session_character IS NOT NULL
-    GROUP BY session_character
-  `).all(...params) as Array<{ session_character: string; count: number }>;
-
-  // Parse examples from json_group_array output
-  const parsedFriction = frictionCategories.map(fc => ({
-    ...fc,
-    examples: JSON.parse(fc.examples) as string[],
-  }));
-
-  // Normalize friction categories via Levenshtein clustering
-  const normalizedFriction = new Map<string, { count: number; total_severity: number; examples: string[] }>();
-  for (const fc of parsedFriction) {
-    const normalized = normalizeFrictionCategory(fc.category);
-    const existing = normalizedFriction.get(normalized);
-    if (existing) {
-      existing.count += fc.count;
-      existing.total_severity += fc.avg_severity * fc.count;
-      existing.examples.push(...fc.examples);
-    } else {
-      normalizedFriction.set(normalized, {
-        count: fc.count,
-        total_severity: fc.avg_severity * fc.count,
-        examples: [...fc.examples],
-      });
-    }
-  }
-
-  const mergedFriction = Array.from(normalizedFriction.entries())
-    .map(([category, data]) => ({
-      category,
-      count: data.count,
-      avg_severity: data.total_severity / data.count,
-      examples: data.examples.slice(0, 10), // cap examples
-    }))
-    .sort((a, b) => b.count - a.count || b.avg_severity - a.avg_severity);
-
-  return c.json({
-    frictionCategories: mergedFriction,
-    effectivePatterns,
-    outcomeDistribution: Object.fromEntries(outcomeDistribution.map(o => [o.outcome_satisfaction, o.count])),
-    workflowDistribution: Object.fromEntries(workflowDistribution.map(w => [w.workflow_pattern, w.count])),
-    characterDistribution: Object.fromEntries(characterDistribution.map(ch => [ch.session_character, ch.count])),
-  });
+  return c.json(aggregated);
 });
 
 // POST /api/facets/backfill
@@ -232,6 +81,9 @@ app.post('/backfill', async (c) => {
   const body = await c.req.json<{ sessionIds?: string[] }>();
   if (!body.sessionIds || !Array.isArray(body.sessionIds) || body.sessionIds.length === 0) {
     return c.json({ error: 'sessionIds array required' }, 400);
+  }
+  if (body.sessionIds.length > MAX_BACKFILL_SESSIONS) {
+    return c.json({ error: `Maximum ${MAX_BACKFILL_SESSIONS} sessions per backfill request` }, 400);
   }
 
   const db = getDb();
@@ -252,7 +104,6 @@ app.post('/backfill', async (c) => {
 
       if (!session) {
         failed++;
-        // Still emit progress so the client can track the count
         await stream.writeSSE({
           event: 'progress',
           data: JSON.stringify({
@@ -265,10 +116,26 @@ app.post('/backfill', async (c) => {
         continue;
       }
 
-      const messages = db.prepare(
+      // Only load first 20 and last 20 messages for facet extraction
+      const firstMessages = db.prepare(
         `SELECT id, session_id, type, content, thinking, tool_calls, tool_results, usage, timestamp, parent_id
-         FROM messages WHERE session_id = ? ORDER BY timestamp ASC`
+         FROM messages WHERE session_id = ? ORDER BY timestamp ASC LIMIT 20`
       ).all(sessionId) as SQLiteMessageRow[];
+
+      const lastMessages = db.prepare(
+        `SELECT id, session_id, type, content, thinking, tool_calls, tool_results, usage, timestamp, parent_id
+         FROM messages WHERE session_id = ? ORDER BY timestamp DESC LIMIT 20`
+      ).all(sessionId) as SQLiteMessageRow[];
+
+      // Merge and deduplicate (for sessions with <= 40 messages, some overlap)
+      const seenIds = new Set<string>();
+      const messages: SQLiteMessageRow[] = [];
+      for (const msg of [...firstMessages, ...lastMessages.reverse()]) {
+        if (!seenIds.has(msg.id)) {
+          seenIds.add(msg.id);
+          messages.push(msg);
+        }
+      }
 
       const result = await extractFacetsOnly(session, messages, { signal: abortSignal });
       if (result.success) {

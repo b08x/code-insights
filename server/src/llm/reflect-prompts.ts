@@ -1,15 +1,6 @@
 // Synthesis prompts for the Reflect/Patterns feature.
 // These prompts receive pre-aggregated facet data and produce cross-session narratives.
 // LLMs synthesize — they don't count. All counting is done in code before calling these.
-//
-// CANONICAL_FRICTION_CATEGORIES is imported but not interpolated into synthesis prompts;
-// it's used by extraction prompts in prompts.ts. Kept here for future use if synthesis
-// prompts need category hints.
-
-import { CANONICAL_FRICTION_CATEGORIES } from './prompts.js';
-
-// Exported so callers can reference the canonical list if needed for filtering.
-export { CANONICAL_FRICTION_CATEGORIES };
 
 // --- Friction & Wins ---
 

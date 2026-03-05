@@ -41,15 +41,19 @@ async function fetchWithSSE(url: string, body: Record<string, unknown>, signal?:
         } else if (line.startsWith('data: ')) {
           currentData = line.slice(6);
         } else if (line === '' && currentEvent && currentData) {
-          const data = JSON.parse(currentData) as Record<string, unknown>;
+          try {
+            const data = JSON.parse(currentData) as Record<string, unknown>;
 
-          if (currentEvent === 'progress') {
-            spinner.text = (data.message as string) || 'Processing...';
-          } else if (currentEvent === 'complete') {
-            spinner.succeed('Analysis complete');
-            result = data;
-          } else if (currentEvent === 'error') {
-            spinner.fail((data.error as string) || 'Generation failed');
+            if (currentEvent === 'progress') {
+              spinner.text = (data.message as string) || 'Processing...';
+            } else if (currentEvent === 'complete') {
+              spinner.succeed('Analysis complete');
+              result = data;
+            } else if (currentEvent === 'error') {
+              spinner.fail((data.error as string) || 'Generation failed');
+            }
+          } catch {
+            // Skip malformed SSE events (e.g., truncated JSON from network issues)
           }
 
           currentEvent = '';

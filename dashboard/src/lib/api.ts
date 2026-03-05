@@ -283,19 +283,6 @@ export function fetchFacetSummary(params?: {
   return request<FacetSummary>(`/facets${qs}`);
 }
 
-export function fetchReflectResults(params?: {
-  project?: string;
-  period?: string;
-  source?: string;
-}) {
-  const q = new URLSearchParams();
-  if (params?.project) q.set('project', params.project);
-  if (params?.period) q.set('period', params.period);
-  if (params?.source) q.set('source', params.source);
-  const qs = q.toString() ? `?${q.toString()}` : '';
-  return request<FacetAggregation>(`/reflect/results${qs}`);
-}
-
 export async function reflectGenerateStream(
   params: {
     sections?: string[];

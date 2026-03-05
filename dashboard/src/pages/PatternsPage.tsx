@@ -1,6 +1,6 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { useFacetAggregation, useFacetSummary } from '@/hooks/useReflect';
-import { reflectGenerateStream, backfillFacetsStream } from '@/lib/api';
+import { reflectGenerateStream } from '@/lib/api';
 import { parseSSEStream } from '@/lib/sse';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -29,59 +29,74 @@ const rangeOptions: { value: PatternsRange; label: string }[] = [
   { value: 'all', label: 'All' },
 ];
 
-// Suppress unused import warning — backfillFacetsStream is available for callers
-// that want to trigger manual backfill outside this component.
-void backfillFacetsStream;
-
 export default function PatternsPage() {
   const [range, setRange] = useState<PatternsRange>('30d');
   const [activeTab, setActiveTab] = useState<ActiveTab>('friction-wins');
   const [generating, setGenerating] = useState(false);
   const [generationProgress, setGenerationProgress] = useState('');
   const [reflectResults, setReflectResults] = useState<Record<string, unknown> | null>(null);
-  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const { tooltipBg, tooltipBorder } = useThemeColors();
+  const abortRef = useRef<AbortController | null>(null);
 
   const { data: aggregation, isLoading, isError, refetch } = useFacetAggregation({ period: range });
   const { data: summary } = useFacetSummary({ period: range });
 
+  // Abort in-flight generation on unmount
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+    };
+  }, []);
+
   const handleGenerate = useCallback(async () => {
+    // Abort any previous in-flight request
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     setGenerating(true);
     setGenerationProgress('Starting...');
     setReflectResults(null);
 
     try {
-      const abortController = new AbortController();
       const response = await reflectGenerateStream(
         { period: range },
-        abortController.signal
+        controller.signal
       );
 
       if (!response.body) throw new Error('No response body');
 
       for await (const event of parseSSEStream(response.body)) {
         if (event.event === 'progress') {
-          const data = JSON.parse(event.data) as { message?: string };
-          setGenerationProgress(data.message || 'Processing...');
+          try {
+            const data = JSON.parse(event.data) as { message?: string };
+            setGenerationProgress(data.message || 'Processing...');
+          } catch { /* skip malformed event */ }
         } else if (event.event === 'complete') {
-          const data = JSON.parse(event.data) as { results?: Record<string, unknown> };
-          setReflectResults(data.results ?? null);
+          try {
+            const data = JSON.parse(event.data) as { results?: Record<string, unknown> };
+            setReflectResults(data.results ?? null);
+          } catch { /* skip malformed event */ }
         } else if (event.event === 'error') {
-          const data = JSON.parse(event.data) as { error?: string };
-          setGenerationProgress(`Error: ${data.error ?? 'Unknown error'}`);
+          try {
+            const data = JSON.parse(event.data) as { error?: string };
+            setGenerationProgress(`Error: ${data.error ?? 'Unknown error'}`);
+          } catch { /* skip malformed event */ }
         }
       }
     } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') return;
       setGenerationProgress(err instanceof Error ? err.message : 'Generation failed');
     } finally {
       setGenerating(false);
     }
   }, [range]);
 
-  const handleCopy = useCallback((text: string, index: number) => {
+  const handleCopy = useCallback((text: string, key: string) => {
     navigator.clipboard.writeText(text);
-    setCopiedIndex(index);
-    setTimeout(() => setCopiedIndex(null), 2000);
+    setCopiedKey(key);
+    setTimeout(() => setCopiedKey(null), 2000);
   }, []);
 
   if (isLoading) {
@@ -131,6 +146,12 @@ export default function PatternsPage() {
   const frictionWinsResult = reflectResults?.['friction-wins'] as Record<string, unknown> | undefined;
   const rulesSkillsResult = reflectResults?.['rules-skills'] as Record<string, unknown> | undefined;
   const workingStyleResult = reflectResults?.['working-style'] as Record<string, unknown> | undefined;
+
+  const tabs = [
+    { id: 'friction-wins' as const, label: 'Friction & Wins', icon: AlertTriangle },
+    { id: 'rules-skills' as const, label: 'Rules & Skills', icon: Shield },
+    { id: 'working-style' as const, label: 'Working Style', icon: Brain },
+  ];
 
   return (
     <div className="space-y-6 p-4 lg:p-6">
@@ -197,15 +218,15 @@ export default function PatternsPage() {
         </Card>
       )}
 
-      {/* Tab navigation */}
-      <div className="flex border-b">
-        {[
-          { id: 'friction-wins' as const, label: 'Friction & Wins', icon: AlertTriangle },
-          { id: 'rules-skills' as const, label: 'Rules & Skills', icon: Shield },
-          { id: 'working-style' as const, label: 'Working Style', icon: Brain },
-        ].map(tab => (
+      {/* Tab navigation with ARIA roles */}
+      <div role="tablist" aria-label="Pattern analysis sections" className="flex border-b">
+        {tabs.map(tab => (
           <button
             key={tab.id}
+            type="button"
+            role="tab"
+            aria-selected={activeTab === tab.id}
+            aria-controls={`tabpanel-${tab.id}`}
             onClick={() => setActiveTab(tab.id)}
             className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
               activeTab === tab.id
@@ -221,7 +242,7 @@ export default function PatternsPage() {
 
       {/* Tab content */}
       {activeTab === 'friction-wins' && (
-        <div className="space-y-6">
+        <div role="tabpanel" id="tabpanel-friction-wins" className="space-y-6">
           {/* Narrative from LLM */}
           {frictionWinsResult?.narrative && (
             <Card>
@@ -290,7 +311,7 @@ export default function PatternsPage() {
       )}
 
       {activeTab === 'rules-skills' && (
-        <div className="space-y-6">
+        <div role="tabpanel" id="tabpanel-rules-skills" className="space-y-6">
           {rulesSkillsResult ? (
             <>
               {/* CLAUDE.md Rules */}
@@ -309,9 +330,9 @@ export default function PatternsPage() {
                             variant="ghost"
                             size="icon"
                             className="h-8 w-8 shrink-0"
-                            onClick={() => handleCopy(r.rule, i)}
+                            onClick={() => handleCopy(r.rule, `rule-${i}`)}
                           >
-                            {copiedIndex === i ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+                            {copiedKey === `rule-${i}` ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
                           </Button>
                         </div>
                         <p className="text-xs text-muted-foreground mt-2">{r.rationale}</p>
@@ -341,9 +362,9 @@ export default function PatternsPage() {
                             variant="ghost"
                             size="icon"
                             className="h-8 w-8 shrink-0"
-                            onClick={() => handleCopy(s.content, 100 + i)}
+                            onClick={() => handleCopy(s.content, `skill-${i}`)}
                           >
-                            {copiedIndex === 100 + i ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+                            {copiedKey === `skill-${i}` ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
                           </Button>
                         </div>
                         <pre className="mt-3 rounded bg-muted p-3 text-xs overflow-x-auto whitespace-pre-wrap">{s.content}</pre>
@@ -372,9 +393,9 @@ export default function PatternsPage() {
                             variant="ghost"
                             size="icon"
                             className="h-8 w-8 shrink-0"
-                            onClick={() => handleCopy(h.command, 200 + i)}
+                            onClick={() => handleCopy(h.command, `hook-${i}`)}
                           >
-                            {copiedIndex === 200 + i ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+                            {copiedKey === `hook-${i}` ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
                           </Button>
                         </div>
                         <p className="text-xs text-muted-foreground mt-2">{h.rationale}</p>
@@ -395,7 +416,7 @@ export default function PatternsPage() {
       )}
 
       {activeTab === 'working-style' && (
-        <div className="space-y-6">
+        <div role="tabpanel" id="tabpanel-working-style" className="space-y-6">
           {/* Narrative from LLM */}
           {workingStyleResult?.narrative && (
             <Card>
