@@ -4,6 +4,7 @@ import { getDb } from '@code-insights/cli/db/client';
 import { jsonrepair } from 'jsonrepair';
 import { createLLMClient, isLLMConfigured } from '../llm/client.js';
 import { extractJsonPayload } from '../llm/prompts.js';
+import { normalizeFrictionCategory } from '../llm/friction-normalize.js';
 import {
   FRICTION_WINS_SYSTEM_PROMPT,
   generateFrictionWinsPrompt,
@@ -132,11 +133,40 @@ function getAggregatedData(
 
   const frictionTotal = frictionCategories.reduce((sum, fc) => sum + fc.count, 0);
 
+  // Parse examples from json_group_array output, then normalize via Levenshtein clustering
+  const parsedFriction = frictionCategories.map(fc => ({
+    ...fc,
+    examples: JSON.parse(fc.examples) as string[],
+  }));
+
+  const normalizedFriction = new Map<string, { count: number; total_severity: number; examples: string[] }>();
+  for (const fc of parsedFriction) {
+    const normalized = normalizeFrictionCategory(fc.category);
+    const existing = normalizedFriction.get(normalized);
+    if (existing) {
+      existing.count += fc.count;
+      existing.total_severity += fc.avg_severity * fc.count;
+      existing.examples.push(...fc.examples);
+    } else {
+      normalizedFriction.set(normalized, {
+        count: fc.count,
+        total_severity: fc.avg_severity * fc.count,
+        examples: [...fc.examples],
+      });
+    }
+  }
+
+  const mergedFriction = Array.from(normalizedFriction.entries())
+    .map(([category, data]) => ({
+      category,
+      count: data.count,
+      avg_severity: data.total_severity / data.count,
+      examples: data.examples.slice(0, 10), // cap examples
+    }))
+    .sort((a, b) => b.count - a.count || b.avg_severity - a.avg_severity);
+
   return {
-    frictionCategories: frictionCategories.map(fc => ({
-      ...fc,
-      examples: JSON.parse(fc.examples) as string[],
-    })),
+    frictionCategories: mergedFriction,
     effectivePatterns,
     outcomeDistribution: Object.fromEntries(outcomeDistribution.map(o => [o.outcome_satisfaction, o.count])),
     workflowDistribution: Object.fromEntries(workflowDistribution.map(w => [w.workflow_pattern, w.count])),

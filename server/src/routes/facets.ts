@@ -4,6 +4,7 @@ import { getDb } from '@code-insights/cli/db/client';
 import { isLLMConfigured } from '../llm/client.js';
 import { extractFacetsOnly } from '../llm/analysis.js';
 import type { SQLiteMessageRow, SessionData } from '../llm/analysis.js';
+import { normalizeFrictionCategory } from '../llm/friction-normalize.js';
 
 const app = new Hono();
 
@@ -183,8 +184,35 @@ app.get('/aggregated', (c) => {
     examples: JSON.parse(fc.examples) as string[],
   }));
 
+  // Normalize friction categories via Levenshtein clustering
+  const normalizedFriction = new Map<string, { count: number; total_severity: number; examples: string[] }>();
+  for (const fc of parsedFriction) {
+    const normalized = normalizeFrictionCategory(fc.category);
+    const existing = normalizedFriction.get(normalized);
+    if (existing) {
+      existing.count += fc.count;
+      existing.total_severity += fc.avg_severity * fc.count;
+      existing.examples.push(...fc.examples);
+    } else {
+      normalizedFriction.set(normalized, {
+        count: fc.count,
+        total_severity: fc.avg_severity * fc.count,
+        examples: [...fc.examples],
+      });
+    }
+  }
+
+  const mergedFriction = Array.from(normalizedFriction.entries())
+    .map(([category, data]) => ({
+      category,
+      count: data.count,
+      avg_severity: data.total_severity / data.count,
+      examples: data.examples.slice(0, 10), // cap examples
+    }))
+    .sort((a, b) => b.count - a.count || b.avg_severity - a.avg_severity);
+
   return c.json({
-    frictionCategories: parsedFriction,
+    frictionCategories: mergedFriction,
     effectivePatterns,
     outcomeDistribution: Object.fromEntries(outcomeDistribution.map(o => [o.outcome_satisfaction, o.count])),
     workflowDistribution: Object.fromEntries(workflowDistribution.map(w => [w.workflow_pattern, w.count])),
