@@ -7,6 +7,7 @@
 //   - Uses session's existing project_id from SQLite (not re-derived hash)
 
 import { randomUUID } from 'crypto';
+import { jsonrepair } from 'jsonrepair';
 import { getDb } from '@code-insights/cli/db/client';
 import { createLLMClient, isLLMConfigured } from './client.js';
 import {
@@ -17,6 +18,9 @@ import {
   PROMPT_QUALITY_SYSTEM_PROMPT,
   generatePromptQualityPrompt,
   parsePromptQualityResponse,
+  FACET_ONLY_SYSTEM_PROMPT,
+  generateFacetOnlyPrompt,
+  extractJsonPayload,
   type SQLiteMessageRow,
   type AnalysisResponse,
   type PromptQualityResponse,
@@ -162,6 +166,47 @@ export async function analyzeSession(
       }
 
       analysisResponse = mergeAnalysisResponses(chunkResponses);
+
+      // Chunked sessions: extract facets separately using lightweight prompt
+      // (facets are holistic — can't be merged across chunks)
+      if (!analysisResponse.facets) {
+        try {
+          const firstMsgs = formatMessagesForAnalysis(messages.slice(0, 20));
+          const lastMsgs = formatMessagesForAnalysis(messages.slice(-20));
+          const facetPrompt = generateFacetOnlyPrompt(
+            session.project_name,
+            session.summary,
+            firstMsgs,
+            lastMsgs
+          );
+
+          const facetResponse = await client.chat([
+            { role: 'system', content: FACET_ONLY_SYSTEM_PROMPT },
+            { role: 'user', content: facetPrompt },
+          ], { signal: options?.signal });
+
+          if (facetResponse.usage) {
+            totalInputTokens += facetResponse.usage.inputTokens;
+            totalOutputTokens += facetResponse.usage.outputTokens;
+          }
+
+          const facetJson = extractJsonPayload(facetResponse.content);
+          if (facetJson) {
+            try {
+              analysisResponse.facets = JSON.parse(facetJson);
+            } catch {
+              // jsonrepair fallback
+              try {
+                analysisResponse.facets = JSON.parse(jsonrepair(facetJson));
+              } catch {
+                // Facet extraction failed for chunked session — non-fatal
+              }
+            }
+          }
+        } catch {
+          // Facet extraction failed for chunked session — non-fatal, continue
+        }
+      }
     } else {
       options?.onProgress?.({ phase: 'analyzing', currentChunk: 1, totalChunks: 1 });
       const prompt = generateSessionAnalysisPrompt(
@@ -205,6 +250,11 @@ export async function analyzeSession(
       excludeTypes: ['prompt_quality'],
       excludeIds: insights.map(i => i.id),
     });
+
+    // Save facets if extracted
+    if (analysisResponse.facets) {
+      saveFacetsToDb(session.id, analysisResponse.facets, ANALYSIS_VERSION);
+    }
 
     // Update session character if LLM classified it
     if (analysisResponse.session_character) {
@@ -764,4 +814,93 @@ function deleteSessionInsights(sessionId: string, opts: DeleteOptions): void {
   }
 
   db.prepare(`DELETE FROM insights WHERE ${conditions.join(' AND ')}`).run(...params);
+}
+
+/**
+ * Save extracted facets to the session_facets table.
+ */
+function saveFacetsToDb(
+  sessionId: string,
+  facets: NonNullable<AnalysisResponse['facets']>,
+  analysisVersion: string
+): void {
+  const db = getDb();
+  db.prepare(`
+    INSERT OR REPLACE INTO session_facets
+    (session_id, outcome_satisfaction, workflow_pattern, had_course_correction,
+     course_correction_reason, iteration_count, friction_points, effective_patterns,
+     analysis_version)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    sessionId,
+    facets.outcome_satisfaction,
+    facets.workflow_pattern,
+    facets.had_course_correction ? 1 : 0,
+    facets.course_correction_reason,
+    facets.iteration_count,
+    JSON.stringify(facets.friction_points || []),
+    JSON.stringify(facets.effective_patterns || []),
+    analysisVersion
+  );
+}
+
+/**
+ * Extract facets only for a session that already has insights (backfill).
+ * Uses lightweight prompt with summary + first/last 20 messages.
+ */
+export async function extractFacetsOnly(
+  session: SessionData,
+  messages: SQLiteMessageRow[],
+  options?: { signal?: AbortSignal }
+): Promise<{ success: boolean; error?: string }> {
+  if (!isLLMConfigured()) {
+    return { success: false, error: 'LLM not configured.' };
+  }
+
+  if (messages.length === 0) {
+    return { success: false, error: 'No messages found.' };
+  }
+
+  try {
+    const client = createLLMClient();
+    const firstMsgs = formatMessagesForAnalysis(messages.slice(0, 20));
+    const lastMsgs = formatMessagesForAnalysis(messages.slice(-20));
+    const prompt = generateFacetOnlyPrompt(
+      session.project_name,
+      session.summary,
+      firstMsgs,
+      lastMsgs
+    );
+
+    const response = await client.chat([
+      { role: 'system', content: FACET_ONLY_SYSTEM_PROMPT },
+      { role: 'user', content: prompt },
+    ], { signal: options?.signal });
+
+    const jsonPayload = extractJsonPayload(response.content);
+    if (!jsonPayload) {
+      return { success: false, error: 'No JSON in facet response.' };
+    }
+
+    let facets: AnalysisResponse['facets'];
+    try {
+      facets = JSON.parse(jsonPayload);
+    } catch {
+      facets = JSON.parse(jsonrepair(jsonPayload));
+    }
+
+    if (facets) {
+      saveFacetsToDb(session.id, facets, ANALYSIS_VERSION);
+    }
+
+    return { success: true };
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      return { success: false, error: 'Cancelled' };
+    }
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Facet extraction failed',
+    };
+  }
 }
