@@ -571,6 +571,116 @@ describe('Database read/write operations', () => {
   });
 
   // ────────────────────────────────────────────────────
+  // reflect_snapshots CRUD (direct SQL — no abstraction layer)
+  // ────────────────────────────────────────────────────
+
+  describe('reflect_snapshots', () => {
+    const insertSnapshot = (overrides: Partial<{
+      period: string;
+      projectId: string;
+      resultsJson: string;
+      generatedAt: string;
+      windowStart: string | null;
+      windowEnd: string;
+      sessionCount: number;
+      facetCount: number;
+    }> = {}) => {
+      const defaults = {
+        period: '30d',
+        projectId: '__all__',
+        resultsJson: JSON.stringify({ 'friction-wins': { narrative: 'test' } }),
+        generatedAt: '2025-06-15T10:00:00Z',
+        windowStart: '2025-05-16T10:00:00Z',
+        windowEnd: '2025-06-15T10:00:00Z',
+        sessionCount: 25,
+        facetCount: 100,
+      };
+      const d = { ...defaults, ...overrides };
+      testDb.prepare(`
+        INSERT INTO reflect_snapshots (period, project_id, results_json, generated_at, window_start, window_end, session_count, facet_count)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(d.period, d.projectId, d.resultsJson, d.generatedAt, d.windowStart, d.windowEnd, d.sessionCount, d.facetCount);
+    };
+
+    it('inserts and reads a snapshot', () => {
+      insertSnapshot();
+
+      const row = testDb.prepare(
+        'SELECT * FROM reflect_snapshots WHERE period = ? AND project_id = ?'
+      ).get('30d', '__all__') as Record<string, unknown>;
+
+      expect(row).toBeDefined();
+      expect(row.period).toBe('30d');
+      expect(row.project_id).toBe('__all__');
+      expect(row.session_count).toBe(25);
+      expect(row.facet_count).toBe(100);
+
+      const parsed = JSON.parse(row.results_json as string);
+      expect(parsed['friction-wins'].narrative).toBe('test');
+    });
+
+    it('returns undefined for non-existent snapshot', () => {
+      const row = testDb.prepare(
+        'SELECT * FROM reflect_snapshots WHERE period = ? AND project_id = ?'
+      ).get('7d', '__all__');
+
+      expect(row).toBeUndefined();
+    });
+
+    it('upsert overwrites existing snapshot for same key', () => {
+      insertSnapshot({ sessionCount: 20 });
+      // Upsert with new data
+      testDb.prepare(`
+        INSERT INTO reflect_snapshots (period, project_id, results_json, generated_at, window_start, window_end, session_count, facet_count)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(period, project_id) DO UPDATE SET
+          results_json = excluded.results_json,
+          generated_at = excluded.generated_at,
+          window_start = excluded.window_start,
+          window_end = excluded.window_end,
+          session_count = excluded.session_count,
+          facet_count = excluded.facet_count
+      `).run('30d', '__all__', '{"updated":true}', '2025-06-16T10:00:00Z', '2025-05-17T10:00:00Z', '2025-06-16T10:00:00Z', 35, 150);
+
+      const rows = testDb.prepare('SELECT * FROM reflect_snapshots').all();
+      expect(rows).toHaveLength(1);
+
+      const row = rows[0] as Record<string, unknown>;
+      expect(row.session_count).toBe(35);
+      expect(row.results_json).toBe('{"updated":true}');
+    });
+
+    it('stores separate snapshots per period+project combo', () => {
+      insertSnapshot({ period: '30d', projectId: '__all__' });
+      insertSnapshot({ period: '7d', projectId: '__all__' });
+      insertSnapshot({ period: '30d', projectId: 'proj-123' });
+
+      const rows = testDb.prepare('SELECT * FROM reflect_snapshots').all();
+      expect(rows).toHaveLength(3);
+    });
+
+    it('is cleared by DELETE FROM reflect_snapshots (reset flow)', () => {
+      insertSnapshot({ period: '30d' });
+      insertSnapshot({ period: '7d' });
+
+      testDb.prepare('DELETE FROM reflect_snapshots').run();
+
+      const rows = testDb.prepare('SELECT * FROM reflect_snapshots').all();
+      expect(rows).toEqual([]);
+    });
+
+    it('stores null window_start for all-time period', () => {
+      insertSnapshot({ period: 'all', windowStart: null });
+
+      const row = testDb.prepare(
+        'SELECT window_start FROM reflect_snapshots WHERE period = ?'
+      ).get('all') as { window_start: string | null };
+
+      expect(row.window_start).toBeNull();
+    });
+  });
+
+  // ────────────────────────────────────────────────────
   // getProjectList
   // ────────────────────────────────────────────────────
 

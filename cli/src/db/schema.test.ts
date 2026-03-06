@@ -33,6 +33,23 @@ describe('SCHEMA_SQL', () => {
     db.close();
   });
 
+  it('does NOT create migration-only tables (those live in applyVN)', () => {
+    const db = new Database(':memory:');
+    db.exec(SCHEMA_SQL);
+
+    const tables = db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
+      .all() as Array<{ name: string }>;
+
+    const tableNames = tables.map((t) => t.name);
+
+    // These tables are created by migrations, not SCHEMA_SQL
+    expect(tableNames).not.toContain('session_facets');
+    expect(tableNames).not.toContain('reflect_snapshots');
+
+    db.close();
+  });
+
   it('is idempotent — executing twice does not error (IF NOT EXISTS)', () => {
     const db = new Database(':memory:');
     db.exec(SCHEMA_SQL);
@@ -118,6 +135,123 @@ describe('runMigrations', () => {
 
     const rows = db.prepare('SELECT * FROM schema_version').all();
     expect(rows).toHaveLength(CURRENT_SCHEMA_VERSION);
+
+    db.close();
+  });
+
+  // ────────────────────────────────────────────────────
+  // V4 migration: reflect_snapshots table
+  // ────────────────────────────────────────────────────
+
+  it('V4 creates reflect_snapshots table', () => {
+    const db = new Database(':memory:');
+    runMigrations(db);
+
+    const tables = db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
+      .all() as Array<{ name: string }>;
+
+    expect(tables.map(t => t.name)).toContain('reflect_snapshots');
+
+    db.close();
+  });
+
+  it('V4 reflect_snapshots has correct columns', () => {
+    const db = new Database(':memory:');
+    runMigrations(db);
+
+    const columns = db
+      .prepare("PRAGMA table_info('reflect_snapshots')")
+      .all() as Array<{ name: string; type: string; notnull: number; pk: number }>;
+
+    const colNames = columns.map(c => c.name);
+    expect(colNames).toContain('period');
+    expect(colNames).toContain('project_id');
+    expect(colNames).toContain('results_json');
+    expect(colNames).toContain('generated_at');
+    expect(colNames).toContain('window_start');
+    expect(colNames).toContain('window_end');
+    expect(colNames).toContain('session_count');
+    expect(colNames).toContain('facet_count');
+
+    db.close();
+  });
+
+  it('V4 reflect_snapshots has composite primary key (period, project_id)', () => {
+    const db = new Database(':memory:');
+    runMigrations(db);
+
+    const columns = db
+      .prepare("PRAGMA table_info('reflect_snapshots')")
+      .all() as Array<{ name: string; pk: number }>;
+
+    const pkColumns = columns.filter(c => c.pk > 0).sort((a, b) => a.pk - b.pk);
+    expect(pkColumns).toHaveLength(2);
+    expect(pkColumns[0].name).toBe('period');
+    expect(pkColumns[1].name).toBe('project_id');
+
+    db.close();
+  });
+
+  it('V4 reflect_snapshots supports upsert on composite PK', () => {
+    const db = new Database(':memory:');
+    runMigrations(db);
+
+    const insert = db.prepare(`
+      INSERT INTO reflect_snapshots (period, project_id, results_json, generated_at, window_start, window_end, session_count, facet_count)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(period, project_id) DO UPDATE SET
+        results_json = excluded.results_json,
+        generated_at = excluded.generated_at,
+        session_count = excluded.session_count,
+        facet_count = excluded.facet_count
+    `);
+
+    // Insert initial snapshot
+    insert.run('30d', '__all__', '{"a":1}', '2025-06-15T10:00:00Z', '2025-05-16T10:00:00Z', '2025-06-15T10:00:00Z', 25, 100);
+
+    // Upsert with updated data
+    insert.run('30d', '__all__', '{"a":2}', '2025-06-16T10:00:00Z', '2025-05-17T10:00:00Z', '2025-06-16T10:00:00Z', 30, 120);
+
+    const rows = db.prepare('SELECT * FROM reflect_snapshots').all() as Array<{ results_json: string; session_count: number }>;
+    expect(rows).toHaveLength(1);
+    expect(rows[0].results_json).toBe('{"a":2}');
+    expect(rows[0].session_count).toBe(30);
+
+    db.close();
+  });
+
+  it('V4 reflect_snapshots allows different period+project combos', () => {
+    const db = new Database(':memory:');
+    runMigrations(db);
+
+    const insert = db.prepare(`
+      INSERT INTO reflect_snapshots (period, project_id, results_json, generated_at, window_start, window_end, session_count, facet_count)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    insert.run('30d', '__all__', '{}', '2025-06-15T10:00:00Z', null, '2025-06-15T10:00:00Z', 25, 100);
+    insert.run('7d', '__all__', '{}', '2025-06-15T10:00:00Z', null, '2025-06-15T10:00:00Z', 10, 50);
+    insert.run('30d', 'proj-123', '{}', '2025-06-15T10:00:00Z', null, '2025-06-15T10:00:00Z', 15, 75);
+
+    const rows = db.prepare('SELECT * FROM reflect_snapshots').all();
+    expect(rows).toHaveLength(3);
+
+    db.close();
+  });
+
+  it('V4 reflect_snapshots window_start is nullable', () => {
+    const db = new Database(':memory:');
+    runMigrations(db);
+
+    // 'all' period has no window_start
+    db.prepare(`
+      INSERT INTO reflect_snapshots (period, project_id, results_json, generated_at, window_start, window_end, session_count, facet_count)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run('all', '__all__', '{}', '2025-06-15T10:00:00Z', null, '2025-06-15T10:00:00Z', 50, 200);
+
+    const row = db.prepare('SELECT window_start FROM reflect_snapshots WHERE period = ?').get('all') as { window_start: string | null };
+    expect(row.window_start).toBeNull();
 
     db.close();
   });
