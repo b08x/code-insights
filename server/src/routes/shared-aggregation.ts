@@ -61,6 +61,7 @@ export interface AggregatedData {
   characterDistribution: Record<string, number>;
   totalSessions: number;
   frictionTotal: number;
+  totalAllSessions: number;  // all sessions in scope (not just those with facets)
 }
 
 /**
@@ -133,6 +134,10 @@ export function getAggregatedData(
     `SELECT COUNT(*) as count FROM session_facets sf JOIN sessions s ON sf.session_id = s.id ${where}`
   ).get(...params) as { count: number };
 
+  const totalAllRow = db.prepare(
+    `SELECT COUNT(*) as count FROM sessions s ${where}`
+  ).get(...params) as { count: number };
+
   const frictionTotal = frictionCategories.reduce((sum, fc) => sum + fc.count, 0);
 
   // Parse examples from json_group_array output, then normalize via Levenshtein clustering
@@ -175,5 +180,6 @@ export function getAggregatedData(
     characterDistribution: Object.fromEntries(characterDistribution.map(ch => [ch.session_character, ch.count])),
     totalSessions: totalRow.count,
     frictionTotal,
+    totalAllSessions: totalAllRow.count,
   };
 }

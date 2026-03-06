@@ -6,4 +6,4 @@ export { useDashboardStats } from './useAnalytics';
 export { useAnalyzeSession } from './useAnalysis';
 export { useLlmConfig, useSaveLlmConfig } from './useConfig';
 export { useExportMarkdown } from './useExport';
-export { useFacetAggregation, useFacetSummary } from './useReflect';
+export { useFacetAggregation, useReflectSnapshot } from './useReflect';

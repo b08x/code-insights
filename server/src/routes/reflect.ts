@@ -12,10 +12,12 @@ import {
   WORKING_STYLE_SYSTEM_PROMPT,
   generateWorkingStylePrompt,
 } from '../llm/reflect-prompts.js';
-import { buildWhereClause, getAggregatedData } from './shared-aggregation.js';
+import { buildWhereClause, buildPeriodFilter, getAggregatedData } from './shared-aggregation.js';
 import type { ReflectSection } from '@code-insights/cli/types';
 
 const app = new Hono();
+
+const MIN_FACETS_FOR_REFLECT = 20;
 
 const ALL_SECTIONS: ReflectSection[] = ['friction-wins', 'rules-skills', 'working-style'];
 
@@ -79,6 +81,19 @@ app.post('/generate', async (c) => {
         await stream.writeSSE({
           event: 'error',
           data: JSON.stringify({ error: 'No sessions with facets found. Run analysis first.' }),
+        });
+        return;
+      }
+
+      if (aggregated.totalSessions < MIN_FACETS_FOR_REFLECT) {
+        await stream.writeSSE({
+          event: 'error',
+          data: JSON.stringify({
+            error: `Need at least ${MIN_FACETS_FOR_REFLECT} analyzed sessions for meaningful pattern synthesis. Currently have ${aggregated.totalSessions}. Run session analysis on more sessions first.`,
+            code: 'INSUFFICIENT_FACETS',
+            current: aggregated.totalSessions,
+            required: MIN_FACETS_FOR_REFLECT,
+          }),
         });
         return;
       }
@@ -159,6 +174,35 @@ app.post('/generate', async (c) => {
         }
       }
 
+      // Only save snapshot if the request was not aborted mid-generation.
+      // Saving partial results would cause stale/incomplete data to auto-load on next visit.
+      if (!c.req.raw.signal.aborted) {
+        const windowEnd = new Date().toISOString();
+        const windowStart = buildPeriodFilter(period);
+        const projectKey = body.project || '__all__';
+
+        db.prepare(`
+          INSERT INTO reflect_snapshots (period, project_id, results_json, generated_at, window_start, window_end, session_count, facet_count)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(period, project_id) DO UPDATE SET
+            results_json = excluded.results_json,
+            generated_at = excluded.generated_at,
+            window_start = excluded.window_start,
+            window_end = excluded.window_end,
+            session_count = excluded.session_count,
+            facet_count = excluded.facet_count
+        `).run(
+          period,
+          projectKey,
+          JSON.stringify(results),
+          windowEnd,
+          windowStart,
+          windowEnd,
+          aggregated.totalSessions,
+          aggregated.frictionTotal
+        );
+      }
+
       await stream.writeSSE({
         event: 'complete',
         data: JSON.stringify({ results }),
@@ -186,6 +230,52 @@ app.get('/results', (c) => {
   const aggregated = getAggregatedData(db, where, params);
 
   return c.json(aggregated);
+});
+
+// GET /api/reflect/snapshot
+// Returns cached reflect results for a given period/project combo.
+app.get('/snapshot', (c) => {
+  const db = getDb();
+  const period = c.req.query('period') || '30d';
+  const project = c.req.query('project') || '__all__';
+
+  const row = db.prepare(
+    `SELECT * FROM reflect_snapshots WHERE period = ? AND project_id = ?`
+  ).get(period, project) as {
+    period: string;
+    project_id: string;
+    results_json: string;
+    generated_at: string;
+    window_start: string | null;
+    window_end: string;
+    session_count: number;
+    facet_count: number;
+  } | undefined;
+
+  if (!row) {
+    return c.json({ snapshot: null });
+  }
+
+  let results: unknown;
+  try {
+    results = JSON.parse(row.results_json);
+  } catch {
+    // Corrupted snapshot data — treat as if no snapshot exists
+    return c.json({ snapshot: null });
+  }
+
+  return c.json({
+    snapshot: {
+      period: row.period,
+      projectId: row.project_id,
+      results,
+      generatedAt: row.generated_at,
+      windowStart: row.window_start,
+      windowEnd: row.window_end,
+      sessionCount: row.session_count,
+      facetCount: row.facet_count,
+    },
+  });
 });
 
 export default app;

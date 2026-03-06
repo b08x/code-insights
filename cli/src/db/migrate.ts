@@ -8,6 +8,7 @@ import { SCHEMA_SQL, CURRENT_SCHEMA_VERSION } from './schema.js';
  * Version 1: Initial schema (projects, sessions, messages, insights, usage_stats)
  * Version 2: Add compound index on insights(confidence DESC, timestamp DESC) for depth-ordered export queries
  * Version 3: Add session_facets table for cross-session analysis
+ * Version 4: Add reflect_snapshots table for caching LLM-generated synthesis results
  */
 export function runMigrations(db: Database.Database): void {
   // Create schema_version table first if it doesn't exist.
@@ -31,6 +32,10 @@ export function runMigrations(db: Database.Database): void {
 
   if (currentVersion < 3) {
     applyV3(db);
+  }
+
+  if (currentVersion < 4) {
+    applyV4(db);
   }
 }
 
@@ -69,4 +74,22 @@ function applyV3(db: Database.Database): void {
   `);
 
   db.prepare('INSERT OR IGNORE INTO schema_version (version) VALUES (?)').run(3);
+}
+
+function applyV4(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS reflect_snapshots (
+      period        TEXT NOT NULL,
+      project_id    TEXT NOT NULL DEFAULT '__all__',
+      results_json  TEXT NOT NULL,
+      generated_at  TEXT NOT NULL,
+      window_start  TEXT,
+      window_end    TEXT NOT NULL,
+      session_count INTEGER NOT NULL,
+      facet_count   INTEGER NOT NULL,
+      PRIMARY KEY (period, project_id)
+    );
+  `);
+
+  db.prepare('INSERT OR IGNORE INTO schema_version (version) VALUES (?)').run(4);
 }

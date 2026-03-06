@@ -1,5 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { useFacetAggregation, useFacetSummary } from '@/hooks/useReflect';
+import { useQueryClient } from '@tanstack/react-query';
+import { useProjects } from '@/hooks/useProjects';
+import { useFacetAggregation, useReflectSnapshot } from '@/hooks/useReflect';
 import { reflectGenerateStream } from '@/lib/api';
 import { parseSSEStream } from '@/lib/sse';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -19,6 +21,21 @@ import {
 // CHART_COLORS.models is the shared hex color array for multi-series charts
 const PALETTE = CHART_COLORS.models;
 
+function formatRelativeDate(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
+function formatShortDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
 type PatternsRange = '7d' | '30d' | '90d' | 'all';
 type ActiveTab = 'friction-wins' | 'rules-skills' | 'working-style';
 
@@ -31,6 +48,7 @@ const rangeOptions: { value: PatternsRange; label: string }[] = [
 
 export default function PatternsPage() {
   const [range, setRange] = useState<PatternsRange>('30d');
+  const [selectedProject, setSelectedProject] = useState<string | undefined>(undefined);
   const [activeTab, setActiveTab] = useState<ActiveTab>('friction-wins');
   const [generating, setGenerating] = useState(false);
   const [generationProgress, setGenerationProgress] = useState('');
@@ -38,15 +56,42 @@ export default function PatternsPage() {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const { tooltipBg, tooltipBorder } = useThemeColors();
   const abortRef = useRef<AbortController | null>(null);
+  const queryClient = useQueryClient();
 
-  const { data: aggregation, isLoading, isError, refetch } = useFacetAggregation({ period: range });
-  const { data: summary } = useFacetSummary({ period: range });
+  const { data: projects = [] } = useProjects();
+
+  const { data: snapshotData } = useReflectSnapshot({
+    period: range,
+    project: selectedProject,
+  });
+
+  const { data: aggregation, isLoading, isError, refetch } = useFacetAggregation({
+    period: range,
+    project: selectedProject,
+  });
 
   // Abort in-flight generation on unmount
   useEffect(() => {
     return () => {
       abortRef.current?.abort();
     };
+  }, []);
+
+  // Auto-load cached snapshot when it arrives and no local results exist yet
+  useEffect(() => {
+    if (snapshotData?.snapshot?.results && !reflectResults && !generating) {
+      setReflectResults(snapshotData.snapshot.results);
+    }
+  }, [snapshotData, reflectResults, generating]);
+
+  const handleRangeChange = useCallback((newRange: PatternsRange) => {
+    setRange(newRange);
+    setReflectResults(null);
+  }, []);
+
+  const handleProjectChange = useCallback((projectId: string | undefined) => {
+    setSelectedProject(projectId);
+    setReflectResults(null);
   }, []);
 
   const handleGenerate = useCallback(async () => {
@@ -61,7 +106,7 @@ export default function PatternsPage() {
 
     try {
       const response = await reflectGenerateStream(
-        { period: range },
+        { period: range, project: selectedProject },
         controller.signal
       );
 
@@ -77,6 +122,9 @@ export default function PatternsPage() {
           try {
             const data = JSON.parse(event.data) as { results?: Record<string, unknown> };
             setReflectResults(data.results ?? null);
+            // Snapshot was just persisted server-side — invalidate so the metadata
+            // line (generated date, session count) reflects the new snapshot.
+            queryClient.invalidateQueries({ queryKey: ['reflect', 'snapshot'] });
           } catch { /* skip malformed event */ }
         } else if (event.event === 'error') {
           try {
@@ -91,7 +139,7 @@ export default function PatternsPage() {
     } finally {
       setGenerating(false);
     }
-  }, [range]);
+  }, [range, selectedProject]);
 
   const handleCopy = useCallback((text: string, key: string) => {
     navigator.clipboard.writeText(text);
@@ -142,6 +190,11 @@ export default function PatternsPage() {
     value,
   }));
 
+  const hasEnoughFacets = (aggregation?.totalSessions ?? 0) >= 20;
+  const coverageRatio = aggregation && aggregation.totalAllSessions > 0
+    ? aggregation.totalSessions / aggregation.totalAllSessions
+    : 0;
+
   // Check for reflect results in the active tab
   const frictionWinsResult = reflectResults?.['friction-wins'] as Record<string, unknown> | undefined;
   const rulesSkillsResult = reflectResults?.['rules-skills'] as Record<string, unknown> | undefined;
@@ -171,19 +224,33 @@ export default function PatternsPage() {
                 variant={range === opt.value ? 'default' : 'ghost'}
                 size="sm"
                 className="h-7 px-3 text-xs"
-                onClick={() => setRange(opt.value)}
+                onClick={() => handleRangeChange(opt.value)}
               >
                 {opt.label}
               </Button>
             ))}
           </div>
+          {projects.length > 1 && (
+            <select
+              value={selectedProject || ''}
+              onChange={(e) => handleProjectChange(e.target.value || undefined)}
+              className="h-8 rounded-md border bg-background px-2 text-xs"
+            >
+              <option value="">All Projects</option>
+              {projects.map(p => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+          )}
           <Button
             onClick={handleGenerate}
-            disabled={generating || !aggregation?.totalSessions}
+            disabled={generating || !hasEnoughFacets}
             size="sm"
           >
             {generating ? (
               <><Loader2 className="h-4 w-4 mr-1.5 animate-spin" />Generating...</>
+            ) : reflectResults ? (
+              <><Sparkles className="h-4 w-4 mr-1.5" />Regenerate</>
             ) : (
               <><Sparkles className="h-4 w-4 mr-1.5" />Generate</>
             )}
@@ -191,16 +258,48 @@ export default function PatternsPage() {
         </div>
       </div>
 
-      {/* Missing facets alert */}
-      {summary && summary.missingCount > 0 && (
+      {/* Snapshot metadata line */}
+      {snapshotData?.snapshot && reflectResults && (
+        <p className="text-xs text-muted-foreground text-right">
+          Generated {formatRelativeDate(snapshotData.snapshot.generatedAt)}
+          {' · '}
+          {snapshotData.snapshot.windowStart
+            ? `${formatShortDate(snapshotData.snapshot.windowStart)} – ${formatShortDate(snapshotData.snapshot.windowEnd)}`
+            : 'All time'}
+          {' · '}
+          {snapshotData.snapshot.sessionCount} sessions
+          {aggregation && aggregation.totalSessions > snapshotData.snapshot.sessionCount && (
+            <> — <span className="text-amber-500">{aggregation.totalSessions - snapshotData.snapshot.sessionCount} new since</span></>
+          )}
+        </p>
+      )}
+
+      {/* Threshold gate — not enough analyzed sessions */}
+      {!hasEnoughFacets && aggregation && aggregation.totalAllSessions > 0 && (
+        <div className="flex items-start gap-3 rounded-lg border border-muted bg-muted/30 p-4">
+          <AlertTriangle className="h-5 w-5 text-muted-foreground mt-0.5 shrink-0" />
+          <div>
+            <p className="text-sm font-medium">
+              Not enough analyzed sessions for pattern synthesis
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Need at least 20 sessions with facets (currently {aggregation.totalSessions}).
+              Run session analysis to extract facets from more sessions.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Coverage warning — analyzed but less than 50% */}
+      {hasEnoughFacets && coverageRatio > 0 && coverageRatio < 0.5 && aggregation && (
         <div className="flex items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-50 dark:bg-amber-950/20 p-4">
           <AlertTriangle className="h-5 w-5 text-amber-500 mt-0.5 shrink-0" />
           <div>
             <p className="text-sm font-medium">
-              {summary.missingCount} of {summary.totalSessions} sessions haven't been analyzed for patterns
+              {aggregation.totalSessions} of {aggregation.totalAllSessions} sessions analyzed
             </p>
             <p className="text-xs text-muted-foreground mt-1">
-              Run session analysis to extract facets, or they'll be generated automatically when you click Generate.
+              Results may not represent your full patterns. Analyze more sessions for better accuracy.
             </p>
           </div>
         </div>
@@ -245,7 +344,7 @@ export default function PatternsPage() {
         <div role="tabpanel" id="tabpanel-friction-wins" className="space-y-6">
           {/* Narrative from LLM */}
           {frictionWinsResult?.narrative && (
-            <Card>
+            <Card className="border-l-2 border-primary">
               <CardHeader>
                 <CardTitle className="text-base">Analysis</CardTitle>
               </CardHeader>
@@ -316,7 +415,7 @@ export default function PatternsPage() {
             <>
               {/* CLAUDE.md Rules */}
               {Array.isArray(rulesSkillsResult.claudeMdRules) && (rulesSkillsResult.claudeMdRules as Array<{ rule: string; rationale: string; frictionSource: string }>).length > 0 && (
-                <Card>
+                <Card className="border-l-2 border-primary">
                   <CardHeader>
                     <CardTitle className="text-base">CLAUDE.md Rules</CardTitle>
                     <CardDescription>Add these to your AI assistant configuration</CardDescription>
@@ -345,7 +444,7 @@ export default function PatternsPage() {
 
               {/* Skill Templates */}
               {Array.isArray(rulesSkillsResult.skillTemplates) && (rulesSkillsResult.skillTemplates as Array<{ name: string; description: string; content: string }>).length > 0 && (
-                <Card>
+                <Card className="border-l-2 border-primary">
                   <CardHeader>
                     <CardTitle className="text-base">Skill Templates</CardTitle>
                     <CardDescription>Reusable workflows for repetitive tasks</CardDescription>
@@ -376,7 +475,7 @@ export default function PatternsPage() {
 
               {/* Hook Configs */}
               {Array.isArray(rulesSkillsResult.hookConfigs) && (rulesSkillsResult.hookConfigs as Array<{ event: string; command: string; rationale: string }>).length > 0 && (
-                <Card>
+                <Card className="border-l-2 border-primary">
                   <CardHeader>
                     <CardTitle className="text-base">Hook Configurations</CardTitle>
                     <CardDescription>Automation triggers</CardDescription>
@@ -406,11 +505,54 @@ export default function PatternsPage() {
               )}
             </>
           ) : (
-            <Card>
-              <CardContent className="py-8 text-center text-muted-foreground">
-                Click <strong>Generate</strong> to create rules, skills, and hooks from your patterns.
-              </CardContent>
-            </Card>
+            <>
+              {!rulesSkillsResult && aggregation && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">Pattern Ingredients</CardTitle>
+                    <CardDescription>
+                      {hasEnoughFacets
+                        ? 'Click Generate to create rules, skills, and hooks from these patterns.'
+                        : 'Analyze more sessions to unlock pattern synthesis.'}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {aggregation.frictionCategories.filter(fc => fc.count >= 3).length > 0 && (
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground mb-2">Recurring friction (3+ occurrences):</p>
+                        <ul className="space-y-1">
+                          {aggregation.frictionCategories.filter(fc => fc.count >= 3).map((fc, i) => (
+                            <li key={i} className="text-sm flex items-center gap-2">
+                              <span className="text-xs font-mono text-muted-foreground">{fc.count}x</span>
+                              {fc.category}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {aggregation.effectivePatterns.filter(ep => ep.frequency >= 2).length > 0 && (
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground mb-2">Effective patterns (2+ occurrences):</p>
+                        <ul className="space-y-1">
+                          {aggregation.effectivePatterns.filter(ep => ep.frequency >= 2).map((ep, i) => (
+                            <li key={i} className="text-sm flex items-center gap-2">
+                              <span className="text-xs font-mono text-muted-foreground">{ep.frequency}x</span>
+                              {ep.description}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {aggregation.frictionCategories.filter(fc => fc.count >= 3).length === 0 &&
+                     aggregation.effectivePatterns.filter(ep => ep.frequency >= 2).length === 0 && (
+                      <p className="text-sm text-muted-foreground">
+                        No recurring patterns yet. Analyze more sessions to detect patterns.
+                      </p>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+            </>
           )}
         </div>
       )}
@@ -419,7 +561,7 @@ export default function PatternsPage() {
         <div role="tabpanel" id="tabpanel-working-style" className="space-y-6">
           {/* Narrative from LLM */}
           {workingStyleResult?.narrative && (
-            <Card>
+            <Card className="border-l-2 border-primary">
               <CardHeader>
                 <CardTitle className="text-base">Your Working Style</CardTitle>
               </CardHeader>
