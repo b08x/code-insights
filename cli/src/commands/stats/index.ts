@@ -36,6 +36,11 @@ async function modelsAction(flags: StatsFlags): Promise<void> {
   return action(flags);
 }
 
+async function patternsAction(flags: StatsFlags): Promise<void> {
+  const { patternsAction: action } = await import('./actions/patterns.js');
+  return action(flags);
+}
+
 const costCommand = applySharedFlags(
   new Command('cost').description('Cost breakdown by project, model, and time period')
 ).action(wrapAction(costAction));
@@ -52,6 +57,10 @@ const modelsCommand = applySharedFlags(
   new Command('models').description('Model usage distribution, cost per model, trends')
 ).action(wrapAction(modelsAction));
 
+const patternsCommand = applySharedFlags(
+  new Command('patterns').description('Cross-session patterns — friction, wins, working style')
+).action(wrapAction(patternsAction));
+
 export const statsCommand = applySharedFlags(
   new Command('stats')
     .description('View usage statistics and analytics')
@@ -59,4 +68,5 @@ export const statsCommand = applySharedFlags(
     .addCommand(projectsCommand)
     .addCommand(todayCommand)
     .addCommand(modelsCommand)
+    .addCommand(patternsCommand)
 ).action(wrapAction(overviewAction));

@@ -11,7 +11,7 @@ export const resetCommand = new Command('reset')
   .option('--confirm', 'Skip confirmation prompt')
   .action(async (options) => {
     console.log(chalk.red.bold('\n  WARNING: This will permanently delete ALL synced data from your local database!'));
-    console.log(chalk.yellow('  Tables to be cleared: projects, sessions, messages, insights, usage_stats\n'));
+    console.log(chalk.yellow('  Tables to be cleared: projects, sessions, messages, insights, session_facets, usage_stats\n'));
 
     if (!options.confirm) {
       const readline = await import('readline');
@@ -42,6 +42,7 @@ export const resetCommand = new Command('reset')
       const clearAll = db.transaction(() => {
         // Delete in dependency order (FK constraints)
         db.prepare('DELETE FROM insights').run();
+        db.prepare('DELETE FROM session_facets').run();
         db.prepare('DELETE FROM messages').run();
         db.prepare('DELETE FROM sessions').run();
         db.prepare('DELETE FROM projects').run();

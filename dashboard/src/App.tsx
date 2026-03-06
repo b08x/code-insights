@@ -10,12 +10,14 @@ import AnalyticsPage from '@/pages/AnalyticsPage';
 import SettingsPage from '@/pages/SettingsPage';
 import ExportPage from '@/pages/ExportPage';
 import JournalPage from '@/pages/JournalPage';
+import PatternsPage from '@/pages/PatternsPage';
 
 const ROUTE_TITLES: Record<string, string> = {
   '/dashboard': 'Dashboard',
   '/sessions': 'Sessions',
   '/insights': 'Insights',
   '/analytics': 'Analytics',
+  '/patterns': 'Patterns',
   '/export': 'Export',
   '/journal': 'Journal',
   '/settings': 'Settings',
@@ -68,6 +70,7 @@ export default function App() {
           <Route path="/sessions/:id" element={<SessionDetailPage />} />
           <Route path="/insights" element={<InsightsPage />} />
           <Route path="/analytics" element={<AnalyticsPage />} />
+          <Route path="/patterns" element={<PatternsPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/export" element={<ExportPage />} />
           <Route path="/journal" element={<JournalPage />} />

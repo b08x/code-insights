@@ -79,12 +79,52 @@ export function formatMessagesForAnalysis(messages: SQLiteMessageRow[]): string 
     .join('\n\n');
 }
 
+export const CANONICAL_FRICTION_CATEGORIES = [
+  'wrong-approach', 'missing-dependency', 'config-drift', 'test-failure',
+  'type-error', 'api-misunderstanding', 'stale-cache', 'version-mismatch',
+  'permission-issue', 'incomplete-requirements', 'circular-dependency',
+  'race-condition', 'environment-mismatch', 'documentation-gap', 'tooling-limitation',
+] as const;
+
 /**
  * System prompt for session analysis.
  */
 export const SESSION_ANALYSIS_SYSTEM_PROMPT = `You are a senior staff engineer writing entries for a team's engineering knowledge base. You've just observed an AI-assisted coding session and your job is to extract the insights that would save another engineer time if they encountered a similar situation 6 months from now.
 
 Your audience is a developer who has never seen this session but works on the same codebase. They need enough context to understand WHY a decision was made, WHAT specific gotcha was discovered, and WHEN this knowledge applies.
+
+PART 1 — SESSION FACETS (extract these first as a holistic session assessment):
+
+Before extracting individual insights, assess the session as a whole. Extract these structured facets:
+
+1. outcome_satisfaction: Rate the session outcome.
+   - "high": Task completed successfully, user satisfied
+   - "medium": Partial completion or minor issues
+   - "low": Significant problems, user frustrated
+   - "abandoned": Session ended without achieving the goal
+
+2. workflow_pattern: Identify the dominant workflow pattern (or null if unclear).
+   Recommended values: "plan-then-implement", "iterative-refinement", "debug-fix-verify", "explore-then-build", "direct-execution"
+
+3. friction_points: Identify up to 5 moments where progress was blocked or slowed (array, max 5).
+   Each friction point has:
+   - category: Use one of these PREFERRED categories when applicable: ${CANONICAL_FRICTION_CATEGORIES.join(', ')}. Create a new kebab-case category only when none of these fit.
+   - description: One sentence describing what went wrong
+   - severity: "high" (blocked progress for multiple turns), "medium" (caused a detour), "low" (minor hiccup)
+   - resolution: "resolved" (fixed in session), "workaround" (bypassed), "unresolved" (still broken)
+
+4. effective_patterns: Up to 3 techniques or approaches that worked particularly well (array, max 3).
+   Each has:
+   - description: Specific technique worth repeating
+   - confidence: 0-100 how confident you are this is genuinely effective
+
+5. had_course_correction: true if the user redirected the AI from a wrong approach, false otherwise
+6. course_correction_reason: If had_course_correction is true, briefly explain what was corrected (or null)
+7. iteration_count: Number of times the user had to clarify, correct, or re-explain something
+
+If the session has minimal friction and straightforward execution, use empty arrays for friction_points, set outcome_satisfaction to "high", and iteration_count to 0.
+
+PART 2 — INSIGHTS (then extract these):
 
 You will extract:
 1. **Summary**: A narrative of what was accomplished and the outcome
@@ -170,6 +210,27 @@ ${formattedMessages}
 
 Extract insights in this JSON format:
 {
+  "facets": {
+    "outcome_satisfaction": "high | medium | low | abandoned",
+    "workflow_pattern": "plan-then-implement | iterative-refinement | debug-fix-verify | explore-then-build | direct-execution | null",
+    "had_course_correction": false,
+    "course_correction_reason": null,
+    "iteration_count": 0,
+    "friction_points": [
+      {
+        "category": "kebab-case-category",
+        "description": "One sentence about what went wrong",
+        "severity": "high | medium | low",
+        "resolution": "resolved | workaround | unresolved"
+      }
+    ],
+    "effective_patterns": [
+      {
+        "description": "Specific technique that worked well",
+        "confidence": 85
+      }
+    ]
+  },
   "session_character": "deep_focus | bug_hunt | feature_build | exploration | refactor | learning | quick_task",
   "summary": {
     "title": "Brief title describing main accomplishment (max 80 chars)",
@@ -216,6 +277,23 @@ const VALID_SESSION_CHARACTERS = new Set<string>([
 ]);
 
 export interface AnalysisResponse {
+  facets?: {
+    outcome_satisfaction: string;
+    workflow_pattern: string | null;
+    had_course_correction: boolean;
+    course_correction_reason: string | null;
+    iteration_count: number;
+    friction_points: Array<{
+      category: string;
+      description: string;
+      severity: string;
+      resolution: string;
+    }>;
+    effective_patterns: Array<{
+      description: string;
+      confidence: number;
+    }>;
+  };
   session_character?: SessionCharacter;
   summary: {
     title: string;
@@ -261,7 +339,7 @@ export type ParseResult<T> =
   | { success: true; data: T }
   | { success: false; error: ParseError };
 
-function extractJsonPayload(response: string): string | null {
+export function extractJsonPayload(response: string): string | null {
   const tagged = response.match(/<json>\s*([\s\S]*?)\s*<\/json>/i);
   if (tagged?.[1]) return tagged[1].trim();
   const jsonMatch = response.match(/\{[\s\S]*\}/);
@@ -319,6 +397,60 @@ export function parseAnalysisResponse(response: string): ParseResult<AnalysisRes
   }
 
   return { success: true, data: parsed };
+}
+
+/**
+ * Lightweight facet-only prompt for backfilling sessions that already have insights
+ * or for chunked sessions where facets can't be merged across chunks.
+ * Input: session summary + first/last 20 messages (~2.5k tokens).
+ * Output: facet JSON only (~350 tokens).
+ */
+export const FACET_ONLY_SYSTEM_PROMPT = `You are assessing an AI coding session to extract structured metadata for cross-session pattern analysis. You will receive a session summary and a sample of messages (first and last from the conversation).
+
+Extract session facets — a holistic assessment of how the session went:
+
+1. outcome_satisfaction: "high" (completed successfully), "medium" (partial), "low" (problems), "abandoned" (gave up)
+2. workflow_pattern: The dominant pattern, or null. Values: "plan-then-implement", "iterative-refinement", "debug-fix-verify", "explore-then-build", "direct-execution"
+3. friction_points: Up to 5 moments where progress stalled (array).
+   Each: { category (kebab-case, prefer: ${CANONICAL_FRICTION_CATEGORIES.join(', ')}), description (one sentence), severity ("high"|"medium"|"low"), resolution ("resolved"|"workaround"|"unresolved") }
+4. effective_patterns: Up to 3 things that worked well (array).
+   Each: { description (specific technique), confidence (0-100) }
+5. had_course_correction: true/false — did the user redirect the AI?
+6. course_correction_reason: Brief explanation if true, null otherwise
+7. iteration_count: How many user clarification/correction cycles occurred
+
+Respond with valid JSON only, wrapped in <json>...</json> tags.`;
+
+export function generateFacetOnlyPrompt(
+  projectName: string,
+  sessionSummary: string | null,
+  firstMessages: string,
+  lastMessages: string
+): string {
+  return `Assess this AI coding session and extract facets.
+
+Project: ${projectName}
+${sessionSummary ? `Session Summary: ${sessionSummary}\n` : ''}
+--- FIRST MESSAGES ---
+${firstMessages}
+--- END FIRST MESSAGES ---
+
+--- LAST MESSAGES ---
+${lastMessages}
+--- END LAST MESSAGES ---
+
+Extract facets in this JSON format:
+{
+  "outcome_satisfaction": "high | medium | low | abandoned",
+  "workflow_pattern": "string or null",
+  "had_course_correction": false,
+  "course_correction_reason": null,
+  "iteration_count": 0,
+  "friction_points": [],
+  "effective_patterns": []
+}
+
+Respond with valid JSON only, wrapped in <json>...</json> tags.`;
 }
 
 // --- Prompt Quality Analysis ---

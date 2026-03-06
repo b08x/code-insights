@@ -230,3 +230,94 @@ export async function exportGenerateStream(
   }
   return res;
 }
+
+// ── Facets & Reflect ─────────────────────────────────────────────────────────
+
+export interface FacetAggregation {
+  frictionCategories: Array<{
+    category: string;
+    count: number;
+    avg_severity: number;
+    examples: string[];
+  }>;
+  effectivePatterns: Array<{
+    description: string;
+    frequency: number;
+    avg_confidence: number;
+  }>;
+  outcomeDistribution: Record<string, number>;
+  workflowDistribution: Record<string, number>;
+  characterDistribution: Record<string, number>;
+  totalSessions: number;
+  frictionTotal: number;
+}
+
+export interface FacetSummary {
+  missingCount: number;
+  totalSessions: number;
+}
+
+export function fetchFacetAggregation(params?: {
+  project?: string;
+  period?: string;
+  source?: string;
+}) {
+  const q = new URLSearchParams();
+  if (params?.project) q.set('project', params.project);
+  if (params?.period) q.set('period', params.period);
+  if (params?.source) q.set('source', params.source);
+  const qs = q.toString() ? `?${q.toString()}` : '';
+  return request<FacetAggregation>(`/facets/aggregated${qs}`);
+}
+
+export function fetchFacetSummary(params?: {
+  project?: string;
+  period?: string;
+  source?: string;
+}) {
+  const q = new URLSearchParams();
+  if (params?.project) q.set('project', params.project);
+  if (params?.period) q.set('period', params.period);
+  if (params?.source) q.set('source', params.source);
+  const qs = q.toString() ? `?${q.toString()}` : '';
+  return request<FacetSummary>(`/facets${qs}`);
+}
+
+export async function reflectGenerateStream(
+  params: {
+    sections?: string[];
+    period?: string;
+    project?: string;
+    source?: string;
+  },
+  signal?: AbortSignal
+): Promise<Response> {
+  const res = await fetch(`${BASE}/reflect/generate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+    signal,
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    throw new Error(`Reflect generation failed ${res.status}: ${text}`);
+  }
+  return res;
+}
+
+export async function backfillFacetsStream(
+  sessionIds: string[],
+  signal?: AbortSignal
+): Promise<Response> {
+  const res = await fetch(`${BASE}/facets/backfill`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sessionIds }),
+    signal,
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    throw new Error(`Backfill failed ${res.status}: ${text}`);
+  }
+  return res;
+}

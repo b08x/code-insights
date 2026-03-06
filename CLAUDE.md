@@ -16,6 +16,19 @@
 
 ---
 
+## Development Philosophy (CRITICAL)
+
+**No MVPs, no prototypes, no half-measures.** This product is LIVE with real users. Every feature ships as a full, complete implementation. We do not build "minimum viable" anything — we build the real thing, iterate based on feedback, and revert or update if it doesn't work out.
+
+This principle applies to planning, designing, AND implementation:
+- **Planning:** Don't scope down to "MVP facet set" vs "ideal set." Design the complete solution.
+- **Designing:** Don't propose phased rollouts with "ship phase 1, add phase 2 later." Design it right the first time.
+- **Implementing:** Don't cut corners with "we can add this later." Build it now or explicitly decide not to build it.
+
+If something needs to change after shipping, we change it. That's cheaper than shipping incomplete work that creates technical debt and confuses users.
+
+---
+
 ## Configuration Hierarchy
 
 | Priority | Source | Scope |
