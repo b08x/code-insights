@@ -214,12 +214,13 @@ export function PromptQualityContent({ insight }: { insight: Insight }) {
               if (typeof bullet === 'string') {
                 return <li key={i}>{bullet}</li>;
               }
-              const obj = bullet as { tip?: string; example?: string };
+              const text = bullet.tip || bullet.example;
+              if (!text) return null;
               return (
                 <li key={i}>
-                  {obj.tip}
-                  {obj.example && (
-                    <p className="ml-5 mt-0.5 text-xs italic">{obj.example}</p>
+                  {text}
+                  {bullet.tip && bullet.example && (
+                    <p className="ml-5 mt-0.5 text-xs italic">{bullet.example}</p>
                   )}
                 </li>
               );
