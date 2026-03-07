@@ -81,7 +81,7 @@ app.get('/missing', (c) => {
   // buildWhereClause can't be used here — it generates "WHERE ..." prefix,
   // but this query already needs "WHERE sf.session_id IS NULL".
   // Build conditions inline instead.
-  const conditions: string[] = ['sf.session_id IS NULL'];
+  const conditions: string[] = ['sf.session_id IS NULL', 's.deleted_at IS NULL'];
   const params: (string | number)[] = [];
 
   if (period !== 'all') {
