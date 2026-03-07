@@ -394,7 +394,7 @@ export default function PatternsPage() {
                   Usage Insight: API Rate Limits
                 </p>
                 <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
-                  You hit API rate limits {aggregation.rateLimitInfo.count} time{aggregation.rateLimitInfo.count !== 1 ? 's' : ''} in the last {range} ({aggregation.rateLimitInfo.sessionsAffected} session{aggregation.rateLimitInfo.sessionsAffected !== 1 ? 's' : ''} affected). If this happens frequently, consider upgrading your subscription plan for uninterrupted sessions.
+                  You hit API rate limits {aggregation.rateLimitInfo.count} time{aggregation.rateLimitInfo.count !== 1 ? 's' : ''} in the last {range} ({aggregation.rateLimitInfo.sessionsAffected} session{aggregation.rateLimitInfo.sessionsAffected !== 1 ? 's' : ''} affected). Consider upgrading your subscription or checking your API rate limits — your usage may exceed your current plan's token or request limits.
                 </p>
               </div>
             </div>

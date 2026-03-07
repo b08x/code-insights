@@ -85,9 +85,9 @@ export function formatMessagesForAnalysis(messages: SQLiteMessageRow[]): string 
 export const FRICTION_CLASSIFICATION_GUIDANCE = `
 IMPORTANT — "tooling-limitation" precision:
 Do NOT use "tooling-limitation" for these situations (use a more specific category instead):
-- Agent spawned via Task tool becomes unresponsive/fails to communicate → use a specific category like "agent-orchestration-failure" or "agent-communication-failure"
+- Agent spawned via Task tool becomes unresponsive/fails to communicate → use "agent-orchestration-failure"
 - AI uses wrong command/edits before reading/wrong syntax, then self-corrects → "wrong-approach"
-- API rate limit hit, session paused → use a specific category like "rate-limit-hit"
+- API rate limit hit, session paused → use "rate-limit-hit"
 - User rejects a tool call → not friction (omit entirely)
 Only use "tooling-limitation" when a tool genuinely cannot do what was needed (e.g., WebFetch returned incomplete content, CLI tool has no flag for needed behavior).
 When no preferred category fits, create a specific kebab-case category — a precise novel category is better than a vague canonical one.`;

@@ -404,4 +404,32 @@ describe('getAggregatedData', () => {
     expect(result.rateLimitInfo!.count).toBe(2);      // 2 friction point occurrences
     expect(result.rateLimitInfo!.sessionsAffected).toBe(1); // only 1 unique session
   });
+
+  it('catches regex-variant rate limit categories not covered by alias map or Levenshtein', () => {
+    // "throttled-by-api" is a creative LLM variant that bypasses both the alias map
+    // and Levenshtein clustering (it's not close enough to "rate-limit-hit").
+    // The regex sweep (/rate.?limit|throttl/i) must catch it.
+    seedSessionWithFacets(testDb, 'sess-1', {
+      frictionPoints: [
+        { category: 'throttled-by-api', description: 'API throttled mid-session', severity: 'high', resolution: 'workaround' },
+        { category: 'type-error', description: 'TS type mismatch', severity: 'medium', resolution: 'resolved' },
+      ],
+    });
+
+    const result = getAggregatedData(testDb, '', []);
+
+    // "throttled-by-api" must NOT appear in frictionCategories
+    const throttled = result.frictionCategories.find(fc => fc.category === 'throttled-by-api');
+    expect(throttled).toBeUndefined();
+
+    // It must be captured in rateLimitInfo
+    expect(result.rateLimitInfo).not.toBeNull();
+    expect(result.rateLimitInfo!.count).toBe(1);
+    expect(result.rateLimitInfo!.sessionsAffected).toBe(1);
+    expect(result.rateLimitInfo!.examples[0]).toBe('API throttled mid-session');
+
+    // Unrelated friction should remain
+    const typeError = result.frictionCategories.find(fc => fc.category === 'type-error');
+    expect(typeError).toBeDefined();
+  });
 });

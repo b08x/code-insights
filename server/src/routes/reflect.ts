@@ -205,7 +205,7 @@ app.post('/generate', async (c) => {
 
       await stream.writeSSE({
         event: 'complete',
-        data: JSON.stringify({ results, rateLimitInfo: aggregated.rateLimitInfo }),
+        data: JSON.stringify({ results }),
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';

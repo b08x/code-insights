@@ -176,18 +176,42 @@ export function getAggregatedData(
   // Partition: separate rate-limit-hit entries from general friction.
   // Rate limits are a billing/plan constraint — surfaced as a usage insight, not friction.
   // The alias map already normalizes all rate limit variants to "rate-limit-hit".
+  // A regex sweep catches creative LLM variants ("throttled-by-api", etc.) that bypass
+  // both the alias map and Levenshtein clustering.
   const RATE_LIMIT_CATEGORY = 'rate-limit-hit';
+  const RATE_LIMIT_REGEX = /rate.?limit|throttl/i;
   let rateLimitInfo: RateLimitInfo | null = null;
+
+  // Accumulated data for rateLimitInfo, merged from exact match + regex sweep
+  let rateLimitCount = 0;
+  let rateLimitSessionIds: string[] = [];
+  let rateLimitExamples: string[] = [];
 
   const rateLimitEntry = normalizedFriction.get(RATE_LIMIT_CATEGORY);
   if (rateLimitEntry) {
-    const uniqueSessions = new Set(rateLimitEntry.session_ids);
-    rateLimitInfo = {
-      count: rateLimitEntry.count,
-      sessionsAffected: uniqueSessions.size,
-      examples: rateLimitEntry.examples.slice(0, 3),
-    };
+    rateLimitCount += rateLimitEntry.count;
+    rateLimitSessionIds.push(...rateLimitEntry.session_ids);
+    rateLimitExamples.push(...rateLimitEntry.examples);
     normalizedFriction.delete(RATE_LIMIT_CATEGORY);
+  }
+
+  // Regex sweep over remaining entries to catch variants the alias map missed
+  for (const [category, entry] of normalizedFriction) {
+    if (RATE_LIMIT_REGEX.test(category)) {
+      rateLimitCount += entry.count;
+      rateLimitSessionIds.push(...entry.session_ids);
+      rateLimitExamples.push(...entry.examples);
+      normalizedFriction.delete(category);
+    }
+  }
+
+  if (rateLimitCount > 0) {
+    const uniqueSessions = new Set(rateLimitSessionIds);
+    rateLimitInfo = {
+      count: rateLimitCount,
+      sessionsAffected: uniqueSessions.size,
+      examples: rateLimitExamples.slice(0, 3),
+    };
   }
 
   const mergedFriction = Array.from(normalizedFriction.entries())
