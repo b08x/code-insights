@@ -30,12 +30,14 @@ import { AnalyzeDropdown } from '@/components/analysis/AnalyzeDropdown';
 import { AnalyzeButton } from '@/components/analysis/AnalyzeButton';
 import { useAnalysis } from '@/components/analysis/AnalysisContext';
 import { useLlmConfig } from '@/hooks/useConfig';
+import { useMissingFacets, useBackfillFacets } from '@/hooks/useFacets';
 import { Link } from 'react-router';
 import { RenameSessionDialog } from '@/components/sessions/RenameSessionDialog';
 import { VitalsStrip } from '@/components/sessions/VitalsStrip';
 import { ChatConversation } from '@/components/chat/conversation/ChatConversation';
 import { ConversationSearch } from '@/components/chat/conversation/ConversationSearch';
 import {
+  AlertTriangle,
   Clock,
   Pencil,
   Sparkles,
@@ -157,6 +159,16 @@ export function SessionDetailPanel({ sessionId }: SessionDetailPanelProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [loadingAllMessages, setLoadingAllMessages] = useState(false);
   const { state: analysisState } = useAnalysis();
+  const { data: missingFacetsData } = useMissingFacets();
+  const backfillMutation = useBackfillFacets();
+  const isMissingFacets = useMemo(
+    () => {
+      const hasInsights = insights.length > 0;
+      const inMissingSet = missingFacetsData?.sessionIds?.includes(sessionId) ?? false;
+      return hasInsights && inMissingSet;
+    },
+    [insights, missingFacetsData, sessionId]
+  );
 
   useEffect(() => {
     if (
@@ -526,6 +538,41 @@ export function SessionDetailPanel({ sessionId }: SessionDetailPanelProps) {
         {/* Tab 1: Insights */}
         <TabsContent value="insights" className="flex-1 overflow-y-auto mt-0 p-5 space-y-4">
           <VitalsStrip session={session} />
+
+          {/* Missing facets banner */}
+          {isMissingFacets && (
+            <div className="flex items-center justify-between gap-3 rounded-md border border-amber-500/30 bg-amber-500/5 px-4 py-2.5">
+              <div className="flex items-center gap-2 min-w-0">
+                <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
+                <p className="text-sm text-muted-foreground">
+                  Missing pattern data for this session
+                </p>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                className="shrink-0 gap-1.5 text-xs"
+                disabled={backfillMutation.isPending}
+                onClick={() => {
+                  backfillMutation.mutate([sessionId], {
+                    onSuccess: () => toast.success('Facets extracted successfully'),
+                    onError: (err) => toast.error(
+                      err instanceof Error ? err.message : 'Failed to extract facets'
+                    ),
+                  });
+                }}
+              >
+                {backfillMutation.isPending ? (
+                  <>
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    Extracting...
+                  </>
+                ) : (
+                  'Extract Facets'
+                )}
+              </Button>
+            </div>
+          )}
 
           {/* Summary */}
           {summaryText && (
