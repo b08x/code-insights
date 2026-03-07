@@ -266,6 +266,26 @@ export function fetchFacetAggregation(params?: {
   return request<FacetAggregation>(`/facets/aggregated${qs}`);
 }
 
+export function fetchMissingFacetSessionIds(params?: {
+  project?: string;
+  period?: string;
+  source?: string;
+}) {
+  const q = new URLSearchParams();
+  if (params?.project) q.set('project', params.project);
+  if (params?.period) q.set('period', params.period);
+  if (params?.source) q.set('source', params.source);
+  const qs = q.toString() ? `?${q.toString()}` : '';
+  return request<{ sessionIds: string[]; count: number }>(`/facets/missing${qs}`);
+}
+
+export function backfillFacets(sessionIds: string[]) {
+  return request<{ completed: number; failed: number }>('/facets/backfill', {
+    method: 'POST',
+    body: JSON.stringify({ sessionIds }),
+  });
+}
+
 export interface ReflectSnapshot {
   period: string;
   projectId: string;

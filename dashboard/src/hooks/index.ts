@@ -7,3 +7,4 @@ export { useAnalyzeSession } from './useAnalysis';
 export { useLlmConfig, useSaveLlmConfig } from './useConfig';
 export { useExportMarkdown } from './useExport';
 export { useFacetAggregation, useReflectSnapshot } from './useReflect';
+export { useMissingFacets, useBackfillFacets } from './useFacets';

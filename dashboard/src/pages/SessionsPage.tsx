@@ -1,4 +1,5 @@
 import { useMemo, useCallback, useSyncExternalStore } from 'react';
+import { useMissingFacets } from '@/hooks/useFacets';
 import { useSessions } from '@/hooks/useSessions';
 import { useProjects } from '@/hooks/useProjects';
 import { useInsights } from '@/hooks/useInsights';
@@ -47,6 +48,12 @@ export default function SessionsPage() {
 
   const { data: sessions = [], isLoading: sessionsLoading } = useSessions(sessionParams);
   const { data: insights = [], isLoading: insightsLoading } = useInsights();
+
+  const { data: missingFacetsData } = useMissingFacets();
+  const missingFacetIds = useMemo(
+    () => new Set(missingFacetsData?.sessionIds ?? []),
+    [missingFacetsData]
+  );
 
   const loading = sessionsLoading || projectsLoading || insightsLoading;
 
@@ -147,6 +154,7 @@ export default function SessionsPage() {
           onClearFilters={handleClearFilters}
           onSelectSession={handleSelectSession}
           loading={loading}
+          missingFacetIds={missingFacetIds}
         />
       </div>
 

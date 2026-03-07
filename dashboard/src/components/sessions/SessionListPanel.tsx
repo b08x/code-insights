@@ -38,6 +38,7 @@ interface SessionListPanelProps {
   onClearFilters: () => void;
   onSelectSession: (sessionId: string) => void;
   loading: boolean;
+  missingFacetIds?: Set<string>;
 }
 
 export function SessionListPanel({
@@ -50,6 +51,7 @@ export function SessionListPanel({
   onClearFilters,
   onSelectSession,
   loading,
+  missingFacetIds,
 }: SessionListPanelProps) {
   const analyzedSessionIds = useMemo(
     () => new Set(insights.map((i) => i.session_id)),
@@ -214,6 +216,7 @@ export function SessionListPanel({
                     insightCounts={insightCountsBySession.get(session.id)}
                     outcome={sessionOutcomes.get(session.id)}
                     promptQualityScore={promptQualityScores.get(session.id)}
+                    missingFacets={analyzedSessionIds.has(session.id) && (missingFacetIds?.has(session.id) ?? false)}
                     onClick={() => onSelectSession(session.id)}
                   />
                 ))}
