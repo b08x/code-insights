@@ -54,6 +54,12 @@ export interface AggregatedEffectivePattern {
   avg_confidence: number;
 }
 
+export interface RateLimitInfo {
+  count: number;
+  sessionsAffected: number;
+  examples: string[];
+}
+
 export interface AggregatedData {
   frictionCategories: AggregatedFrictionCategory[];
   effectivePatterns: AggregatedEffectivePattern[];
@@ -63,6 +69,7 @@ export interface AggregatedData {
   totalSessions: number;
   frictionTotal: number;
   totalAllSessions: number;  // all sessions in scope (not just those with facets)
+  rateLimitInfo: RateLimitInfo | null;
 }
 
 /**
@@ -86,14 +93,15 @@ export function getAggregatedData(
         WHEN json_extract(je.value, '$.severity') = 'medium' THEN 2
         ELSE 1
       END) as avg_severity,
-      json_group_array(json_extract(je.value, '$.description')) as examples
+      json_group_array(json_extract(je.value, '$.description')) as examples,
+      json_group_array(sf.session_id) as session_ids
     FROM session_facets sf
     JOIN sessions s ON sf.session_id = s.id
     CROSS JOIN json_each(sf.friction_points) je
     ${where}
     GROUP BY category
     ORDER BY count DESC, avg_severity DESC
-  `).all(...params) as Array<{ category: string; count: number; avg_severity: number; examples: string }>;
+  `).all(...params) as Array<{ category: string; count: number; avg_severity: number; examples: string; session_ids: string }>;
 
   const effectivePatterns = db.prepare(`
     SELECT
@@ -139,15 +147,14 @@ export function getAggregatedData(
     `SELECT COUNT(*) as count FROM sessions s ${where}`
   ).get(...params) as { count: number };
 
-  const frictionTotal = frictionCategories.reduce((sum, fc) => sum + fc.count, 0);
-
-  // Parse examples from json_group_array output, then normalize via Levenshtein clustering
+  // Parse examples and session_ids from json_group_array output, then normalize via alias + Levenshtein clustering
   const parsedFriction = frictionCategories.map(fc => ({
     ...fc,
     examples: JSON.parse(fc.examples) as string[],
+    session_ids: JSON.parse(fc.session_ids) as string[],
   }));
 
-  const normalizedFriction = new Map<string, { count: number; total_severity: number; examples: string[] }>();
+  const normalizedFriction = new Map<string, { count: number; total_severity: number; examples: string[]; session_ids: string[] }>();
   for (const fc of parsedFriction) {
     const normalized = normalizeFrictionCategory(fc.category);
     const existing = normalizedFriction.get(normalized);
@@ -155,13 +162,56 @@ export function getAggregatedData(
       existing.count += fc.count;
       existing.total_severity += fc.avg_severity * fc.count;
       existing.examples.push(...fc.examples);
+      existing.session_ids.push(...fc.session_ids);
     } else {
       normalizedFriction.set(normalized, {
         count: fc.count,
         total_severity: fc.avg_severity * fc.count,
         examples: [...fc.examples],
+        session_ids: [...fc.session_ids],
       });
     }
+  }
+
+  // Partition: separate rate-limit-hit entries from general friction.
+  // Rate limits are a billing/plan constraint — surfaced as a usage insight, not friction.
+  // The alias map already normalizes all rate limit variants to "rate-limit-hit".
+  // A regex sweep catches creative LLM variants ("throttled-by-api", etc.) that bypass
+  // both the alias map and Levenshtein clustering.
+  const RATE_LIMIT_CATEGORY = 'rate-limit-hit';
+  const RATE_LIMIT_REGEX = /rate.?limit|throttl/i;
+  let rateLimitInfo: RateLimitInfo | null = null;
+
+  // Accumulated data for rateLimitInfo, merged from exact match + regex sweep
+  let rateLimitCount = 0;
+  let rateLimitSessionIds: string[] = [];
+  let rateLimitExamples: string[] = [];
+
+  const rateLimitEntry = normalizedFriction.get(RATE_LIMIT_CATEGORY);
+  if (rateLimitEntry) {
+    rateLimitCount += rateLimitEntry.count;
+    rateLimitSessionIds.push(...rateLimitEntry.session_ids);
+    rateLimitExamples.push(...rateLimitEntry.examples);
+    normalizedFriction.delete(RATE_LIMIT_CATEGORY);
+  }
+
+  // Regex sweep over remaining entries to catch variants the alias map missed
+  for (const [category, entry] of normalizedFriction) {
+    if (RATE_LIMIT_REGEX.test(category)) {
+      rateLimitCount += entry.count;
+      rateLimitSessionIds.push(...entry.session_ids);
+      rateLimitExamples.push(...entry.examples);
+      normalizedFriction.delete(category);
+    }
+  }
+
+  if (rateLimitCount > 0) {
+    const uniqueSessions = new Set(rateLimitSessionIds);
+    rateLimitInfo = {
+      count: rateLimitCount,
+      sessionsAffected: uniqueSessions.size,
+      examples: rateLimitExamples.slice(0, 3),
+    };
   }
 
   const mergedFriction = Array.from(normalizedFriction.entries())
@@ -173,6 +223,9 @@ export function getAggregatedData(
     }))
     .sort((a, b) => b.count - a.count || b.avg_severity - a.avg_severity);
 
+  // frictionTotal reflects only non-rate-limit friction (rate limits partitioned separately)
+  const frictionTotal = mergedFriction.reduce((sum, fc) => sum + fc.count, 0);
+
   return {
     frictionCategories: mergedFriction,
     effectivePatterns,
@@ -182,5 +235,6 @@ export function getAggregatedData(
     totalSessions: totalRow.count,
     frictionTotal,
     totalAllSessions: totalAllRow.count,
+    rateLimitInfo,
   };
 }

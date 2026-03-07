@@ -320,4 +320,116 @@ describe('getAggregatedData', () => {
     expect(typeError).toBeDefined();
     expect(typeError!.count).toBe(2);
   });
+
+  // ────────────────────────────────────────────────────
+  // rateLimitInfo — rate limit filtering
+  // ────────────────────────────────────────────────────
+
+  it('returns null rateLimitInfo when no rate limit friction exists', () => {
+    seedSessionWithFacets(testDb, 'sess-1', {
+      frictionPoints: [
+        { category: 'type-error', description: 'TS issue', severity: 'medium', resolution: 'resolved' },
+      ],
+    });
+
+    const result = getAggregatedData(testDb, '', []);
+    expect(result.rateLimitInfo).toBeNull();
+  });
+
+  it('partitions rate-limit-hit out of frictionCategories and into rateLimitInfo', () => {
+    seedSessionWithFacets(testDb, 'sess-1', {
+      frictionPoints: [
+        { category: 'rate-limit-hit', description: 'Hit rate limit during review', severity: 'high', resolution: 'resolved' },
+        { category: 'type-error', description: 'TS strict issue', severity: 'medium', resolution: 'resolved' },
+      ],
+    });
+
+    const result = getAggregatedData(testDb, '', []);
+
+    // rate-limit-hit should NOT appear in frictionCategories
+    const rateLimit = result.frictionCategories.find(fc => fc.category === 'rate-limit-hit');
+    expect(rateLimit).toBeUndefined();
+
+    // type-error should still be present
+    const typeError = result.frictionCategories.find(fc => fc.category === 'type-error');
+    expect(typeError).toBeDefined();
+
+    // rateLimitInfo should be populated
+    expect(result.rateLimitInfo).not.toBeNull();
+    expect(result.rateLimitInfo!.count).toBe(1);
+    expect(result.rateLimitInfo!.sessionsAffected).toBe(1);
+    expect(result.rateLimitInfo!.examples).toHaveLength(1);
+    expect(result.rateLimitInfo!.examples[0]).toBe('Hit rate limit during review');
+  });
+
+  it('clusters rate limit alias variants via alias map before partitioning', () => {
+    // "api-rate-limit" and "rate-limiting" are aliases → both normalize to "rate-limit-hit"
+    seedSessionWithFacets(testDb, 'sess-1', {
+      frictionPoints: [
+        { category: 'api-rate-limit', description: 'Rate limited during review cycle', severity: 'high', resolution: 'resolved' },
+      ],
+    });
+    seedSessionWithFacets(testDb, 'sess-2', {
+      frictionPoints: [
+        { category: 'rate-limiting', description: 'Session paused due to rate limits', severity: 'medium', resolution: 'resolved' },
+      ],
+    });
+
+    const result = getAggregatedData(testDb, '', []);
+
+    // Neither alias should appear in frictionCategories
+    const rawRateLimit = result.frictionCategories.find(
+      fc => fc.category === 'api-rate-limit' || fc.category === 'rate-limiting' || fc.category === 'rate-limit-hit'
+    );
+    expect(rawRateLimit).toBeUndefined();
+
+    // rateLimitInfo should aggregate both
+    expect(result.rateLimitInfo).not.toBeNull();
+    expect(result.rateLimitInfo!.count).toBe(2);
+    expect(result.rateLimitInfo!.sessionsAffected).toBe(2);
+  });
+
+  it('counts sessionsAffected as unique sessions (not friction point count)', () => {
+    // One session with two rate limit friction points
+    seedSessionWithFacets(testDb, 'sess-1', {
+      frictionPoints: [
+        { category: 'rate-limit-hit', description: 'First rate limit', severity: 'high', resolution: 'resolved' },
+        { category: 'rate-limit-hit', description: 'Second rate limit same session', severity: 'medium', resolution: 'resolved' },
+      ],
+    });
+
+    const result = getAggregatedData(testDb, '', []);
+
+    expect(result.rateLimitInfo).not.toBeNull();
+    expect(result.rateLimitInfo!.count).toBe(2);      // 2 friction point occurrences
+    expect(result.rateLimitInfo!.sessionsAffected).toBe(1); // only 1 unique session
+  });
+
+  it('catches regex-variant rate limit categories not covered by alias map or Levenshtein', () => {
+    // "throttled-by-api" is a creative LLM variant that bypasses both the alias map
+    // and Levenshtein clustering (it's not close enough to "rate-limit-hit").
+    // The regex sweep (/rate.?limit|throttl/i) must catch it.
+    seedSessionWithFacets(testDb, 'sess-1', {
+      frictionPoints: [
+        { category: 'throttled-by-api', description: 'API throttled mid-session', severity: 'high', resolution: 'workaround' },
+        { category: 'type-error', description: 'TS type mismatch', severity: 'medium', resolution: 'resolved' },
+      ],
+    });
+
+    const result = getAggregatedData(testDb, '', []);
+
+    // "throttled-by-api" must NOT appear in frictionCategories
+    const throttled = result.frictionCategories.find(fc => fc.category === 'throttled-by-api');
+    expect(throttled).toBeUndefined();
+
+    // It must be captured in rateLimitInfo
+    expect(result.rateLimitInfo).not.toBeNull();
+    expect(result.rateLimitInfo!.count).toBe(1);
+    expect(result.rateLimitInfo!.sessionsAffected).toBe(1);
+    expect(result.rateLimitInfo!.examples[0]).toBe('API throttled mid-session');
+
+    // Unrelated friction should remain
+    const typeError = result.frictionCategories.find(fc => fc.category === 'type-error');
+    expect(typeError).toBeDefined();
+  });
 });

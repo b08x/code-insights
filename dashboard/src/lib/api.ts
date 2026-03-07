@@ -242,6 +242,12 @@ export async function exportGenerateStream(
 
 // ── Facets & Reflect ─────────────────────────────────────────────────────────
 
+export interface RateLimitInfo {
+  count: number;
+  sessionsAffected: number;
+  examples: string[];
+}
+
 export interface FacetAggregation {
   frictionCategories: Array<{
     category: string;
@@ -260,6 +266,7 @@ export interface FacetAggregation {
   totalSessions: number;
   frictionTotal: number;
   totalAllSessions: number;
+  rateLimitInfo: RateLimitInfo | null;
 }
 
 export function fetchFacetAggregation(params?: {

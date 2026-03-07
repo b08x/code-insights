@@ -15,7 +15,7 @@ import {
   PieChart, Pie, Cell, Legend,
 } from 'recharts';
 import {
-  AlertTriangle, Sparkles, Shield, Brain, Copy, Check, Loader2,
+  AlertTriangle, Sparkles, Shield, Brain, Copy, Check, Loader2, Zap,
 } from 'lucide-react';
 
 // CHART_COLORS.models is the shared hex color array for multi-series charts
@@ -383,6 +383,21 @@ export default function PatternsPage() {
                 No friction data yet. Analyze sessions to extract facets.
               </CardContent>
             </Card>
+          )}
+
+          {/* Rate limit usage insight */}
+          {aggregation?.rateLimitInfo && aggregation.rateLimitInfo.count > 0 && (
+            <div className="flex items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-50 dark:bg-amber-950/20 p-4">
+              <Zap className="h-5 w-5 text-amber-500 mt-0.5 shrink-0" />
+              <div>
+                <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+                  Usage Insight: API Rate Limits
+                </p>
+                <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
+                  You hit API rate limits {aggregation.rateLimitInfo.count} time{aggregation.rateLimitInfo.count !== 1 ? 's' : ''} in the last {range} ({aggregation.rateLimitInfo.sessionsAffected} session{aggregation.rateLimitInfo.sessionsAffected !== 1 ? 's' : ''} affected). Consider upgrading your subscription or checking your API rate limits — your usage may exceed your current plan's token or request limits.
+                </p>
+              </div>
+            </div>
           )}
 
           {/* Effective patterns */}

@@ -55,6 +55,46 @@ describe('normalizeFrictionCategory', () => {
   });
 
   // ────────────────────────────────────────────────────
+  // Rule 1.5: Explicit alias match
+  // ────────────────────────────────────────────────────
+
+  it('resolves all agent-orchestration alias variants to the cluster target', () => {
+    expect(normalizeFrictionCategory('agent-lifecycle-issue')).toBe('agent-orchestration-failure');
+    expect(normalizeFrictionCategory('agent-communication-failure')).toBe('agent-orchestration-failure');
+    expect(normalizeFrictionCategory('agent-communication-breakdown')).toBe('agent-orchestration-failure');
+    expect(normalizeFrictionCategory('agent-lifecycle-management')).toBe('agent-orchestration-failure');
+    expect(normalizeFrictionCategory('agent-shutdown-failure')).toBe('agent-orchestration-failure');
+  });
+
+  it('resolves all rate-limit alias variants to the cluster target', () => {
+    expect(normalizeFrictionCategory('api-rate-limit')).toBe('rate-limit-hit');
+    expect(normalizeFrictionCategory('rate-limiting')).toBe('rate-limit-hit');
+    expect(normalizeFrictionCategory('rate-limited')).toBe('rate-limit-hit');
+  });
+
+  it('resolves aliases case-insensitively', () => {
+    expect(normalizeFrictionCategory('Agent-Lifecycle-Issue')).toBe('agent-orchestration-failure');
+    expect(normalizeFrictionCategory('API-RATE-LIMIT')).toBe('rate-limit-hit');
+  });
+
+  it('does not further normalize non-canonical alias targets via Levenshtein', () => {
+    // "agent-orchestration-failure" is NOT in CANONICAL_FRICTION_CATEGORIES,
+    // but when returned as an alias target it should be returned as-is (not mangled by Levenshtein).
+    // Here we test the target itself — it should pass through as a novel category since it
+    // doesn't match any canonical via Levenshtein and isn't in the alias map as a key.
+    const result = normalizeFrictionCategory('agent-orchestration-failure');
+    // Not canonical, not an alias key → returned as novel category (original casing)
+    expect(result).toBe('agent-orchestration-failure');
+  });
+
+  it('does not further normalize "rate-limit-hit" target when passed directly', () => {
+    // Same as above — "rate-limit-hit" is not canonical, so if someone passes it directly
+    // it comes back as-is (novel category).
+    const result = normalizeFrictionCategory('rate-limit-hit');
+    expect(result).toBe('rate-limit-hit');
+  });
+
+  // ────────────────────────────────────────────────────
   // Rule 4: Novel category (no match)
   // ────────────────────────────────────────────────────
 
