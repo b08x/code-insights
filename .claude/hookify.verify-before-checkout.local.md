@@ -7,7 +7,7 @@ tool_matcher: Bash
 conditions:
   - field: command
     operator: regex_match
-    pattern: git\s+(checkout|switch)\s+(?!-b)
+    pattern: git\s+(checkout|switch)\s+(?!-[bBcC]\s)(?!--\s)
 ---
 
 **Pre-Checkout Verification**
