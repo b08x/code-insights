@@ -75,7 +75,7 @@ app.post('/generate', async (c) => {
         data: JSON.stringify({ phase: 'aggregating', message: 'Aggregating facets...' }),
       });
 
-      const aggregated = getAggregatedData(db, where, params);
+      const aggregated = getAggregatedData(db, where, params, body.project, body.source);
 
       if (aggregated.totalSessions === 0) {
         await stream.writeSSE({
@@ -227,7 +227,7 @@ app.get('/results', (c) => {
   const source = c.req.query('source');
 
   const { where, params } = buildWhereClause(period, project, source);
-  const aggregated = getAggregatedData(db, where, params);
+  const aggregated = getAggregatedData(db, where, params, project, source);
 
   return c.json(aggregated);
 });

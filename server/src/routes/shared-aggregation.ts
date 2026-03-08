@@ -70,16 +70,22 @@ export interface AggregatedData {
   frictionTotal: number;
   totalAllSessions: number;  // all sessions in scope (not just those with facets)
   rateLimitInfo: RateLimitInfo | null;
+  streak: number;            // consecutive days with at least one session (ignores period filter)
 }
 
 /**
  * Run all aggregation queries needed for facet analysis and synthesis.
- * Aggregation is done in code (SQL), not by LLM — LLMs synthesize, they don't count.
+ * Aggregation is done in code (SQL), not by LLMs — LLMs synthesize, they don't count.
+ *
+ * project and source are passed separately so streak can build its own
+ * period-free where clause (streak measures continuity across all time).
  */
 export function getAggregatedData(
   db: ReturnType<typeof getDb>,
   where: string,
-  params: (string | number)[]
+  params: (string | number)[],
+  project?: string,
+  source?: string
 ): AggregatedData {
   const hasWhere = where.length > 0;
   const extraPrefix = hasWhere ? 'AND' : 'WHERE';
@@ -226,6 +232,27 @@ export function getAggregatedData(
   // frictionTotal reflects only non-rate-limit friction (rate limits partitioned separately)
   const frictionTotal = mergedFriction.reduce((sum, fc) => sum + fc.count, 0);
 
+  // Streak: count consecutive days (backward from today) with at least one session.
+  // Always uses all-time scope — filtering by period would cap streak at the window size.
+  // Respects project and source filters since those are user-scope constraints.
+  const { where: streakWhere, params: streakParams } = buildWhereClause('all', project, source);
+  const sessionDates = db.prepare(
+    `SELECT DISTINCT date(started_at) as session_date FROM sessions s ${streakWhere} ORDER BY session_date DESC`
+  ).all(...streakParams) as Array<{ session_date: string }>;
+
+  let streak = 0;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  for (let i = 0; i < sessionDates.length; i++) {
+    const sessionDay = new Date(sessionDates[i].session_date + 'T00:00:00');
+    const expectedDay = new Date(today.getTime() - i * 86400000);
+    // Allow today or yesterday as the start of an active streak
+    if (i === 0 && sessionDay.getTime() < expectedDay.getTime() - 86400000) break;
+    if (i > 0 && sessionDay.getTime() !== expectedDay.getTime()) break;
+    streak++;
+  }
+
   return {
     frictionCategories: mergedFriction,
     effectivePatterns,
@@ -236,5 +263,6 @@ export function getAggregatedData(
     frictionTotal,
     totalAllSessions: totalAllRow.count,
     rateLimitInfo,
+    streak,
   };
 }

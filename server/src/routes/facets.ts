@@ -64,7 +64,7 @@ app.get('/aggregated', (c) => {
   const source = c.req.query('source');
 
   const { where, params } = buildWhereClause(period, project, source);
-  const aggregated = getAggregatedData(db, where, params);
+  const aggregated = getAggregatedData(db, where, params, project, source);
 
   return c.json(aggregated);
 });
