@@ -71,6 +71,7 @@ export interface AggregatedData {
   totalAllSessions: number;  // all sessions in scope (not just those with facets)
   rateLimitInfo: RateLimitInfo | null;
   streak: number;            // consecutive days with at least one session (ignores period filter)
+  sourceToolCount: number;   // distinct AI tools used within the scope
 }
 
 /**
@@ -232,6 +233,11 @@ export function getAggregatedData(
   // frictionTotal reflects only non-rate-limit friction (rate limits partitioned separately)
   const frictionTotal = mergedFriction.reduce((sum, fc) => sum + fc.count, 0);
 
+  // Count distinct source tools within scope (for hero card stat pill)
+  const sourceToolRow = db.prepare(
+    `SELECT COUNT(DISTINCT source_tool) as count FROM sessions s ${where}`
+  ).get(...params) as { count: number };
+
   // Streak: count consecutive days (backward from today) with at least one session.
   // Always uses all-time scope — filtering by period would cap streak at the window size.
   // Respects project and source filters since those are user-scope constraints.
@@ -264,5 +270,6 @@ export function getAggregatedData(
     totalAllSessions: totalAllRow.count,
     rateLimitInfo,
     streak,
+    sourceToolCount: sourceToolRow.count,
   };
 }

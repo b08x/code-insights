@@ -267,6 +267,8 @@ export interface FacetAggregation {
   frictionTotal: number;
   totalAllSessions: number;
   rateLimitInfo: RateLimitInfo | null;
+  streak: number;
+  sourceToolCount: number;
 }
 
 export function fetchFacetAggregation(params?: {
