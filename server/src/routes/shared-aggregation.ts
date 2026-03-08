@@ -246,17 +246,37 @@ export function getAggregatedData(
     `SELECT DISTINCT date(started_at) as session_date FROM sessions s ${streakWhere} ORDER BY session_date DESC`
   ).all(...streakParams) as Array<{ session_date: string }>;
 
-  let streak = 0;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  // Compare dates as YYYY-MM-DD strings in UTC to match SQLite's date() output.
+  // Using toISOString().slice(0,10) avoids local timezone shifting the day boundary.
+  const todayUTC = new Date().toISOString().slice(0, 10);
+  const yesterdayUTC = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
 
-  for (let i = 0; i < sessionDates.length; i++) {
-    const sessionDay = new Date(sessionDates[i].session_date + 'T00:00:00');
-    const expectedDay = new Date(today.getTime() - i * 86400000);
-    // Allow today or yesterday as the start of an active streak
-    if (i === 0 && sessionDay.getTime() < expectedDay.getTime() - 86400000) break;
-    if (i > 0 && sessionDay.getTime() !== expectedDay.getTime()) break;
-    streak++;
+  let streak = 0;
+  // baseline is the date we expect for the next streak entry.
+  // Start at today; if first session is yesterday, reset baseline to yesterday so
+  // the loop can continue counting backward from there correctly.
+  let baseline: string | null = null;
+
+  for (const { session_date } of sessionDates) {
+    if (baseline === null) {
+      // First entry: must be today or yesterday to start an active streak
+      if (session_date === todayUTC) {
+        baseline = todayUTC;
+      } else if (session_date === yesterdayUTC) {
+        baseline = yesterdayUTC;
+      } else {
+        break; // Gap from today — no active streak
+      }
+      streak++;
+    } else {
+      // Subsequent entries: must be exactly one day before current baseline
+      const prevDay: Date = new Date((baseline as string) + 'T00:00:00Z');
+      prevDay.setUTCDate(prevDay.getUTCDate() - 1);
+      const expectedPrev: string = prevDay.toISOString().slice(0, 10);
+      if (session_date !== expectedPrev) break;
+      baseline = expectedPrev;
+      streak++;
+    }
   }
 
   return {

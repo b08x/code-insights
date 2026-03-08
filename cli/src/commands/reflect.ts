@@ -253,22 +253,15 @@ async function reflectAction(options: {
     console.log();
   }
 
-  // Rules & Skills summary
+  // Rules & Hooks summary
   const rulesSkills = results['rules-skills'];
   if (rulesSkills) {
-    console.log(chalk.bold('  Rules & Skills'));
+    console.log(chalk.bold('  Rules & Hooks'));
     const rules = rulesSkills.claudeMdRules as Array<{ rule: string }> | undefined;
     if (rules && rules.length > 0) {
       console.log(chalk.dim('  CLAUDE.md rules:'));
       for (const r of rules) {
         console.log(`    ${chalk.cyan('→')} ${r.rule}`);
-      }
-    }
-    const skills = rulesSkills.skillTemplates as Array<{ name: string }> | undefined;
-    if (skills && skills.length > 0) {
-      console.log(chalk.dim('  Skills:'));
-      for (const s of skills) {
-        console.log(`    ${chalk.cyan('→')} ${s.name}`);
       }
     }
     const hooks = rulesSkills.hookConfigs as Array<{ event: string; command: string }> | undefined;

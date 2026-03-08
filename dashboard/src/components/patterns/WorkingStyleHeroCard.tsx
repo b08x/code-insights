@@ -40,7 +40,7 @@ function DonutChart({ segments }: { segments: DonutSegment[] }) {
   const total = segments.reduce((sum, s) => sum + s.value, 0);
   if (total === 0) {
     return (
-      <svg width="120" height="120" viewBox="0 0 120 120">
+      <svg width="120" height="120" viewBox="0 0 120 120" role="img" aria-label="Session type distribution: no data">
         <circle cx={cx} cy={cy} r={outerR} fill="none" stroke="#ffffff20" strokeWidth={outerR - innerR} />
       </svg>
     );
@@ -76,14 +76,20 @@ function DonutChart({ segments }: { segments: DonutSegment[] }) {
     currentAngle += sweepAngle;
   }
 
+  const ariaLabel = 'Session type distribution: ' + segments
+    .map(s => `${s.label} ${Math.round((s.value / total) * 100)}%`)
+    .join(', ');
+
   return (
-    <svg width="120" height="120" viewBox="0 0 120 120">
-      {paths.map((p, i) => (
-        <path key={i} d={p.d} fill={p.color} opacity={0.9} />
+    <svg width="120" height="120" viewBox="0 0 120 120" role="img" aria-label={ariaLabel}>
+      {paths.map((p) => (
+        <path key={p.color} d={p.d} fill={p.color} opacity={0.9} />
       ))}
     </svg>
   );
 }
+
+const MAX_TAGLINE_CHARS = 40;
 
 interface WorkingStyleHeroCardProps {
   tagline?: string;
@@ -130,7 +136,7 @@ export function WorkingStyleHeroCard({
                 backgroundClip: 'text',
               }}
             >
-              {tagline}
+              {tagline.length > MAX_TAGLINE_CHARS ? tagline.slice(0, MAX_TAGLINE_CHARS - 1) + '…' : tagline}
             </h2>
           ) : (
             <p className="text-sm text-white/50 mb-3 italic">

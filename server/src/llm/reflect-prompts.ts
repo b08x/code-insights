@@ -125,7 +125,7 @@ RULES:
 - Be descriptive, not prescriptive (no advice)
 - Mention the dominant workflow pattern, outcome distribution, and any notable characteristics
 - If the data is too sparse (< 5 sessions), say so and keep it brief
-- Generate a tagline: a 2-4 word archetype label in title case (e.g. "The Methodical Builder", "Relentless Debugger", "Architecture-First Thinker")
+- Generate a tagline: a 2-4 word archetype label in title case, maximum 40 characters (e.g. "The Methodical Builder", "Relentless Debugger", "Architecture-First Thinker")
 - The tagline must be empowering and descriptive, never critical or negative
 - Base the tagline on the dominant session types, workflow patterns, and outcome distribution
 - Think of it like a developer personality type — specific and earned, not generic
