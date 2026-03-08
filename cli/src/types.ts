@@ -260,7 +260,8 @@ export interface RulesSkillsResult {
     rationale: string;
     frictionSource: string;
   }>;
-  skillTemplates: Array<{
+  /** @deprecated Removed in v3.7 — old snapshots may still contain this field */
+  skillTemplates?: Array<{
     name: string;
     description: string;
     content: string;
@@ -276,6 +277,7 @@ export interface RulesSkillsResult {
 
 export interface WorkingStyleResult {
   section: 'working-style';
+  tagline?: string;             // 2-4 word archetype label (e.g. "The Methodical Builder")
   narrative: string;
   workflowDistribution: Record<string, number>;
   outcomeDistribution: Record<string, number>;
