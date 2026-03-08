@@ -27,7 +27,7 @@ Code Insights provides:
 
 ## Who It's For
 
-- **Developers using multiple AI coding tools** who want to understand their AI-assisted work patterns across Claude Code, Cursor, Codex CLI, and Copilot CLI
+- **Developers using multiple AI coding tools** who want to understand their AI-assisted work patterns across Claude Code, Cursor, Codex CLI, Copilot CLI, and VS Code Copilot Chat
 - **Learners** who want to review and reinforce what they've built with AI assistants
 - **Privacy-conscious developers** who want insights without giving up their data to a cloud service
 
@@ -39,6 +39,8 @@ Code Insights stores all session data in a SQLite database at `~/.code-insights/
 
 LLM analysis uses your own API key, stored in `~/.code-insights/config.json` (mode 0o600). API calls go directly from the local server to your chosen LLM provider — not through any Code Insights infrastructure.
 
+**Telemetry:** Anonymous, aggregate usage signals via PostHog. Opt-out model (enabled by default). Respects `CODE_INSIGHTS_TELEMETRY_DISABLED` and `DO_NOT_TRACK` environment variables. No PII collected. See `code-insights telemetry` to manage.
+
 ## Core Features
 
 ### Multi-Source Support
@@ -49,11 +51,12 @@ LLM analysis uses your own API key, stored in `~/.code-insights/config.json` (mo
 | **Cursor** | Sessions from Cursor's local SQLite state |
 | **Codex CLI** | Rollout files from `~/.codex/sessions/` |
 | **Copilot CLI** | Event files from `~/.copilot/session-state/` |
+| **VS Code Copilot Chat** | Sessions from VS Code Copilot Chat local storage |
 
 ### Insight Categories
 
 | Category | What It Captures |
-|----------|------------------|
+|----------|-----------------|
 | **Summary** | High-level narrative of what was accomplished |
 | **Decision** | Architecture choices, trade-offs, reasoning, alternatives considered |
 | **Learning** | Technical discoveries, mistakes, transferable knowledge |
@@ -65,10 +68,10 @@ LLM analysis uses your own API key, stored in `~/.code-insights/config.json` (mo
 Two-tier export system for turning session knowledge into shareable and actionable artifacts:
 
 **Session-level export** — per-session export of insights with two templates:
-- **Knowledge Base** — Human-readable markdown with full insight content (summaries, decisions with alternatives/reasoning, learnings with root causes/takeaways, techniques, prompt quality analysis)
-- **Agent Rules** — Imperative instructions formatted for CLAUDE.md/.cursorrules (`USE X`, `DO NOT use Y`, `WHEN Z, check W`)
+- **Knowledge Base** — Human-readable markdown with full insight content
+- **Agent Rules** — Imperative instructions formatted for CLAUDE.md/.cursorrules
 
-**Export Page** — LLM-powered cross-session synthesis (v3.6.0):
+**Export Page** — LLM-powered cross-session synthesis:
 - Reads across multiple sessions' insights to deduplicate, merge, and synthesize
 - Generates agent rules via LLM (not just template formatting)
 - 4 output formats: Agent Rules, Knowledge Brief, Obsidian (YAML frontmatter), Notion
@@ -88,11 +91,12 @@ Cross-session pattern detection and synthesis, powered by session facets:
 
 **CLI Commands:**
 - `code-insights reflect` — Generate cross-session synthesis with LLM (friction analysis, rules/skills, working style)
+- `code-insights reflect backfill` — Backfill facets for sessions analyzed before facet support
 - `code-insights stats patterns` — View pattern summary in the terminal
 
 **Dashboard Patterns Page** — Three synthesis sections:
 - **Friction & Wins** — Top friction categories ranked by frequency, effective patterns that worked
-- **Rules & Skills** — Auto-generated agent rules, skill recommendations, and hook suggestions based on recurring patterns
+- **Rules & Skills** — Auto-generated agent rules, skill recommendations, and hook suggestions
 - **Working Style** — Workflow distribution, outcome trends, session character analysis
 
 **Technical details:**
@@ -101,15 +105,20 @@ Cross-session pattern detection and synthesis, powered by session facets:
 - Lightweight facet-only backfill for previously-analyzed sessions (summary + first/last 20 messages)
 - Friction category normalization via Levenshtein distance matching to canonical categories
 - Synthesis prompts pre-aggregate data in code, then feed ranked summaries to LLM for narration
+- Reflect snapshots cached in `reflect_snapshots` table (Schema V4) with staleness tracking
+- 20-session minimum threshold for meaningful synthesis; coverage warning when < 50% analyzed
 
 ### Dashboard Views
 
-- **Daily/Weekly digest** — Summary of recent sessions
-- **Project timeline** — Visual history of work per project
-- **Decision log** — Searchable archive of "why" decisions
-- **Analytics** — Charts showing effort distribution, patterns
-- **Session detail** — Full session with analyze button for LLM insights
+- **Dashboard** — Overview with activity charts
+- **Sessions** — Session list with source, project, date, character filters
+- **Session Detail** — Full session with analyze button for LLM insights
+- **Insights** — Browse and search generated insights
+- **Analytics** — Charts showing effort distribution, cost, models, projects
 - **Patterns** — Cross-session pattern synthesis (Friction & Wins, Rules & Skills, Working Style)
+- **Export** — LLM-powered export wizard (4 formats, 3 depths)
+- **Journal** — Session journal/notes
+- **Settings** — Configuration UI
 
 ### CLI Stats Commands
 
@@ -127,7 +136,7 @@ code-insights stats patterns     # Cross-session pattern summary
 Code Insights uses a **provider abstraction** to support multiple AI coding tools through a common interface:
 
 ```
-Source tool session files → Provider (discover + parse) → SQLite → Dashboard / CLI stats
+Source tool session files -> Provider (discover + parse) -> SQLite -> Dashboard / CLI stats
 ```
 
 Each provider implements the `SessionProvider` interface (`discover()`, `parse()`, `getProviderName()`), normalizing tool-specific formats into the shared `ParsedSession` schema.
@@ -140,6 +149,7 @@ Each provider implements the `SessionProvider` interface (`discover()`, `parse()
 | **Cursor** | SQLite key-value (`state.vscdb`, JSON blobs) | `~/Library/Application Support/Cursor/User/` |
 | **Codex CLI** | JSONL (event-based stream) | `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` |
 | **Copilot CLI** | JSONL (events) | `~/.copilot/session-state/{id}/events.jsonl` |
+| **VS Code Copilot Chat** | JSON | Platform-specific Copilot Chat storage |
 
 ### Platform Paths
 
@@ -155,10 +165,11 @@ Adding a new source tool requires implementing the `SessionProvider` interface i
 ## Tech Stack
 
 - **CLI**: Node.js (ES2022, ES Modules), Commander.js
-- **Database**: SQLite (`better-sqlite3`) at `~/.code-insights/data.db` — WAL mode, local
+- **Database**: SQLite (`better-sqlite3`) at `~/.code-insights/data.db` — WAL mode, local, Schema V5
 - **Server**: Hono — lightweight API server, serves dashboard SPA at `localhost:7890`
 - **Dashboard**: Vite + React 19 SPA, Tailwind CSS 4 + shadcn/ui
 - **AI**: Multi-provider — OpenAI, Anthropic, Gemini, Ollama (your own API keys, proxied server-side)
+- **Telemetry**: PostHog (opt-out, anonymous device ID, no PII)
 - **Package manager**: pnpm (workspace monorepo: `cli/`, `dashboard/`, `server/`)
 
 ## Success Metrics

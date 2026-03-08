@@ -34,7 +34,7 @@ No hosted infrastructure. No Vercel. No Firebase. No Supabase. One install, zero
 
 Code Insights is a utility, not a product. It should:
 - Do one thing well (extract insights from AI coding sessions)
-- Support multiple source tools (Claude Code, Cursor, Codex CLI, Copilot CLI)
+- Support multiple source tools (Claude Code, Cursor, Codex CLI, Copilot CLI, VS Code Copilot Chat)
 - Be easy to install and configure
 - Stay out of the way once set up
 
@@ -58,12 +58,13 @@ Code Insights is a utility, not a product. It should:
 ### Phase 4: Feature Parity ✅
 - Vite + React SPA replacing the hosted web dashboard
 - Hono server embedding the SPA — served via `code-insights dashboard`
-- Multi-source support: Claude Code, Cursor, Codex CLI, Copilot CLI
+- Multi-source support: Claude Code, Cursor, Codex CLI, Copilot CLI, VS Code Copilot Chat
 - Full feature parity between CLI stats and dashboard views
 
 ### Phase 5: Telemetry ✅
-- Anonymous aggregate usage signals via PostHog (opt-in, disabled by default)
-- Events: dashboard started, analysis run, export run
+- Anonymous aggregate usage signals via PostHog (opt-out model, enabled by default)
+- 14 event types tracked (cli_sync, cli_stats, analysis_run, dashboard_loaded, export_run, etc.)
+- Respects `CODE_INSIGHTS_TELEMETRY_DISABLED` and `DO_NOT_TRACK` environment variables
 
 ### Phase 6: Polish & Distribution ✅
 - Published as `@code-insights/cli` on npm (v3.0.0 – v3.3.0)
@@ -83,14 +84,17 @@ Code Insights is a utility, not a product. It should:
 - `code-insights reflect` CLI command for cross-session LLM synthesis
 - `code-insights stats patterns` for terminal pattern viewing
 - Dashboard Patterns page with three sections: Friction & Wins, Rules & Skills, Working Style
-- Facet backfill endpoint for previously-analyzed sessions
+- Facet backfill CLI command and server endpoint for previously-analyzed sessions
+- Reflect snapshot caching with staleness tracking (Schema V4)
+- Friction category refinement with improved canonical categories
+- Patterns page refinement with outcome badges and usage stats
 
 ### What's Next
 - Test suite expansion (Vitest)
 - Slash commands for quick insights from the terminal
 - LLM cost tracking per call (app-wide)
-- Feedback mechanism for friction category learning
 - Session merging across tools (linking related sessions from different AI tools)
+- Gamification and shareable badges
 
 ## Non-Goals
 
