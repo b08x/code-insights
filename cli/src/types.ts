@@ -212,6 +212,7 @@ export interface FrictionPoint {
 }
 
 export interface EffectivePattern {
+  category: string;     // Required — no backward compat (Reflect feature not yet released)
   description: string;
   confidence: number;
 }
@@ -245,9 +246,11 @@ export interface FrictionWinsResult {
     trend: 'increasing' | 'stable' | 'decreasing' | 'new';
   }>;
   effectivePatterns: Array<{
-    description: string;
+    category: string;
+    label: string;
     frequency: number;
     avgConfidence: number;
+    descriptions: string[];
   }>;
   narrative: string;
   generatedAt: string;

@@ -256,9 +256,11 @@ export interface FacetAggregation {
     examples: string[];
   }>;
   effectivePatterns: Array<{
-    description: string;
+    category: string;
+    label: string;
     frequency: number;
     avg_confidence: number;
+    descriptions: string[];
   }>;
   outcomeDistribution: Record<string, number>;
   workflowDistribution: Record<string, number>;
@@ -282,6 +284,17 @@ export function fetchFacetAggregation(params?: {
   if (params?.source) q.set('source', params.source);
   const qs = q.toString() ? `?${q.toString()}` : '';
   return request<FacetAggregation>(`/facets/aggregated${qs}`);
+}
+
+export function fetchOutdatedFacetCount(params?: {
+  project?: string;
+  period?: string;
+}) {
+  const q = new URLSearchParams();
+  if (params?.project) q.set('project', params.project);
+  if (params?.period) q.set('period', params.period);
+  const qs = q.toString() ? `?${q.toString()}` : '';
+  return request<{ count: number }>(`/facets/outdated${qs}`);
 }
 
 export function fetchMissingFacetSessionIds(params?: {

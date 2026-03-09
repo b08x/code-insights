@@ -239,24 +239,29 @@ describe('getAggregatedData', () => {
   it('aggregates effective patterns with frequency', () => {
     seedSessionWithFacets(testDb, 'sess-1', {
       effectivePatterns: [
-        { description: 'Read file before editing', confidence: 90 },
+        { category: 'context-gathering', description: 'Read file before editing', confidence: 90 },
       ],
     });
     seedSessionWithFacets(testDb, 'sess-2', {
       effectivePatterns: [
-        { description: 'Read file before editing', confidence: 85 },
-        { description: 'Run tests after changes', confidence: 95 },
+        { category: 'context-gathering', description: 'Read file before editing', confidence: 85 },
+        { category: 'verification-workflow', description: 'Run tests after changes', confidence: 95 },
       ],
     });
 
     const result = getAggregatedData(testDb, '', []);
-    const readFile = result.effectivePatterns.find(ep => ep.description === 'Read file before editing');
+
+    const readFile = result.effectivePatterns.find(ep => ep.category === 'context-gathering');
     expect(readFile).toBeDefined();
     expect(readFile!.frequency).toBe(2);
+    expect(readFile!.label).toBe('Context Gathering');
+    expect(readFile!.descriptions).toContain('Read file before editing');
 
-    const runTests = result.effectivePatterns.find(ep => ep.description === 'Run tests after changes');
+    const runTests = result.effectivePatterns.find(ep => ep.category === 'verification-workflow');
     expect(runTests).toBeDefined();
     expect(runTests!.frequency).toBe(1);
+    expect(runTests!.label).toBe('Verification Workflow');
+    expect(runTests!.descriptions).toContain('Run tests after changes');
   });
 
   it('aggregates outcome distribution', () => {

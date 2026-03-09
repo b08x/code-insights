@@ -99,6 +99,29 @@ export const CANONICAL_FRICTION_CATEGORIES = [
   'race-condition', 'environment-mismatch', 'documentation-gap', 'tooling-limitation',
 ] as const;
 
+export const CANONICAL_PATTERN_CATEGORIES = [
+  'structured-planning',
+  'incremental-implementation',
+  'verification-workflow',
+  'systematic-debugging',
+  'self-correction',
+  'context-gathering',
+  'domain-expertise',
+  'effective-tooling',
+] as const;
+
+export const EFFECTIVE_PATTERN_CLASSIFICATION_GUIDANCE = `
+EFFECTIVE PATTERN CLASSIFICATION GUIDANCE:
+- "structured-planning": Task decomposition, phased plans, breaking work into steps BEFORE coding
+- "incremental-implementation": Small commits, iterative building, progressive refinement, one thing at a time
+- "verification-workflow": Build/test/lint loops, TDD, CI checks, verifying correctness before committing
+- "systematic-debugging": Binary search, log analysis, reproduction isolation, comparing expected vs actual
+- "self-correction": Recognizing a wrong path and pivoting without explicit user intervention
+- "context-gathering": Reading existing code, docs, schemas, or types before making changes
+- "domain-expertise": Applying specific framework, library, API, or type-system knowledge that avoids trial-and-error
+- "effective-tooling": Leveraging tool-specific capabilities — agent delegation, multi-file edits, smart completions, parallel work
+When no canonical category fits, create a specific kebab-case category (a precise novel category is better than forcing a poor fit).`;
+
 /**
  * System prompt for session analysis.
  */
@@ -129,8 +152,10 @@ ${FRICTION_CLASSIFICATION_GUIDANCE}
 
 4. effective_patterns: Up to 3 techniques or approaches that worked particularly well (array, max 3).
    Each has:
-   - description: Specific technique worth repeating
+   - category: Use one of these PREFERRED categories when applicable: structured-planning, incremental-implementation, verification-workflow, systematic-debugging, self-correction, context-gathering, domain-expertise, effective-tooling. Create a new kebab-case category only when none fit.
+   - description: Specific technique worth repeating (1-2 sentences with concrete detail)
    - confidence: 0-100 how confident you are this is genuinely effective
+${EFFECTIVE_PATTERN_CLASSIFICATION_GUIDANCE}
 
 5. had_course_correction: true if the user redirected the AI from a wrong approach, false otherwise
 6. course_correction_reason: If had_course_correction is true, briefly explain what was corrected (or null)
@@ -240,7 +265,8 @@ Extract insights in this JSON format:
     ],
     "effective_patterns": [
       {
-        "description": "Specific technique that worked well",
+        "category": "structured-planning",
+        "description": "Broke the migration into 3 phases: schema change, data backfill, API update",
         "confidence": 85
       }
     ]
@@ -304,6 +330,7 @@ export interface AnalysisResponse {
       resolution: string;
     }>;
     effective_patterns: Array<{
+      category: string;
       description: string;
       confidence: number;
     }>;
@@ -417,6 +444,13 @@ export function parseAnalysisResponse(response: string): ParseResult<AnalysisRes
     console.warn('[friction-monitor] LLM classified friction as "tooling-limitation" — verify this is a genuine tool limitation, not an agent/rate-limit/approach issue');
   }
 
+  // Observability: warn when LLM returns effective_pattern without category field.
+  // Catches models that ignore the category instruction (especially smaller Ollama models).
+  // Remove after confirming classification quality over ~20 new sessions.
+  if (parsed.facets?.effective_patterns?.some(ep => !ep.category)) {
+    console.warn('[pattern-monitor] LLM returned effective_pattern without category field');
+  }
+
   return { success: true, data: parsed };
 }
 
@@ -436,7 +470,8 @@ Extract session facets — a holistic assessment of how the session went:
    Each: { category (kebab-case, prefer: ${CANONICAL_FRICTION_CATEGORIES.join(', ')}), description (one sentence), severity ("high"|"medium"|"low"), resolution ("resolved"|"workaround"|"unresolved") }
 ${FRICTION_CLASSIFICATION_GUIDANCE}
 4. effective_patterns: Up to 3 things that worked well (array).
-   Each: { description (specific technique), confidence (0-100) }
+   Each: { category (kebab-case, prefer: ${CANONICAL_PATTERN_CATEGORIES.join(', ')}), description (specific technique, 1-2 sentences), confidence (0-100) }
+${EFFECTIVE_PATTERN_CLASSIFICATION_GUIDANCE}
 5. had_course_correction: true/false — did the user redirect the AI?
 6. course_correction_reason: Brief explanation if true, null otherwise
 7. iteration_count: How many user clarification/correction cycles occurred
@@ -469,7 +504,9 @@ Extract facets in this JSON format:
   "course_correction_reason": null,
   "iteration_count": 0,
   "friction_points": [],
-  "effective_patterns": []
+  "effective_patterns": [
+    { "category": "kebab-case-category", "description": "technique", "confidence": 85 }
+  ]
 }
 
 Respond with valid JSON only, wrapped in <json>...</json> tags.`;

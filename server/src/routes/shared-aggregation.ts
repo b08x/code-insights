@@ -3,6 +3,7 @@
 
 import { getDb } from '@code-insights/cli/db/client';
 import { normalizeFrictionCategory } from '../llm/friction-normalize.js';
+import { normalizePatternCategory, getPatternCategoryLabel } from '../llm/pattern-normalize.js';
 
 export function buildPeriodFilter(period: string): string | null {
   const now = new Date();
@@ -49,9 +50,11 @@ export interface AggregatedFrictionCategory {
 }
 
 export interface AggregatedEffectivePattern {
-  description: string;
+  category: string;
+  label: string;            // Human-readable category name (e.g., "Structured Planning")
   frequency: number;
   avg_confidence: number;
+  descriptions: string[];   // Representative descriptions, max 10
 }
 
 export interface RateLimitInfo {
@@ -110,18 +113,22 @@ export function getAggregatedData(
     ORDER BY count DESC, avg_severity DESC
   `).all(...params) as Array<{ category: string; count: number; avg_severity: number; examples: string; session_ids: string }>;
 
-  const effectivePatterns = db.prepare(`
+  // Fetch effective patterns with confidence >= 50.
+  // Category-based grouping happens in code (post-query) after normalizePatternCategory()
+  // to handle any LLM variants that were stored before normalization was applied at write time.
+  // extraPrefix handles the case where where is '' (tests pass empty string) vs a WHERE clause.
+  const effectivePatternsRaw = db.prepare(`
     SELECT
+      json_extract(je.value, '$.category') as category,
       json_extract(je.value, '$.description') as description,
-      COUNT(*) as frequency,
-      AVG(json_extract(je.value, '$.confidence')) as avg_confidence
+      json_extract(je.value, '$.confidence') as confidence
     FROM session_facets sf
     JOIN sessions s ON sf.session_id = s.id
     CROSS JOIN json_each(sf.effective_patterns) je
     ${where}
-    GROUP BY description
-    ORDER BY frequency DESC, avg_confidence DESC
-  `).all(...params) as Array<{ description: string; frequency: number; avg_confidence: number }>;
+    ${extraPrefix} json_extract(je.value, '$.confidence') >= 50
+    ORDER BY json_extract(je.value, '$.confidence') DESC
+  `).all(...params) as Array<{ category: string | null; description: string | null; confidence: number | null }>;
 
   const outcomeDistribution = db.prepare(`
     SELECT outcome_satisfaction, COUNT(*) as count
@@ -232,6 +239,38 @@ export function getAggregatedData(
 
   // frictionTotal reflects only non-rate-limit friction (rate limits partitioned separately)
   const frictionTotal = mergedFriction.reduce((sum, fc) => sum + fc.count, 0);
+
+  // Aggregate effective patterns by normalized category.
+  // Each row from effectivePatternsRaw is a single pattern entry — we group by normalized
+  // category in code so normalizePatternCategory() can handle LLM variants at query time.
+  const normalizedPatterns = new Map<string, { total_confidence: number; count: number; descriptions: string[] }>();
+  for (const row of effectivePatternsRaw) {
+    // Skip entries with null category or description (malformed JSON in older sessions)
+    if (!row.category || !row.description) continue;
+    const normalized = normalizePatternCategory(row.category);
+    const existing = normalizedPatterns.get(normalized);
+    if (existing) {
+      existing.count += 1;
+      existing.total_confidence += row.confidence ?? 0;
+      existing.descriptions.push(row.description);
+    } else {
+      normalizedPatterns.set(normalized, {
+        count: 1,
+        total_confidence: row.confidence ?? 0,
+        descriptions: [row.description],
+      });
+    }
+  }
+
+  const effectivePatterns: AggregatedEffectivePattern[] = Array.from(normalizedPatterns.entries())
+    .map(([category, data]) => ({
+      category,
+      label: getPatternCategoryLabel(category),
+      frequency: data.count,
+      avg_confidence: data.count > 0 ? data.total_confidence / data.count : 0,
+      descriptions: data.descriptions.slice(0, 10),
+    }))
+    .sort((a, b) => b.frequency - a.frequency || b.avg_confidence - a.avg_confidence);
 
   // Count distinct source tools within scope (for hero card stat pill)
   const sourceToolRow = db.prepare(

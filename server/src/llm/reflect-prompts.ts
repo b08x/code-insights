@@ -23,7 +23,7 @@ Respond with valid JSON only, wrapped in <json>...</json> tags.`;
 
 export function generateFrictionWinsPrompt(data: {
   frictionCategories: Array<{ category: string; count: number; avg_severity: number; examples: string[] }>;
-  effectivePatterns: Array<{ description: string; frequency: number; avg_confidence: number }>;
+  effectivePatterns: Array<{ category: string; label: string; frequency: number; avg_confidence: number; descriptions: string[] }>;
   totalSessions: number;
   period: string;
 }): string {
@@ -32,7 +32,7 @@ export function generateFrictionWinsPrompt(data: {
 FRICTION CATEGORIES (ranked by frequency × severity):
 ${JSON.stringify(data.frictionCategories.slice(0, 15), null, 2)}
 
-EFFECTIVE PATTERNS (ranked by frequency):
+EFFECTIVE PATTERNS (ranked by frequency, grouped by category):
 ${JSON.stringify(data.effectivePatterns.slice(0, 10), null, 2)}
 
 Respond with this JSON format:
@@ -48,6 +48,7 @@ Respond with this JSON format:
   ],
   "topWins": [
     {
+      "category": "structured-planning",
       "pattern": "Description of what works",
       "significance": "Why this is effective"
     }
@@ -76,7 +77,7 @@ Respond with valid JSON only, wrapped in <json>...</json> tags.`;
 
 export function generateRulesSkillsPrompt(data: {
   recurringFriction: Array<{ category: string; count: number; avg_severity: number; examples: string[] }>;
-  effectivePatterns: Array<{ description: string; frequency: number; avg_confidence: number }>;
+  effectivePatterns: Array<{ category: string; label: string; frequency: number; avg_confidence: number; descriptions: string[] }>;
   antiPatterns?: Array<{ name: string; count: number; examples: string[] }>;
   targetTool: string;
 }): string {
