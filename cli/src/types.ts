@@ -212,6 +212,7 @@ export interface FrictionPoint {
 }
 
 export interface EffectivePattern {
+  category: string;     // Required — no backward compat (Reflect feature not yet released)
   description: string;
   confidence: number;
 }
