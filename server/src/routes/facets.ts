@@ -115,6 +115,38 @@ app.get('/missing', (c) => {
   return c.json({ sessionIds, count: sessionIds.length });
 });
 
+// GET /api/facets/outdated
+// Returns count of session_facets rows where effective_patterns entries lack a category field.
+// Used by the dashboard to show a banner prompting users to re-analyze outdated sessions.
+app.get('/outdated', (c) => {
+  const db = getDb();
+  const project = c.req.query('project');
+
+  const conditions: string[] = ['s.deleted_at IS NULL'];
+  const params: (string | number)[] = [];
+
+  if (project) {
+    conditions.push('s.project_id = ?');
+    params.push(project);
+  }
+
+  const where = `WHERE ${conditions.join(' AND ')}`;
+
+  // Count distinct sessions that have at least one effective_pattern entry missing category.
+  // json_each expands the array; json_extract returns NULL when the field is absent.
+  const row = db.prepare(`
+    SELECT COUNT(DISTINCT sf.session_id) as count
+    FROM session_facets sf
+    JOIN sessions s ON sf.session_id = s.id
+    CROSS JOIN json_each(sf.effective_patterns) je
+    ${where}
+    AND json_array_length(sf.effective_patterns) > 0
+    AND json_extract(je.value, '$.category') IS NULL
+  `).get(...params) as { count: number };
+
+  return c.json({ count: row.count });
+});
+
 // POST /api/facets/backfill
 // Body: { sessionIds: string[] }
 // Streams progress as facets are extracted one-by-one for sessions that lack them.
