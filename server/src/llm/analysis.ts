@@ -833,12 +833,13 @@ function saveFacetsToDb(
   const normalizedPatterns = Array.isArray(facets.effective_patterns)
     ? facets.effective_patterns.map(ep => {
         if (!ep.category) {
-          // Should not happen with updated prompts — indicates model ignored category instruction
-          console.warn('[pattern-monitor] saveFacetsToDb: effective_pattern missing category field, storing as-is');
+          // Should not happen with updated prompts — indicates model ignored category instruction.
+          // Fall back to 'uncategorized' so these sessions don't trigger the outdated banner.
+          console.warn('[pattern-monitor] saveFacetsToDb: effective_pattern missing category field, defaulting to uncategorized');
         }
         return {
           ...ep,
-          category: ep.category ? normalizePatternCategory(ep.category) : ep.category,
+          category: ep.category ? normalizePatternCategory(ep.category) : 'uncategorized',
         };
       })
     : [];

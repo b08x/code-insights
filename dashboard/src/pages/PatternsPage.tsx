@@ -495,8 +495,8 @@ export default function PatternsPage() {
                       </Alert>
                     )}
                     <ul className="divide-y">
-                      {aggregation!.effectivePatterns.slice(0, 8).map((ep, i) => (
-                        <li key={i} className="py-3 first:pt-0 last:pb-0">
+                      {aggregation!.effectivePatterns.slice(0, 8).map((ep) => (
+                        <li key={ep.category} className="py-3 first:pt-0 last:pb-0">
                           <div className="flex items-start gap-3 hover:bg-muted/50 rounded-md px-2 -mx-2 transition-colors">
                             <span className="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-semibold bg-primary/10 text-primary shrink-0 mt-0.5">
                               {ep.frequency}x
