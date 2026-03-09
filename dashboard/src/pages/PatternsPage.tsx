@@ -81,8 +81,8 @@ export default function PatternsPage() {
   });
 
   const { data: outdatedData } = useQuery({
-    queryKey: ['facets', 'outdated', selectedProject],
-    queryFn: () => fetchOutdatedFacetCount({ project: selectedProject }),
+    queryKey: ['facets', 'outdated', selectedProject, range],
+    queryFn: () => fetchOutdatedFacetCount({ project: selectedProject, period: range }),
     staleTime: 5 * 60 * 1000,
   });
 

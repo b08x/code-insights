@@ -117,20 +117,14 @@ app.get('/missing', (c) => {
 
 // GET /api/facets/outdated
 // Returns count of session_facets rows where effective_patterns entries lack a category field.
-// Used by the dashboard to show a banner prompting users to re-analyze outdated sessions.
+// Accepts period + project to scope to the user's current view — avoids misleading counts
+// when the user is viewing "last 7 days" but sees outdated sessions from all time.
 app.get('/outdated', (c) => {
   const db = getDb();
   const project = c.req.query('project');
+  const period = c.req.query('period') || '30d';
 
-  const conditions: string[] = ['s.deleted_at IS NULL'];
-  const params: (string | number)[] = [];
-
-  if (project) {
-    conditions.push('s.project_id = ?');
-    params.push(project);
-  }
-
-  const where = `WHERE ${conditions.join(' AND ')}`;
+  const { where, params } = buildWhereClause(period, project);
 
   // Count distinct sessions that have at least one effective_pattern entry missing category.
   // json_each expands the array; json_extract returns NULL when the field is absent.

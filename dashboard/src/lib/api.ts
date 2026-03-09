@@ -288,9 +288,11 @@ export function fetchFacetAggregation(params?: {
 
 export function fetchOutdatedFacetCount(params?: {
   project?: string;
+  period?: string;
 }) {
   const q = new URLSearchParams();
   if (params?.project) q.set('project', params.project);
+  if (params?.period) q.set('period', params.period);
   const qs = q.toString() ? `?${q.toString()}` : '';
   return request<{ count: number }>(`/facets/outdated${qs}`);
 }
