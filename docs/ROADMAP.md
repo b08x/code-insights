@@ -141,8 +141,9 @@ This roadmap outlines the development phases for Code Insights. Timelines are fl
 
 ## What's Next
 
-- Effective patterns audit (review 8 pattern categories with same rigor as friction revision)
-- Progress tracking: weekly snapshots, friction-to-pattern transformation detection, user-actionable improvement trends
+- ~~Effective patterns audit~~ ✅ Completed (LLM expert audit confirmed 8 categories, added `driver` field, upgraded classification guidance)
+- Effective pattern taxonomy revision: upgraded classification guidance (contrastive pairs, in-session signals), `driver` field (`user-driven`/`ai-driven`/`collaborative`), outdated detection
+- Progress tracking: weekly snapshots, friction-to-pattern affinity map (ships here, not in taxonomy PR), transformation detection, `driver`-based filtering for user growth signals
 - Test suite expansion (Vitest)
 - Slash commands for quick insights from the terminal
 - LLM cost tracking per call (app-wide)
