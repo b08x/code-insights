@@ -55,6 +55,7 @@ export interface AggregatedEffectivePattern {
   frequency: number;
   avg_confidence: number;
   descriptions: string[];   // Representative descriptions, max 10
+  drivers: Record<string, number>;  // driver -> count breakdown (user-driven, ai-driven, collaborative)
 }
 
 export interface RateLimitInfo {
@@ -121,14 +122,15 @@ export function getAggregatedData(
     SELECT
       json_extract(je.value, '$.category') as category,
       json_extract(je.value, '$.description') as description,
-      json_extract(je.value, '$.confidence') as confidence
+      json_extract(je.value, '$.confidence') as confidence,
+      json_extract(je.value, '$.driver') as driver
     FROM session_facets sf
     JOIN sessions s ON sf.session_id = s.id
     CROSS JOIN json_each(sf.effective_patterns) je
     ${where}
     ${extraPrefix} json_extract(je.value, '$.confidence') >= 50
     ORDER BY json_extract(je.value, '$.confidence') DESC
-  `).all(...params) as Array<{ category: string | null; description: string | null; confidence: number | null }>;
+  `).all(...params) as Array<{ category: string | null; description: string | null; confidence: number | null; driver: string | null }>;
 
   const outcomeDistribution = db.prepare(`
     SELECT outcome_satisfaction, COUNT(*) as count
@@ -243,7 +245,7 @@ export function getAggregatedData(
   // Aggregate effective patterns by normalized category.
   // Each row from effectivePatternsRaw is a single pattern entry — we group by normalized
   // category in code so normalizePatternCategory() can handle LLM variants at query time.
-  const normalizedPatterns = new Map<string, { total_confidence: number; count: number; descriptions: string[] }>();
+  const normalizedPatterns = new Map<string, { total_confidence: number; count: number; descriptions: string[]; drivers: Record<string, number> }>();
   for (const row of effectivePatternsRaw) {
     // Skip entries with null category or description (malformed JSON in older sessions)
     if (!row.category || !row.description) continue;
@@ -253,11 +255,20 @@ export function getAggregatedData(
       existing.count += 1;
       existing.total_confidence += row.confidence ?? 0;
       existing.descriptions.push(row.description);
+      // Track driver breakdown — null/missing driver is silently skipped (transition period)
+      if (row.driver) {
+        existing.drivers[row.driver] = (existing.drivers[row.driver] ?? 0) + 1;
+      }
     } else {
+      const drivers: Record<string, number> = {};
+      if (row.driver) {
+        drivers[row.driver] = 1;
+      }
       normalizedPatterns.set(normalized, {
         count: 1,
         total_confidence: row.confidence ?? 0,
         descriptions: [row.description],
+        drivers,
       });
     }
   }
@@ -269,6 +280,7 @@ export function getAggregatedData(
       frequency: data.count,
       avg_confidence: data.count > 0 ? data.total_confidence / data.count : 0,
       descriptions: data.descriptions.slice(0, 10),
+      drivers: data.drivers,
     }))
     .sort((a, b) => b.frequency - a.frequency || b.avg_confidence - a.avg_confidence);
 

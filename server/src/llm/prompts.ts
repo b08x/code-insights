@@ -144,14 +144,31 @@ export const CANONICAL_PATTERN_CATEGORIES = [
 
 export const EFFECTIVE_PATTERN_CLASSIFICATION_GUIDANCE = `
 EFFECTIVE PATTERN CLASSIFICATION GUIDANCE:
-- "structured-planning": Task decomposition, phased plans, breaking work into steps BEFORE coding
-- "incremental-implementation": Small commits, iterative building, progressive refinement, one thing at a time
-- "verification-workflow": Build/test/lint loops, TDD, CI checks, verifying correctness before committing
-- "systematic-debugging": Binary search, log analysis, reproduction isolation, comparing expected vs actual
-- "self-correction": Recognizing a wrong path and pivoting without explicit user intervention
-- "context-gathering": Reading existing code, docs, schemas, or types before making changes
-- "domain-expertise": Applying specific framework, library, API, or type-system knowledge that avoids trial-and-error
-- "effective-tooling": Leveraging tool-specific capabilities — agent delegation, multi-file edits, smart completions, parallel work
+
+Each effective pattern captures a technique or approach that contributed to a productive session outcome.
+
+CATEGORIES — classify the TYPE of effective pattern:
+- "structured-planning": User or AI decomposed the task into explicit steps, defined scope boundaries, or established an implementation plan BEFORE writing code. In-session signal: a plan, task list, or scope definition appears in the conversation before implementation begins.
+- "incremental-implementation": Work progressed in small, verifiable steps rather than a monolithic change. Each step was validated before moving to the next. In-session signal: multiple small edits with verification between them, not one large batch of changes.
+- "verification-workflow": Proactive correctness checks — running builds, tests, linters, or type checks — BEFORE considering the work complete. In-session signal: tool calls to build/test/lint commands followed by reviewing output, when nothing was known to be broken.
+- "systematic-debugging": Methodical investigation of a problem using structured techniques: binary search, log insertion, reproduction isolation, expected-vs-actual comparison. In-session signal: multiple targeted diagnostic steps rather than random guessing.
+- "self-correction": The AI recognized it was on a wrong path and changed approach WITHOUT the user pointing out the error. In-session signal: the AI explicitly acknowledges a mistake or wrong direction in its response and pivots to a different approach. NOT this category if the user corrected the AI — that is normal interaction, not self-correction.
+- "context-gathering": Actively reading existing code, documentation, schemas, types, or configuration BEFORE making changes. In-session signal: Read/Grep/Glob/search tool calls at the start of a task, before any Edit/Write calls.
+- "domain-expertise": Applying specific framework, library, API, or language knowledge correctly on first attempt, WITHOUT needing to search or experiment. In-session signal: correct usage of non-obvious APIs or patterns with no preceding search and no subsequent error. NOT this category if the AI read docs or code first — that is context-gathering, even if domain knowledge was also needed.
+- "effective-tooling": Leveraging tool-specific capabilities that multiplied productivity — agent delegation, parallel work, multi-file edits, specialized commands, strategic mode selection (chat vs edit vs agent). In-session signal: use of advanced tool features beyond basic read/write/edit.
+
+CONTRASTIVE PAIRS — use these to disambiguate confusable categories:
+- structured-planning vs incremental-implementation: Planning is about DECIDING what to do (before implementation). Incremental is about HOW you execute (during implementation). A session can have planning without incremental execution, or incremental execution without upfront planning.
+- context-gathering vs domain-expertise: Context-gathering involves ACTIVE INVESTIGATION (reading files, searching docs, exploring schemas). Domain-expertise involves APPLYING EXISTING KNOWLEDGE without investigation. If the AI read a file or searched before acting, classify as context-gathering even if domain knowledge was also required.
+- verification-workflow vs systematic-debugging: Verification is PROACTIVE (checking that working code still works, running tests before moving on). Debugging is REACTIVE (investigating something that is broken, diagnosing a failure).
+- self-correction vs user-directed correction: Self-correction means the AI caught its OWN mistake unprompted. If the user said "that's wrong" or "try a different approach," any subsequent pivot is normal interaction, NOT self-correction.
+
+DRIVER — classify WHO drove this pattern:
+- "user-driven": The user explicitly initiated this pattern (asked for a plan, requested tests, directed the investigation, specified the tool or approach).
+- "ai-driven": The AI exhibited this pattern without user prompting (self-corrected, proactively ran tests, applied expertise without being asked to, independently explored the codebase).
+- "collaborative": Both contributed, or the pattern emerged naturally from the interaction (user described the problem, AI chose the debugging methodology; user asked for a feature, AI chose to work incrementally).
+When uncertain between user-driven and ai-driven, prefer the more specific label. Use "collaborative" only when BOTH the user AND the AI made distinct, identifiable contributions to this pattern.
+
 When no canonical category fits, create a specific kebab-case category (a precise novel category is better than forcing a poor fit).`;
 
 /**
@@ -188,6 +205,7 @@ ${FRICTION_CLASSIFICATION_GUIDANCE}
    - category: Use one of these PREFERRED categories when applicable: structured-planning, incremental-implementation, verification-workflow, systematic-debugging, self-correction, context-gathering, domain-expertise, effective-tooling. Create a new kebab-case category only when none fit.
    - description: Specific technique worth repeating (1-2 sentences with concrete detail)
    - confidence: 0-100 how confident you are this is genuinely effective
+   - driver: Who drove this pattern — "user-driven" (user explicitly requested it), "ai-driven" (AI exhibited it without prompting), or "collaborative" (both contributed or emerged from interaction)
 ${EFFECTIVE_PATTERN_CLASSIFICATION_GUIDANCE}
 
 5. had_course_correction: true if the user redirected the AI from a wrong approach, false otherwise
@@ -301,7 +319,8 @@ Extract insights in this JSON format:
       {
         "category": "structured-planning",
         "description": "Broke the migration into 3 phases: schema change, data backfill, API update",
-        "confidence": 85
+        "confidence": 85,
+        "driver": "user-driven | ai-driven | collaborative"
       }
     ]
   },
@@ -368,6 +387,7 @@ export interface AnalysisResponse {
       category: string;
       description: string;
       confidence: number;
+      driver?: 'user-driven' | 'ai-driven' | 'collaborative';
     }>;
   };
   session_character?: SessionCharacter;
@@ -479,11 +499,19 @@ export function parseAnalysisResponse(response: string): ParseResult<AnalysisRes
     console.warn('[friction-monitor] LLM classified friction as "tooling-limitation" — verify this is a genuine tool limitation, not an agent/rate-limit/approach issue');
   }
 
-  // Observability: warn when LLM returns effective_pattern without category field.
-  // Catches models that ignore the category instruction (especially smaller Ollama models).
+  // Observability: warn when LLM returns effective_pattern without category or driver field,
+  // or with an unrecognized driver value.
+  // Catches models that ignore the classification instructions (especially smaller Ollama models).
   // Remove after confirming classification quality over ~20 new sessions.
   if (parsed.facets?.effective_patterns?.some(ep => !ep.category)) {
     console.warn('[pattern-monitor] LLM returned effective_pattern without category field');
+  }
+  if (parsed.facets?.effective_patterns?.some(ep => !ep.driver)) {
+    console.warn('[pattern-monitor] LLM returned effective_pattern without driver field — driver classification may be incomplete');
+  }
+  const VALID_DRIVERS = new Set(['user-driven', 'ai-driven', 'collaborative']);
+  if (parsed.facets?.effective_patterns?.some(ep => ep.driver && !VALID_DRIVERS.has(ep.driver))) {
+    console.warn('[pattern-monitor] LLM returned unexpected driver value — check classification quality');
   }
 
   return { success: true, data: parsed };
@@ -505,7 +533,7 @@ Extract session facets — a holistic assessment of how the session went:
    Each: { category (kebab-case, prefer: ${CANONICAL_FRICTION_CATEGORIES.join(', ')}), attribution ("user-actionable"|"ai-capability"|"environmental"), description (one neutral sentence with specific details), severity ("high"|"medium"|"low"), resolution ("resolved"|"workaround"|"unresolved") }
 ${FRICTION_CLASSIFICATION_GUIDANCE}
 4. effective_patterns: Up to 3 things that worked well (array).
-   Each: { category (kebab-case, prefer: ${CANONICAL_PATTERN_CATEGORIES.join(', ')}), description (specific technique, 1-2 sentences), confidence (0-100) }
+   Each: { category (kebab-case, prefer: ${CANONICAL_PATTERN_CATEGORIES.join(', ')}), description (specific technique, 1-2 sentences), confidence (0-100), driver ("user-driven"|"ai-driven"|"collaborative") }
 ${EFFECTIVE_PATTERN_CLASSIFICATION_GUIDANCE}
 5. had_course_correction: true/false — did the user redirect the AI?
 6. course_correction_reason: Brief explanation if true, null otherwise
@@ -540,7 +568,7 @@ Extract facets in this JSON format:
   "iteration_count": 0,
   "friction_points": [],
   "effective_patterns": [
-    { "category": "kebab-case-category", "description": "technique", "confidence": 85 }
+    { "category": "kebab-case-category", "description": "technique", "confidence": 85, "driver": "user-driven | ai-driven | collaborative" }
   ]
 }
 

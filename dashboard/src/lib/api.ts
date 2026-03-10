@@ -261,6 +261,7 @@ export interface FacetAggregation {
     frequency: number;
     avg_confidence: number;
     descriptions: string[];
+    drivers?: Record<string, number>;  // driver -> count breakdown (user-driven, ai-driven, collaborative)
   }>;
   outcomeDistribution: Record<string, number>;
   workflowDistribution: Record<string, number>;

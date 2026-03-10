@@ -216,6 +216,7 @@ export interface EffectivePattern {
   category: string;     // Required — no backward compat (Reflect feature not yet released)
   description: string;
   confidence: number;
+  driver?: 'user-driven' | 'ai-driven' | 'collaborative';  // optional during transition — existing data without driver will not break
 }
 
 export type OutcomeSatisfaction = 'high' | 'medium' | 'low' | 'abandoned';

@@ -24,6 +24,28 @@ import {
 // CHART_COLORS.models is the shared hex color array for multi-series charts
 const PALETTE = CHART_COLORS.models;
 
+// Returns the dominant driver key from a driver breakdown record.
+// Used to show a single pill label rather than a full breakdown.
+// Returns null when no driver data exists (pre-driver sessions).
+function getDominantDriver(drivers: Record<string, number> | undefined): string | null {
+  if (!drivers) return null;
+  const entries = Object.entries(drivers);
+  if (entries.length === 0) return null;
+  return entries.sort((a, b) => b[1] - a[1])[0][0];
+}
+
+const DRIVER_LABELS: Record<string, string> = {
+  'user-driven': 'User',
+  'ai-driven': 'AI',
+  'collaborative': 'Collab',
+};
+
+const DRIVER_STYLES: Record<string, string> = {
+  'user-driven': 'bg-blue-100 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300',
+  'ai-driven': 'bg-violet-100 text-violet-700 dark:bg-violet-950/50 dark:text-violet-300',
+  'collaborative': 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300',
+};
+
 // Friction bar severity color based on avg_severity (1=low, 2=medium, 3=high)
 function frictionBarColor(avgSeverity: number): string {
   if (avgSeverity >= 2.5) return '#ef4444'; // red-500 (high)
@@ -507,13 +529,20 @@ export default function PatternsPage() {
                       </Alert>
                     )}
                     <ul className="divide-y">
-                      {aggregation!.effectivePatterns.slice(0, 8).map((ep) => (
+                      {aggregation!.effectivePatterns.slice(0, 8).map((ep) => {
+                        const dominantDriver = getDominantDriver(ep.drivers);
+                        return (
                         <li key={ep.category} className="py-3 first:pt-0 last:pb-0">
                           <div className="flex items-start gap-3 hover:bg-muted/50 rounded-md px-2 -mx-2 transition-colors">
                             <span className="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-semibold bg-primary/10 text-primary shrink-0 mt-0.5">
                               {ep.frequency}x
                             </span>
-                            <span className="text-sm font-medium">{ep.label}</span>
+                            <span className="text-sm font-medium flex-1">{ep.label}</span>
+                            {dominantDriver && (
+                              <span className={`inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium shrink-0 mt-0.5 ${DRIVER_STYLES[dominantDriver] ?? 'bg-muted text-muted-foreground'}`}>
+                                {DRIVER_LABELS[dominantDriver] ?? dominantDriver}
+                              </span>
+                            )}
                           </div>
                           {ep.descriptions.length > 0 && (
                             <ul className="ml-10 mt-1.5 space-y-1">
@@ -528,7 +557,8 @@ export default function PatternsPage() {
                             </ul>
                           )}
                         </li>
-                      ))}
+                        );
+                      })}
                     </ul>
                   </CardContent>
                 </Card>

@@ -400,27 +400,37 @@ After 3-4 weekly reflections exist, offer progress analysis:
 
 ### Friction-to-Pattern Affinity Map
 
-Static mapping from 15 friction categories to 8 pattern categories:
+Static mapping from the 9 canonical friction categories (PR #127) to 8 pattern categories.
+Ships in the Progress PR alongside its consumer code and validation tests — not in the pattern taxonomy PR (deferred per LLM expert + TA consensus: dead code with no runtime consumer).
 
 ```typescript
+/**
+ * Maps each friction category to its natural pattern antidotes.
+ * Used by Progress tracking to detect friction-to-pattern transformations:
+ * declining friction in a category + emerging pattern in its antidote = growth signal.
+ *
+ * self-correction intentionally absent — it is a reactive recovery behavior,
+ * not a preventive practice, and is typically ai-driven.
+ */
 const FRICTION_PATTERN_AFFINITIES: Record<string, string[]> = {
   'wrong-approach':           ['structured-planning', 'context-gathering'],
+  'knowledge-gap':            ['domain-expertise', 'context-gathering'],
+  'stale-assumptions':        ['context-gathering', 'verification-workflow'],
   'incomplete-requirements':  ['structured-planning', 'context-gathering'],
-  'test-failure':             ['verification-workflow', 'incremental-implementation'],
-  'type-error':               ['verification-workflow', 'incremental-implementation'],
-  'missing-dependency':       ['context-gathering', 'effective-tooling'],
-  'config-drift':             ['effective-tooling', 'verification-workflow'],
-  'api-misunderstanding':     ['context-gathering', 'domain-expertise'],
+  'context-loss':             ['structured-planning', 'incremental-implementation'],
+  'scope-creep':              ['structured-planning', 'incremental-implementation'],
+  'repeated-mistakes':        ['verification-workflow', 'systematic-debugging'],
   'documentation-gap':        ['context-gathering', 'domain-expertise'],
-  'circular-dependency':      ['structured-planning', 'systematic-debugging'],
-  'race-condition':           ['systematic-debugging', 'verification-workflow'],
-  'stale-cache':              ['effective-tooling', 'systematic-debugging'],
-  'version-mismatch':         ['effective-tooling', 'context-gathering'],
-  'environment-mismatch':     ['effective-tooling'],
-  'permission-issue':         ['effective-tooling'],
   'tooling-limitation':       ['effective-tooling'],
 };
 ```
+
+**Key design notes for Progress implementation:**
+- `context-gathering` appears in 6 of 9 mappings — the universal prevention pattern
+- `effective-tooling` maps only to `tooling-limitation` — it's a productivity multiplier, not a friction preventer
+- `self-correction` maps to zero friction categories — it's reactive recovery (ai-driven), not preventive
+- Progress should filter on `driver = 'user-driven'` patterns as primary growth signals, `collaborative` as secondary, and exclude `ai-driven` from user improvement metrics
+- The `driver` field on effective patterns (added in the pattern taxonomy revision PR) enables this filtering without hardcoded category exceptions
 
 ### Delta Types
 
