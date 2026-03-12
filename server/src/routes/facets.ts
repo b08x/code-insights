@@ -259,33 +259,14 @@ app.post('/backfill', async (c) => {
 // GET /api/facets/missing-pq
 // Returns session IDs that have at least one non-PQ insight but no prompt_quality insight row.
 // Accepts period + project + source to scope results (same params as /missing).
+// Uses buildWhereClause so ISO week periods (e.g., 2026-W10) are supported.
 app.get('/missing-pq', (c) => {
   const db = getDb();
   const period = c.req.query('period') || 'all';
   const project = c.req.query('project');
   const source = c.req.query('source');
 
-  const conditions: string[] = ['s.deleted_at IS NULL'];
-  const params: (string | number)[] = [];
-
-  if (period !== 'all') {
-    const now = new Date();
-    const days = period === '7d' ? 7 : period === '30d' ? 30 : period === '90d' ? 90 : 0;
-    if (days > 0) {
-      conditions.push('s.started_at >= ?');
-      params.push(new Date(now.getTime() - days * 86400000).toISOString());
-    }
-  }
-  if (project) {
-    conditions.push('s.project_id = ?');
-    params.push(project);
-  }
-  if (source) {
-    conditions.push('s.source_tool = ?');
-    params.push(source);
-  }
-
-  const where = `WHERE ${conditions.join(' AND ')}`;
+  const { where, params } = buildWhereClause(period, project, source);
 
   // Sessions with a non-PQ insight but no prompt_quality insight row.
   const rows = db.prepare(`
@@ -307,33 +288,14 @@ app.get('/missing-pq', (c) => {
 // GET /api/facets/outdated-pq
 // Returns session IDs where the prompt_quality insight's metadata lacks a `findings` array
 // (old schema pre-PR #136). Accepts period + project + source to scope results.
+// Uses buildWhereClause so ISO week periods (e.g., 2026-W10) are supported.
 app.get('/outdated-pq', (c) => {
   const db = getDb();
   const period = c.req.query('period') || 'all';
   const project = c.req.query('project');
   const source = c.req.query('source');
 
-  const conditions: string[] = ['s.deleted_at IS NULL', "i.type = 'prompt_quality'"];
-  const params: (string | number)[] = [];
-
-  if (period !== 'all') {
-    const now = new Date();
-    const days = period === '7d' ? 7 : period === '30d' ? 30 : period === '90d' ? 90 : 0;
-    if (days > 0) {
-      conditions.push('s.started_at >= ?');
-      params.push(new Date(now.getTime() - days * 86400000).toISOString());
-    }
-  }
-  if (project) {
-    conditions.push('s.project_id = ?');
-    params.push(project);
-  }
-  if (source) {
-    conditions.push('s.source_tool = ?');
-    params.push(source);
-  }
-
-  const where = `WHERE ${conditions.join(' AND ')}`;
+  const { where, params } = buildWhereClause(period, project, source);
 
   // PQ insights where metadata lacks the findings array (old schema).
   const rows = db.prepare(`
@@ -341,6 +303,7 @@ app.get('/outdated-pq', (c) => {
     FROM insights i
     JOIN sessions s ON i.session_id = s.id
     ${where}
+    AND i.type = 'prompt_quality'
     AND json_type(i.metadata, '$.findings') IS NULL
   `).all(...params) as Array<{ session_id: string }>;
 
