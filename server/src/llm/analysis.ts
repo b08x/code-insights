@@ -173,7 +173,7 @@ export async function analyzeSession(
       // (facets are holistic — can't be merged across chunks)
       if (!analysisResponse.facets) {
         try {
-          // Use full conversation for best quality; truncation handled inside the prompt generator
+          // Use full conversation for best quality; truncate here if exceeding token limits
           let facetMessages = formatMessagesForAnalysis(messages);
           const facetTokens = client.estimateTokens(facetMessages);
           if (facetTokens > MAX_INPUT_TOKENS) {

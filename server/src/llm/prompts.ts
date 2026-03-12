@@ -617,10 +617,10 @@ export function parseAnalysisResponse(response: string): ParseResult<AnalysisRes
 }
 
 /**
- * Lightweight facet-only prompt for backfilling sessions that already have insights
+ * Facet-only prompt for backfilling sessions that already have insights
  * or for chunked sessions where facets can't be merged across chunks.
- * Input: session summary + first/last 20 messages (~2.5k tokens).
- * Output: facet JSON only (~350 tokens).
+ * Input: session summary + full conversation (truncated at ~80k tokens if needed).
+ * Output: facet JSON only (~350-600 tokens).
  */
 export const FACET_ONLY_SYSTEM_PROMPT = `You are assessing an AI coding session to extract structured metadata for cross-session pattern analysis. You will receive a session summary and the full conversation transcript.
 
