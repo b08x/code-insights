@@ -622,7 +622,7 @@ export function parseAnalysisResponse(response: string): ParseResult<AnalysisRes
  * Input: session summary + first/last 20 messages (~2.5k tokens).
  * Output: facet JSON only (~350 tokens).
  */
-export const FACET_ONLY_SYSTEM_PROMPT = `You are assessing an AI coding session to extract structured metadata for cross-session pattern analysis. You will receive a session summary and a sample of messages (first and last from the conversation).
+export const FACET_ONLY_SYSTEM_PROMPT = `You are assessing an AI coding session to extract structured metadata for cross-session pattern analysis. You will receive a session summary and the full conversation transcript.
 
 Extract session facets — a holistic assessment of how the session went:
 
@@ -643,20 +643,15 @@ Respond with valid JSON only, wrapped in <json>...</json> tags.`;
 export function generateFacetOnlyPrompt(
   projectName: string,
   sessionSummary: string | null,
-  firstMessages: string,
-  lastMessages: string
+  conversationMessages: string
 ): string {
   return `Assess this AI coding session and extract facets.
 
 Project: ${projectName}
 ${sessionSummary ? `Session Summary: ${sessionSummary}\n` : ''}
---- FIRST MESSAGES ---
-${firstMessages}
---- END FIRST MESSAGES ---
-
---- LAST MESSAGES ---
-${lastMessages}
---- END LAST MESSAGES ---
+--- CONVERSATION ---
+${conversationMessages}
+--- END CONVERSATION ---
 
 Extract facets in this JSON format:
 {
