@@ -51,8 +51,6 @@ import {
   AlertTriangle,
   Clock,
   Pencil,
-  Sparkles,
-  X,
   FileText,
   Download,
   BookOpen,
@@ -168,11 +166,9 @@ export function SessionDetailPanel({ sessionId, onDelete }: SessionDetailPanelPr
   const sessionMutation = useSessionMutation();
   const deleteMutation = useDeleteSession();
   const [renameOpen, setRenameOpen] = useState(false);
-  const [suggestedTitle, setSuggestedTitle] = useState<string | null>(null);
   const [searchHighlightId, setSearchHighlightId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [loadingAllMessages, setLoadingAllMessages] = useState(false);
-  const { state: analysisState } = useAnalysis();
   const { data: missingFacetsData } = useMissingFacets();
   const backfillMutation = useBackfillFacets();
   const missingFacetIds = useMemo(
@@ -183,17 +179,6 @@ export function SessionDetailPanel({ sessionId, onDelete }: SessionDetailPanelPr
     () => insights.length > 0 && missingFacetIds.has(sessionId),
     [insights, missingFacetIds, sessionId]
   );
-
-  useEffect(() => {
-    if (
-      analysisState.status === 'complete' &&
-      analysisState.sessionId === sessionId &&
-      analysisState.type === 'session' &&
-      analysisState.result?.suggestedTitle
-    ) {
-      setSuggestedTitle(analysisState.result.suggestedTitle);
-    }
-  }, [analysisState, sessionId]);
 
   const messages = messagesQuery.data?.pages.flat() ?? [];
   const loadingMessages = messagesQuery.isLoading;
@@ -523,47 +508,6 @@ export function SessionDetailPanel({ sessionId, onDelete }: SessionDetailPanelPr
           )}
         </div>
       </div>
-
-      {/* AI Title Suggestion Banner */}
-      {suggestedTitle && suggestedTitle !== getSessionTitle(session) && (
-        <div className="shrink-0 flex items-center justify-between gap-4 px-6 py-2.5 border-b bg-muted/50 transition-all duration-300">
-          <div className="flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-purple-500" />
-            <span className="text-sm">
-              AI suggests: <span className="font-medium">"{suggestedTitle}"</span>
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              onClick={async () => {
-                try {
-                  await sessionMutation.mutateAsync({
-                    id: session.id,
-                    customTitle: suggestedTitle!,
-                  });
-                  toast.success('Session renamed successfully');
-                  setSuggestedTitle(null);
-                } catch (err) {
-                  toast.error(
-                    err instanceof Error ? err.message : 'Failed to rename session'
-                  );
-                }
-              }}
-            >
-              Apply
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => setSuggestedTitle(null)}
-              aria-label="Dismiss suggestion"
-            >
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-      )}
 
       {/* Tabs: Insights | Prompt Quality | Conversation */}
       <Tabs defaultValue="insights" className="flex flex-col flex-1 overflow-hidden pt-2">

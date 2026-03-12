@@ -66,6 +66,18 @@ app.post('/session', async (c) => {
       type: 'session',
       count: result.insights.length,
     });
+
+    // Auto-apply the LLM-suggested title if no custom_title already set
+    const summaryInsight = result.insights.find(i => i.type === 'summary');
+    if (summaryInsight?.title) {
+      const existing = db.prepare(
+        'SELECT custom_title FROM sessions WHERE id = ? AND deleted_at IS NULL'
+      ).get(body.sessionId) as { custom_title: string | null } | undefined;
+      if (existing && !existing.custom_title) {
+        db.prepare('UPDATE sessions SET custom_title = ? WHERE id = ?')
+          .run(summaryInsight.title, body.sessionId);
+      }
+    }
   }
   return c.json(result, result.success ? 200 : 422);
 });
@@ -156,13 +168,25 @@ app.get('/session/stream', async (c) => {
           count: result.insights.length,
         });
         const summaryInsight = result.insights.find(i => i.type === 'summary');
+
+        // Auto-apply the LLM-suggested title (from summary insight) as custom_title.
+        // Only applies if the session doesn't already have a user-set custom_title.
+        if (summaryInsight?.title) {
+          const existing = db.prepare(
+            'SELECT custom_title FROM sessions WHERE id = ? AND deleted_at IS NULL'
+          ).get(sessionId) as { custom_title: string | null } | undefined;
+          if (existing && !existing.custom_title) {
+            db.prepare('UPDATE sessions SET custom_title = ? WHERE id = ?')
+              .run(summaryInsight.title, sessionId);
+          }
+        }
+
         await stream.writeSSE({
           event: 'complete',
           data: JSON.stringify({
             success: true,
             insightCount: result.insights.length,
             tokenUsage: result.usage,
-            suggestedTitle: summaryInsight?.title ?? null,
           }),
         });
       }

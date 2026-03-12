@@ -34,7 +34,6 @@ export interface AnalysisState {
     success: boolean;
     insightCount?: number;
     tokenUsage?: { inputTokens: number; outputTokens: number };
-    suggestedTitle?: string | null;
     error?: string;
   } | null;
 }
@@ -172,7 +171,6 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
                 success: boolean;
                 insightCount: number;
                 tokenUsage?: { inputTokens: number; outputTokens: number };
-                suggestedTitle?: string | null;
               };
 
               queryClient.invalidateQueries({ queryKey: ['insights'] });
@@ -190,7 +188,6 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
                   success: true,
                   insightCount: result.insightCount,
                   tokenUsage: result.tokenUsage,
-                  suggestedTitle: result.suggestedTitle,
                 },
               });
               toast.success(successMsg, { id: ANALYSIS_TOAST_ID });
