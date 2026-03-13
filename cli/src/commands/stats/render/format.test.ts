@@ -3,6 +3,8 @@ import {
   formatMoney,
   formatTokens,
   formatDuration,
+  formatRelativeDate,
+  formatTime,
   formatPercent,
   formatCount,
   formatPeriodLabel,
@@ -79,6 +81,60 @@ describe('formatDuration', () => {
   it('rounds minutes', () => {
     expect(formatDuration(1.4)).toBe('1m');
     expect(formatDuration(1.6)).toBe('2m');
+  });
+});
+
+describe('formatRelativeDate', () => {
+  it('shows minutes ago for times less than 1 hour ago', () => {
+    const date = new Date(Date.now() - 30 * 60 * 1000); // 30 minutes ago
+    expect(formatRelativeDate(date)).toBe('30m ago');
+  });
+
+  it('shows at least 1m ago for very recent times (< 1 minute)', () => {
+    const date = new Date(Date.now() - 10 * 1000); // 10 seconds ago
+    expect(formatRelativeDate(date)).toBe('1m ago');
+  });
+
+  it('shows hours ago for times between 1 and 24 hours ago', () => {
+    const date = new Date(Date.now() - 3 * 60 * 60 * 1000); // 3 hours ago
+    expect(formatRelativeDate(date)).toBe('3h ago');
+  });
+
+  it('shows "yesterday" for times between 24 and 48 hours ago', () => {
+    const date = new Date(Date.now() - 36 * 60 * 60 * 1000); // 36 hours ago
+    expect(formatRelativeDate(date)).toBe('yesterday');
+  });
+
+  it('shows days ago for times between 2 and 7 days ago', () => {
+    const date = new Date(Date.now() - 4 * 24 * 60 * 60 * 1000); // 4 days ago
+    expect(formatRelativeDate(date)).toBe('4d ago');
+  });
+
+  it('shows formatted date for times 7 or more days ago', () => {
+    // Use a fixed date so we know the expected output
+    const date = new Date(2026, 0, 1); // Jan 1, 2026
+    const result = formatRelativeDate(date);
+    expect(result).toBe('Jan 1');
+  });
+});
+
+describe('formatTime', () => {
+  it('formats a time in 12-hour format with hours and minutes', () => {
+    const date = new Date(2026, 0, 1, 14, 30); // 2:30 PM
+    const result = formatTime(date);
+    expect(result).toBe('2:30 PM');
+  });
+
+  it('formats midnight correctly', () => {
+    const date = new Date(2026, 0, 1, 0, 0); // 12:00 AM
+    const result = formatTime(date);
+    expect(result).toBe('12:00 AM');
+  });
+
+  it('formats noon correctly', () => {
+    const date = new Date(2026, 0, 1, 12, 0); // 12:00 PM
+    const result = formatTime(date);
+    expect(result).toBe('12:00 PM');
   });
 });
 

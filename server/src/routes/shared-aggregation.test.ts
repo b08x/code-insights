@@ -14,7 +14,7 @@ vi.mock('@code-insights/cli/db/client', () => ({
 }));
 
 // Import AFTER mocks are declared
-const { buildPeriodFilter, buildWhereClause, getAggregatedData } = await import('./shared-aggregation.js');
+const { buildPeriodFilter, buildWhereClause, getAggregatedData, parseIsoWeek, formatIsoWeek } = await import('./shared-aggregation.js');
 
 // ──────────────────────────────────────────────────────
 // Helpers
@@ -437,5 +437,169 @@ describe('getAggregatedData', () => {
     // type-error aliases to knowledge-gap — unrelated friction should remain
     const knowledgeGap = result.frictionCategories.find(fc => fc.category === 'knowledge-gap');
     expect(knowledgeGap).toBeDefined();
+  });
+
+  it('returns pqDeficits and pqStrengths as empty arrays when no PQ insights exist', () => {
+    seedSessionWithFacets(testDb, 'sess-1');
+    const result = getAggregatedData(testDb, '', []);
+    expect(result.pqDeficits).toEqual([]);
+    expect(result.pqStrengths).toEqual([]);
+  });
+
+  it('counts streak as 0 when no sessions exist', () => {
+    const result = getAggregatedData(testDb, '', []);
+    expect(result.streak).toBe(0);
+  });
+
+  it('counts sourceToolCount correctly', () => {
+    seedSessionWithFacets(testDb, 'sess-cc', { sourceTool: 'claude-code' });
+    seedSessionWithFacets(testDb, 'sess-cur', { sourceTool: 'cursor' });
+
+    const result = getAggregatedData(testDb, '', []);
+    expect(result.sourceToolCount).toBe(2);
+  });
+
+  it('skips effective patterns with confidence below 50', () => {
+    seedSessionWithFacets(testDb, 'sess-1', {
+      effectivePatterns: [
+        { category: 'context-gathering', description: 'Low confidence pattern', confidence: 30, driver: 'ai-driven' },
+        { category: 'verification-workflow', description: 'High confidence pattern', confidence: 75, driver: 'user-driven' },
+      ],
+    });
+
+    const result = getAggregatedData(testDb, '', []);
+    const lowConf = result.effectivePatterns.find(ep => ep.descriptions.includes('Low confidence pattern'));
+    expect(lowConf).toBeUndefined();
+
+    const highConf = result.effectivePatterns.find(ep => ep.category === 'verification-workflow');
+    expect(highConf).toBeDefined();
+  });
+
+  it('tracks driver breakdown per effective pattern category', () => {
+    seedSessionWithFacets(testDb, 'sess-1', {
+      effectivePatterns: [
+        { category: 'context-gathering', description: 'AI gathered context', confidence: 80, driver: 'ai-driven' },
+      ],
+    });
+    seedSessionWithFacets(testDb, 'sess-2', {
+      effectivePatterns: [
+        { category: 'context-gathering', description: 'User gathered context', confidence: 85, driver: 'user-driven' },
+      ],
+    });
+
+    const result = getAggregatedData(testDb, '', []);
+    const pattern = result.effectivePatterns.find(ep => ep.category === 'context-gathering');
+    expect(pattern).toBeDefined();
+    expect(pattern!.drivers['ai-driven']).toBe(1);
+    expect(pattern!.drivers['user-driven']).toBe(1);
+  });
+});
+
+// ──────────────────────────────────────────────────────
+// parseIsoWeek
+// ──────────────────────────────────────────────────────
+
+describe('parseIsoWeek', () => {
+  it('returns null for invalid input', () => {
+    expect(parseIsoWeek('not-a-week')).toBeNull();
+    expect(parseIsoWeek('')).toBeNull();
+    expect(parseIsoWeek('2026-10')).toBeNull();
+    expect(parseIsoWeek('W10')).toBeNull();
+  });
+
+  it('returns null for out-of-range week numbers', () => {
+    expect(parseIsoWeek('2026-W00')).toBeNull();
+    expect(parseIsoWeek('2026-W54')).toBeNull();
+  });
+
+  it('parses a valid ISO week and returns Monday/Sunday boundaries', () => {
+    // 2026-W10: March 2 (Mon) to March 9 (Mon exclusive)
+    const result = parseIsoWeek('2026-W10');
+    expect(result).not.toBeNull();
+    expect(result!.start.toISOString()).toBe('2026-03-02T00:00:00.000Z');
+    expect(result!.end.toISOString()).toBe('2026-03-09T00:00:00.000Z');
+  });
+
+  it('parses week 1 (first week of year) correctly', () => {
+    // ISO week 1 of 2026: contains January 1 (Thursday) → starts Dec 29, 2025 (Mon)
+    const result = parseIsoWeek('2026-W01');
+    expect(result).not.toBeNull();
+    // start should be a Monday
+    expect(result!.start.getUTCDay()).toBe(1);
+    // end is exactly 7 days after start
+    expect(result!.end.getTime() - result!.start.getTime()).toBe(7 * 86400000);
+  });
+
+  it('returns start that is a Monday (UTC)', () => {
+    const result = parseIsoWeek('2025-W25');
+    expect(result).not.toBeNull();
+    expect(result!.start.getUTCDay()).toBe(1); // Monday
+  });
+
+  it('returns end that is exactly 7 days after start', () => {
+    const result = parseIsoWeek('2025-W30');
+    expect(result).not.toBeNull();
+    expect(result!.end.getTime() - result!.start.getTime()).toBe(7 * 86400000);
+  });
+});
+
+// ──────────────────────────────────────────────────────
+// formatIsoWeek
+// ──────────────────────────────────────────────────────
+
+describe('formatIsoWeek', () => {
+  it('formats a known Monday date as the correct ISO week string', () => {
+    // 2026-03-02 is Monday of ISO week 10, 2026
+    const monday = new Date('2026-03-02T00:00:00.000Z');
+    expect(formatIsoWeek(monday)).toBe('2026-W10');
+  });
+
+  it('pads single-digit week numbers with leading zero', () => {
+    // 2026-01-05 is Monday of ISO week 2, 2026
+    const monday = new Date('2026-01-05T00:00:00.000Z');
+    const result = formatIsoWeek(monday);
+    expect(result).toMatch(/^\d{4}-W\d{2}$/);
+    expect(result).toBe('2026-W02');
+  });
+
+  it('round-trips with parseIsoWeek', () => {
+    // formatIsoWeek(parseIsoWeek(week).start) === week
+    const original = '2025-W33';
+    const parsed = parseIsoWeek(original);
+    expect(parsed).not.toBeNull();
+    const reformatted = formatIsoWeek(parsed!.start);
+    expect(reformatted).toBe(original);
+  });
+
+  it('handles year boundary (ISO week belonging to previous year)', () => {
+    // Dec 28, 2026 (Mon) — if this week's Thursday is Jan 1, 2027, week belongs to 2027
+    // Dec 29, 2025 is the Monday of 2026-W01 (its Thursday Jan 1, 2026 is in 2026)
+    const monday = new Date('2025-12-29T00:00:00.000Z');
+    const result = formatIsoWeek(monday);
+    // This Monday's Thursday is Jan 1, 2026 → belongs to 2026-W01
+    expect(result).toBe('2026-W01');
+  });
+});
+
+// ──────────────────────────────────────────────────────
+// buildWhereClause — ISO week period
+// ──────────────────────────────────────────────────────
+
+describe('buildWhereClause — ISO week period', () => {
+  it('generates two date boundary params for ISO week period', () => {
+    const { where, params } = buildWhereClause('2026-W10');
+    expect(where).toMatch(/s\.started_at >= \?/);
+    expect(where).toMatch(/s\.started_at < \?/);
+    expect(params).toHaveLength(2);
+    // params[0] is start (2026-03-02), params[1] is end (2026-03-09)
+    expect(params[0]).toBe('2026-03-02T00:00:00.000Z');
+    expect(params[1]).toBe('2026-03-09T00:00:00.000Z');
+  });
+
+  it('combines ISO week period with project filter', () => {
+    const { where, params } = buildWhereClause('2026-W10', 'proj-abc');
+    expect(params).toHaveLength(3);
+    expect(params[2]).toBe('proj-abc');
+    expect(where).toContain('s.project_id = ?');
   });
 });
