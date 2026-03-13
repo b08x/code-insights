@@ -261,29 +261,16 @@ export async function runSync(options: SyncOptions = {}): Promise<SyncResult> {
     }
   }
 
-  // After V6 auto force-sync: detect stale insights and show advisory
+  // After V6 auto force-sync: all re-synced sessions have updated message counts.
+  // Any existing insights were generated from the old (inflated) counts — show advisory.
   if (v6JustApplied && !options.quiet && totalSyncedCount > 0) {
-    try {
-      const db = getDb();
-      const staleCount = (db.prepare(`
-        SELECT COUNT(*) AS cnt
-        FROM insights i
-        JOIN sessions s ON i.session_id = s.id
-        WHERE s.deleted_at IS NULL
-      `).get() as { cnt: number }).cnt;
+    log(chalk.dim(`\n  i ${totalSyncedCount} sessions have updated message counts. Existing insights may reflect old data.`));
+    log(chalk.dim(`    Run 'code-insights reflect backfill' to regenerate (uses LLM API credits).`));
 
-      if (staleCount > 0) {
-        log(chalk.dim(`\n  i ${totalSyncedCount} sessions have updated message counts. Existing insights may reflect old data.`));
-        log(chalk.dim(`    Run 'code-insights reflect backfill' to regenerate (uses LLM API credits).`));
-      }
-
-      trackEvent('migration_v6_resync', {
-        sessions_recalculated: totalSyncedCount,
-        stale_insights_found: staleCount,
-      });
-    } catch {
-      // Advisory failure is non-fatal
-    }
+    trackEvent('migration_v6_resync', {
+      sessions_recalculated: totalSyncedCount,
+      stale_insights_found: totalSyncedCount,
+    });
   }
 
   // Save sync state
