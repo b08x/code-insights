@@ -11,6 +11,7 @@ import { AssistantMarkdown } from './markdown/AssistantMarkdown';
 import { UserMarkdown } from './markdown/UserMarkdown';
 import { parseAgentMessage, classifyUserMessage } from './preprocess';
 import { AgentMessageBubble } from './AgentMessageBubble';
+import { RawMessageBlock } from './RawMessageBlock';
 import { ContextBreakDivider } from '../conversation/ContextBreakDivider';
 import { InlineEventChip } from '../conversation/InlineEventChip';
 
@@ -100,12 +101,16 @@ export function MessageBubble({ message, showHeader = true, nextToolResults = []
         return <InlineEventChip command={cls.command} timestamp={message.timestamp} />;
 
       case 'exit-command':
-      case 'skill-load':
-      case 'command-frame':
-        // Hidden in V1 when showRawMessages is false.
-        // RawMessageBlock (deferred to follow-up PR) will render here when showRawMessages is true.
         if (!showRawMessages) return null;
-        return null; // placeholder — RawMessageBlock wired in follow-up PR
+        return <RawMessageBlock label="Exit Command" content={message.content} />;
+
+      case 'skill-load':
+        if (!showRawMessages) return null;
+        return <RawMessageBlock label="Skill Load" content={message.content} />;
+
+      case 'command-frame':
+        if (!showRawMessages) return null;
+        return <RawMessageBlock label="Command Output" content={message.content} />;
 
       case 'human':
       default:

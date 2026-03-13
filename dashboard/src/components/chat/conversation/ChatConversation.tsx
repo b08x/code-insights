@@ -43,8 +43,7 @@ export function ChatConversation({
   const highlightRef = useRef<HTMLDivElement>(null);
 
   // showRawMessages: when true, hidden protocol messages (skill-load, command-frame, exit-command)
-  // will render as RawMessageBlock (deferred to follow-up PR). Toggle is wired here so the
-  // follow-up PR can drop in RawMessageBlock without touching ChatConversation again.
+  // render as RawMessageBlock — dashed-border monospace blocks with type labels.
   const [showRawMessages, setShowRawMessages] = useState(false);
 
   // Only pass searchQuery to messages that actually match, so the highlight
@@ -114,7 +113,7 @@ export function ChatConversation({
 
   return (
     <div className="w-full">
-      {/* Raw messages toggle — wired now, visible effect deferred to follow-up PR (RawMessageBlock) */}
+      {/* Raw messages toggle — reveals hidden protocol messages (skill-load, command-frame, exit-command) */}
       <div className="flex items-center justify-end gap-2 px-4 py-2 border-b border-border">
         <Eye className="h-3.5 w-3.5 text-muted-foreground" />
         <span className="text-xs text-muted-foreground">Show raw messages</span>
