@@ -1,6 +1,8 @@
-import { useEffect, useRef, useMemo } from 'react';
+import { useEffect, useRef, useMemo, useState } from 'react';
+import { Eye } from 'lucide-react';
 import { MessageBubble } from '../message/MessageBubble';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
 import type { Message, ToolResult } from '@/lib/types';
 import { parseJsonField } from '@/lib/types';
@@ -39,6 +41,11 @@ export function ChatConversation({
   messages, loading, loadingMore, hasMore, onLoadMore, error, sourceTool, highlightMessageId, searchQuery,
 }: ChatConversationProps) {
   const highlightRef = useRef<HTMLDivElement>(null);
+
+  // showRawMessages: when true, hidden protocol messages (skill-load, command-frame, exit-command)
+  // will render as RawMessageBlock (deferred to follow-up PR). Toggle is wired here so the
+  // follow-up PR can drop in RawMessageBlock without touching ChatConversation again.
+  const [showRawMessages, setShowRawMessages] = useState(false);
 
   // Only pass searchQuery to messages that actually match, so the highlight
   // walker doesn't run on every message in large conversations (1000+).
@@ -106,54 +113,68 @@ export function ChatConversation({
   };
 
   return (
-    <div className="w-full px-2">
-      {messages.map((message, index) => {
-        const isHighlighted = highlightMessageId === message.id;
-        return (
-          <div
-            key={message.id}
-            id={`msg-${message.id}`}
-            ref={isHighlighted ? highlightRef : undefined}
-            className={cn(
-              'py-1 transition-colors duration-300',
-              isHighlighted && 'ring-2 ring-primary rounded-lg bg-primary/5'
-            )}
-          >
-            {shouldShowDateSeparator(messages, index) && (
-              <DateSeparator timestamp={message.timestamp} />
-            )}
-            <MessageBubble
-              message={message}
-              showHeader={shouldShowHeader(index)}
-              sourceTool={sourceTool}
-              searchQuery={matchingMessageIds.has(message.id) ? searchQuery : undefined}
-              nextToolResults={
-                messages[index + 1]?.type === 'user'
-                  ? parseJsonField<ToolResult[]>(messages[index + 1].tool_results, [])
-                  : []
-              }
-            />
-          </div>
-        );
-      })}
+    <div className="w-full">
+      {/* Raw messages toggle — wired now, visible effect deferred to follow-up PR (RawMessageBlock) */}
+      <div className="flex items-center justify-end gap-2 px-4 py-2 border-b border-border">
+        <Eye className="h-3.5 w-3.5 text-muted-foreground" />
+        <span className="text-xs text-muted-foreground">Show raw messages</span>
+        <Switch
+          checked={showRawMessages}
+          onCheckedChange={setShowRawMessages}
+          aria-label="Show raw protocol messages"
+        />
+      </div>
 
-      {loadingMore && (
-        <div className="space-y-4 p-4">
-          {[...Array(3)].map((_, i) => (
-            <div key={i} className="flex gap-3">
-              <Skeleton className="h-8 w-8 rounded-full" />
-              <div className="space-y-2 flex-1">
-                <Skeleton className="h-4 w-24" />
-                <Skeleton className="h-12 w-full" />
-              </div>
+      <div className="px-2">
+        {messages.map((message, index) => {
+          const isHighlighted = highlightMessageId === message.id;
+          return (
+            <div
+              key={message.id}
+              id={`msg-${message.id}`}
+              ref={isHighlighted ? highlightRef : undefined}
+              className={cn(
+                'py-1 transition-colors duration-300',
+                isHighlighted && 'ring-2 ring-primary rounded-lg bg-primary/5'
+              )}
+            >
+              {shouldShowDateSeparator(messages, index) && (
+                <DateSeparator timestamp={message.timestamp} />
+              )}
+              <MessageBubble
+                message={message}
+                showHeader={shouldShowHeader(index)}
+                sourceTool={sourceTool}
+                searchQuery={matchingMessageIds.has(message.id) ? searchQuery : undefined}
+                showRawMessages={showRawMessages}
+                nextToolResults={
+                  messages[index + 1]?.type === 'user'
+                    ? parseJsonField<ToolResult[]>(messages[index + 1].tool_results, [])
+                    : []
+                }
+              />
             </div>
-          ))}
-        </div>
-      )}
+          );
+        })}
 
-      {hasMore && (
-        <LoadMoreSentinel onLoadMore={onLoadMore} loadingMore={loadingMore} />
-      )}
+        {loadingMore && (
+          <div className="space-y-4 p-4">
+            {[...Array(3)].map((_, i) => (
+              <div key={i} className="flex gap-3">
+                <Skeleton className="h-8 w-8 rounded-full" />
+                <div className="space-y-2 flex-1">
+                  <Skeleton className="h-4 w-24" />
+                  <Skeleton className="h-12 w-full" />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {hasMore && (
+          <LoadMoreSentinel onLoadMore={onLoadMore} loadingMore={loadingMore} />
+        )}
+      </div>
     </div>
   );
 }

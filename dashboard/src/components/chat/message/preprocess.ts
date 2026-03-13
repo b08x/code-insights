@@ -130,6 +130,67 @@ function parseTeammateMessage(content: string): ParsedTeammateMessage {
   }
 }
 
+// ─── User message classification ──────────────────────────────────────────────
+
+/**
+ * Discriminated union for user message kinds.
+ * Classifier runs on raw content BEFORE any preprocessing.
+ * tool-result (empty content) and agent messages are excluded upstream.
+ */
+export type UserMessageClass =
+  | { kind: 'human' }
+  | { kind: 'auto-compact' }
+  | { kind: 'user-compact'; command: string }
+  | { kind: 'slash-command'; command: string }
+  | { kind: 'exit-command' }
+  | { kind: 'skill-load' }
+  | { kind: 'command-frame' };
+
+// Same regex as preprocessUserContent below — extract command name from XML tag.
+const COMMAND_NAME_RE = /<command-name>(\/[^<]*)<\/command-name>/;
+
+/**
+ * Classify a user message content string into one of 7 kinds.
+ * Must be called on RAW content before any preprocessing. Only 'human' messages
+ * flow through to UserMarkdown / preprocessUserContent.
+ *
+ * Detection order mirrors CLI parser (cli/src/parser/jsonl.ts):
+ * 1. Auto-compaction continuation messages (context window overflow)
+ * 2. Skill load artifacts (protocol noise)
+ * 3. Local command output frames (protocol noise)
+ * 4. Slash command wrappers (/exit|/quit → hidden; /compact → user-compact; others → slash-command)
+ * 5. Default → human
+ */
+export function classifyUserMessage(content: string): UserMessageClass {
+  if (content.startsWith('This session is being continued')) {
+    return { kind: 'auto-compact' };
+  }
+
+  if (content.startsWith('Base directory for this skill:')) {
+    return { kind: 'skill-load' };
+  }
+
+  if (content.startsWith('<local-command-caveat>') || content.startsWith('<local-command-stdout>')) {
+    return { kind: 'command-frame' };
+  }
+
+  if (content.includes('<command-name>')) {
+    const match = COMMAND_NAME_RE.exec(content);
+    if (match) {
+      const cmd = match[1].trim();
+      if (cmd === '/exit' || cmd === '/quit') {
+        return { kind: 'exit-command' };
+      }
+      if (cmd === '/compact') {
+        return { kind: 'user-compact', command: cmd };
+      }
+      return { kind: 'slash-command', command: cmd };
+    }
+  }
+
+  return { kind: 'human' };
+}
+
 // ─── User content preprocessing ───────────────────────────────────────────────
 
 /**
