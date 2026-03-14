@@ -1,7 +1,8 @@
-// Friction category normalization using Levenshtein distance.
+// Friction category normalization.
 // Clusters similar free-form friction categories to canonical ones during aggregation.
 
 import { CANONICAL_FRICTION_CATEGORIES } from './prompts.js';
+import { normalizeCategory } from './normalize-utils.js';
 
 // Explicit alias map for clustering emergent category variants.
 // Targets don't need to be in CANONICAL_FRICTION_CATEGORIES —
@@ -33,29 +34,6 @@ const FRICTION_ALIASES: Record<string, string> = {
   'rate-limited': 'rate-limit-hit',
 };
 
-/** Standard Levenshtein distance between two strings */
-function levenshtein(a: string, b: string): number {
-  const m = a.length;
-  const n = b.length;
-  const dp: number[][] = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0) as number[]);
-
-  for (let i = 0; i <= m; i++) dp[i][0] = i;
-  for (let j = 0; j <= n; j++) dp[0][j] = j;
-
-  for (let i = 1; i <= m; i++) {
-    for (let j = 1; j <= n; j++) {
-      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-      dp[i][j] = Math.min(
-        dp[i - 1][j] + 1,
-        dp[i][j - 1] + 1,
-        dp[i - 1][j - 1] + cost
-      );
-    }
-  }
-
-  return dp[m][n];
-}
-
 /**
  * Normalize a friction category to the closest canonical category.
  * Returns the original category if no close match is found.
@@ -71,40 +49,8 @@ function levenshtein(a: string, b: string): number {
  * e.g., "agent-orchestration-failure" is not canonical but is a valid cluster target.
  */
 export function normalizeFrictionCategory(category: string): string {
-  const lower = category.toLowerCase();
-
-  // 1. Exact match
-  for (const canonical of CANONICAL_FRICTION_CATEGORIES) {
-    if (lower === canonical) return canonical;
-  }
-
-  // 1.5. Explicit alias match — clusters emergent category variants deterministically.
-  // Alias targets bypass further normalization; they are returned as-is even if
-  // they are not in CANONICAL_FRICTION_CATEGORIES.
-  if (FRICTION_ALIASES[lower]) return FRICTION_ALIASES[lower];
-
-  // 2. Levenshtein distance <= 2
-  let bestMatch: string | null = null;
-  let bestDistance = Infinity;
-  for (const canonical of CANONICAL_FRICTION_CATEGORIES) {
-    const dist = levenshtein(lower, canonical);
-    if (dist <= 2 && dist < bestDistance) {
-      bestDistance = dist;
-      bestMatch = canonical;
-    }
-  }
-  if (bestMatch) return bestMatch;
-
-  // 3. Substring match — only if the shorter string is a significant portion of the longer
-  // to avoid false positives like "type" matching "type-error"
-  for (const canonical of CANONICAL_FRICTION_CATEGORIES) {
-    const shorter = lower.length < canonical.length ? lower : canonical;
-    const longer = lower.length < canonical.length ? canonical : lower;
-    if (shorter.length >= 5 && shorter.length / longer.length >= 0.5 && longer.includes(shorter)) {
-      return canonical;
-    }
-  }
-
-  // 4. No match — novel category
-  return category;
+  return normalizeCategory(category, {
+    canonicalCategories: CANONICAL_FRICTION_CATEGORIES,
+    aliases: FRICTION_ALIASES,
+  });
 }

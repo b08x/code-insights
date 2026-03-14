@@ -1,8 +1,9 @@
-// Prompt quality category normalization using Levenshtein distance.
+// Prompt quality category normalization.
 // Clusters similar free-form categories to canonical ones during aggregation.
-// Mirrors friction-normalize.ts and pattern-normalize.ts — same algorithm, same matching rules.
+// Delegates to normalize-utils.ts for the shared levenshtein/normalizeCategory algorithm.
 
 import { CANONICAL_PQ_CATEGORIES, CANONICAL_PQ_STRENGTH_CATEGORIES } from './prompts.js';
+import { normalizeCategory, kebabToTitleCase } from './normalize-utils.js';
 
 // Human-readable labels for each canonical category.
 export const PQ_CATEGORY_LABELS: Record<string, string> = {
@@ -93,29 +94,6 @@ const PQ_ALIASES: Record<string, string> = {
   'constructive-feedback': 'productive-correction',
 };
 
-/** Standard Levenshtein distance between two strings */
-function levenshtein(a: string, b: string): number {
-  const m = a.length;
-  const n = b.length;
-  const dp: number[][] = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0) as number[]);
-
-  for (let i = 0; i <= m; i++) dp[i][0] = i;
-  for (let j = 0; j <= n; j++) dp[0][j] = j;
-
-  for (let i = 1; i <= m; i++) {
-    for (let j = 1; j <= n; j++) {
-      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-      dp[i][j] = Math.min(
-        dp[i - 1][j] + 1,
-        dp[i][j - 1] + 1,
-        dp[i - 1][j - 1] + cost
-      );
-    }
-  }
-
-  return dp[m][n];
-}
-
 /**
  * Normalize a prompt quality category to the closest canonical category.
  * Returns the original category if no close match is found.
@@ -130,40 +108,10 @@ function levenshtein(a: string, b: string): number {
  * Note: alias targets in PQ_ALIASES bypass the canonical check intentionally.
  */
 export function normalizePromptQualityCategory(category: string): string {
-  const lower = category.toLowerCase();
-
-  // 1. Exact match
-  for (const canonical of CANONICAL_PQ_CATEGORIES) {
-    if (lower === canonical) return canonical;
-  }
-
-  // 1.5. Explicit alias match — clusters emergent category variants deterministically.
-  if (PQ_ALIASES[lower]) return PQ_ALIASES[lower];
-
-  // 2. Levenshtein distance <= 2
-  let bestMatch: string | null = null;
-  let bestDistance = Infinity;
-  for (const canonical of CANONICAL_PQ_CATEGORIES) {
-    const dist = levenshtein(lower, canonical);
-    if (dist <= 2 && dist < bestDistance) {
-      bestDistance = dist;
-      bestMatch = canonical;
-    }
-  }
-  if (bestMatch) return bestMatch;
-
-  // 3. Substring match — only if the shorter string is a significant portion of the longer
-  // to avoid false positives like "scope" matching "scope-drift"
-  for (const canonical of CANONICAL_PQ_CATEGORIES) {
-    const shorter = lower.length < canonical.length ? lower : canonical;
-    const longer = lower.length < canonical.length ? canonical : lower;
-    if (shorter.length >= 5 && shorter.length / longer.length >= 0.5 && longer.includes(shorter)) {
-      return canonical;
-    }
-  }
-
-  // 4. No match — novel category
-  return category;
+  return normalizeCategory(category, {
+    canonicalCategories: CANONICAL_PQ_CATEGORIES,
+    aliases: PQ_ALIASES,
+  });
 }
 
 /**
@@ -171,11 +119,7 @@ export function normalizePromptQualityCategory(category: string): string {
  * Falls back to Title Case conversion for novel categories.
  */
 export function getPQCategoryLabel(category: string): string {
-  if (PQ_CATEGORY_LABELS[category]) return PQ_CATEGORY_LABELS[category];
-  return category
-    .split('-')
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ');
+  return PQ_CATEGORY_LABELS[category] ?? kebabToTitleCase(category);
 }
 
 /**
