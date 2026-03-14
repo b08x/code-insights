@@ -4,7 +4,6 @@ import { useInsights } from '@/hooks/useInsights';
 import { useMessages } from '@/hooks/useMessages';
 import {
   getSessionTitle,
-  formatDurationMinutes,
   formatDateRange,
   cn,
 } from '@/lib/utils';
@@ -43,6 +42,7 @@ import { useAnalysis } from '@/components/analysis/AnalysisContext';
 import { useLlmConfig } from '@/hooks/useConfig';
 import { useMissingFacets, useBackfillFacets } from '@/hooks/useFacets';
 import { Link } from 'react-router';
+import { exportSession } from '@/lib/export-session';
 import { RenameSessionDialog } from '@/components/sessions/RenameSessionDialog';
 import { VitalsStrip } from '@/components/sessions/VitalsStrip';
 import { ChatConversation } from '@/components/chat/conversation/ChatConversation';
@@ -306,49 +306,7 @@ export function SessionDetailPanel({ sessionId, onDelete }: SessionDetailPanelPr
     : null;
 
   function handleExport(format: 'plain' | 'obsidian' | 'notion') {
-    const title = getSessionTitle(session!);
-    const dateStr = startedAt.toISOString().slice(0, 10);
-    const lines: string[] = [];
-
-    if (format === 'obsidian') {
-      lines.push(`# ${title}`, '', `> [!info]`);
-      lines.push(
-        `> Date: ${dateStr}  `,
-        `> Duration: ${formatDurationMinutes(durationMinutes)}  `,
-        `> Project: ${session!.project_name}`
-      );
-    } else {
-      lines.push(
-        `# ${title}`,
-        '',
-        `**Date:** ${dateStr}  `,
-        `**Duration:** ${formatDurationMinutes(durationMinutes)}  `,
-        `**Project:** ${session!.project_name}`
-      );
-    }
-
-    if (summaryText) {
-      lines.push('', '## Summary', '', summaryText);
-    }
-    if (insights.length > 0) {
-      lines.push('', '## Insights');
-      for (const insight of insights.filter((i) => i.type !== 'summary')) {
-        lines.push('', `### ${insight.title} (${insight.type})`, '', insight.content);
-      }
-    }
-
-    const content = lines.join('\n');
-    const projectSlug = session!.project_name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-    const filename = `session-${projectSlug}-${dateStr}.md`;
-    const blob = new Blob([content], { type: 'text/markdown' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    exportSession(session!, insights, summaryText, format);
     toast.success(`Exported as ${format === 'plain' ? 'Markdown' : format}`);
   }
 
