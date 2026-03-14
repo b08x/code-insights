@@ -2,7 +2,8 @@ import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { getDb } from '@code-insights/cli/db/client';
 import { jsonrepair } from 'jsonrepair';
-import { createLLMClient, isLLMConfigured } from '../llm/client.js';
+import { createLLMClient } from '../llm/client.js';
+import { requireLLM } from './route-helpers.js';
 import { extractJsonPayload } from '../llm/response-parsers.js';
 import {
   FRICTION_WINS_SYSTEM_PROMPT,
@@ -48,10 +49,7 @@ function detectTargetTool(db: ReturnType<typeof getDb>): string {
 // Body: { sections?: ReflectSection[], period?: string, project?: string, source?: string }
 // SSE endpoint: aggregates facets in code, then calls synthesis prompts for each section.
 // Streams progress events so the UI can show phase-by-phase progress.
-app.post('/generate', async (c) => {
-  if (!isLLMConfigured()) {
-    return c.json({ error: 'LLM not configured.' }, 400);
-  }
+app.post('/generate', requireLLM(), async (c) => {
 
   const body = await c.req.json<{
     sections?: ReflectSection[];

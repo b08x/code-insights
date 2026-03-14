@@ -1,10 +1,9 @@
 import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { getDb } from '@code-insights/cli/db/client';
-import { isLLMConfigured } from '../llm/client.js';
 import { extractFacetsOnly, analyzePromptQuality } from '../llm/analysis.js';
-import type { SQLiteMessageRow, SessionData } from '../llm/analysis.js';
 import { buildWhereClause, getAggregatedData } from './shared-aggregation.js';
+import { loadSessionForAnalysis, loadSessionMessages, requireLLM } from './route-helpers.js';
 
 const app = new Hono();
 
@@ -160,10 +159,7 @@ app.get('/outdated', (c) => {
 // Streams progress as facets are extracted one-by-one for sessions that lack them.
 // force=true skips the existing-facets guard, allowing re-extraction of outdated rows.
 // Uses extractFacetsOnly (lightweight prompt: summary + first/last 20 messages).
-app.post('/backfill', async (c) => {
-  if (!isLLMConfigured()) {
-    return c.json({ error: 'LLM not configured.' }, 400);
-  }
+app.post('/backfill', requireLLM(), async (c) => {
 
   const body = await c.req.json<{ sessionIds?: string[]; force?: boolean }>();
   if (!body.sessionIds || !Array.isArray(body.sessionIds) || body.sessionIds.length === 0) {
@@ -184,11 +180,7 @@ app.post('/backfill', async (c) => {
     for (const sessionId of body.sessionIds!) {
       if (abortSignal.aborted) break;
 
-      const session = db.prepare(
-        `SELECT id, project_id, project_name, project_path, summary, ended_at,
-                compact_count, auto_compact_count, slash_commands
-         FROM sessions WHERE id = ? AND deleted_at IS NULL`
-      ).get(sessionId) as SessionData | undefined;
+      const session = loadSessionForAnalysis(db, sessionId);
 
       if (!session) {
         failed++;
@@ -226,10 +218,7 @@ app.post('/backfill', async (c) => {
       }
 
       // Load all messages for full-context facet extraction
-      const messages = db.prepare(
-        `SELECT id, session_id, type, content, thinking, tool_calls, tool_results, usage, timestamp, parent_id
-         FROM messages WHERE session_id = ? ORDER BY timestamp ASC`
-      ).all(sessionId) as SQLiteMessageRow[];
+      const messages = loadSessionMessages(db, sessionId);
 
       const result = await extractFacetsOnly(session, messages, { signal: abortSignal });
       if (result.success) {
@@ -317,10 +306,7 @@ app.get('/outdated-pq', (c) => {
 // Streams progress as PQ analysis runs one-by-one for sessions that lack or have outdated PQ insights.
 // force=true skips the existing-PQ-insight guard, allowing re-analysis of sessions with old schema.
 // Uses analyzePromptQuality() from analysis.ts — same function used in the primary analysis pipeline.
-app.post('/backfill-pq', async (c) => {
-  if (!isLLMConfigured()) {
-    return c.json({ error: 'LLM not configured.' }, 400);
-  }
+app.post('/backfill-pq', requireLLM(), async (c) => {
 
   const body = await c.req.json<{ sessionIds?: string[]; force?: boolean }>();
   if (!body.sessionIds || !Array.isArray(body.sessionIds) || body.sessionIds.length === 0) {
@@ -341,11 +327,7 @@ app.post('/backfill-pq', async (c) => {
     for (const sessionId of body.sessionIds!) {
       if (abortSignal.aborted) break;
 
-      const session = db.prepare(
-        `SELECT id, project_id, project_name, project_path, summary, ended_at,
-                compact_count, auto_compact_count, slash_commands
-         FROM sessions WHERE id = ? AND deleted_at IS NULL`
-      ).get(sessionId) as SessionData | undefined;
+      const session = loadSessionForAnalysis(db, sessionId);
 
       if (!session) {
         failed++;
@@ -382,10 +364,7 @@ app.post('/backfill-pq', async (c) => {
         }
       }
 
-      const messages = db.prepare(
-        `SELECT id, session_id, type, content, thinking, tool_calls, tool_results, usage, timestamp, parent_id
-         FROM messages WHERE session_id = ? ORDER BY timestamp ASC`
-      ).all(sessionId) as SQLiteMessageRow[];
+      const messages = loadSessionMessages(db, sessionId);
 
       const result = await analyzePromptQuality(session, messages, { signal: abortSignal });
       if (result.success) {

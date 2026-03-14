@@ -6,7 +6,8 @@ import type { ExportTemplate } from '@code-insights/cli/types';
 import { formatKnowledgeBase } from '../export/knowledge-base.js';
 import { formatAgentRules } from '../export/agent-rules.js';
 import type { SessionRow, InsightRow } from '../export/knowledge-base.js';
-import { createLLMClient, isLLMConfigured, loadLLMConfig } from '../llm/client.js';
+import { createLLMClient, loadLLMConfig } from '../llm/client.js';
+import { requireLLM } from './route-helpers.js';
 import {
   applyDepthCap,
   buildInsightContext,
@@ -196,13 +197,7 @@ function fetchSessionContext(
 
 // POST /api/export/generate
 // Synchronous LLM export — returns full result when complete.
-app.post('/generate', async (c) => {
-  if (!isLLMConfigured()) {
-    return c.json({
-      success: false,
-      error: 'LLM not configured. Run `code-insights config llm` to configure a provider.',
-    }, 400);
-  }
+app.post('/generate', requireLLM(), async (c) => {
 
   const body = await c.req.json<ExportGenerateBody>();
   const { scope, projectId, format, depth = 'standard' } = body;
@@ -297,13 +292,7 @@ app.post('/generate', async (c) => {
 // SSE endpoint — streams progress events during LLM export generation.
 // onProgress is implicit (no chunked analysis here); stream.writeSSE is fire-and-forget
 // for progress events (non-fatal if missed).
-app.get('/generate/stream', async (c) => {
-  if (!isLLMConfigured()) {
-    return c.json({
-      success: false,
-      error: 'LLM not configured. Run `code-insights config llm` to configure a provider.',
-    }, 400);
-  }
+app.get('/generate/stream', requireLLM(), async (c) => {
 
   const scope = c.req.query('scope') as ExportScope | undefined;
   const projectId = c.req.query('projectId');

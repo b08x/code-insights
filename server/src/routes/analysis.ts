@@ -3,9 +3,9 @@ import { streamSSE } from 'hono/streaming';
 import { getDb } from '@code-insights/cli/db/client';
 import { trackEvent, captureError } from '@code-insights/cli/utils/telemetry';
 import { parseIntParam } from '../utils.js';
-import { loadLLMConfig, isLLMConfigured } from '../llm/client.js';
+import { loadLLMConfig } from '../llm/client.js';
 import { analyzeSession, analyzePromptQuality, findRecurringInsights } from '../llm/analysis.js';
-import type { SQLiteMessageRow, SessionData } from '../llm/analysis.js';
+import { loadSessionForAnalysis, loadSessionMessages, requireLLM } from './route-helpers.js';
 
 const app = new Hono();
 
@@ -21,35 +21,20 @@ function applyGeneratedTitle(sessionId: string, insights: Array<{ type: string; 
 // POST /api/analysis/session
 // Body: { sessionId: string }
 // Fetches session + messages from SQLite, runs LLM analysis, saves insights, returns results.
-app.post('/session', async (c) => {
-  if (!isLLMConfigured()) {
-    return c.json({
-      success: false,
-      error: 'LLM not configured. Run `code-insights config llm` to configure a provider.',
-    }, 400);
-  }
-
+app.post('/session', requireLLM(), async (c) => {
   const body = await c.req.json<{ sessionId?: string }>();
   if (!body.sessionId || typeof body.sessionId !== 'string') {
     return c.json({ error: 'Missing required field: sessionId' }, 400);
   }
 
   const db = getDb();
-
-  const session = db.prepare(`
-    SELECT id, project_id, project_name, project_path, summary, ended_at,
-           compact_count, auto_compact_count, slash_commands
-    FROM sessions WHERE id = ? AND deleted_at IS NULL
-  `).get(body.sessionId) as SessionData | undefined;
+  const session = loadSessionForAnalysis(db, body.sessionId);
 
   if (!session) {
     return c.json({ error: 'Session not found' }, 404);
   }
 
-  const messages = db.prepare(`
-    SELECT id, session_id, type, content, thinking, tool_calls, tool_results, usage, timestamp, parent_id
-    FROM messages WHERE session_id = ? ORDER BY timestamp ASC
-  `).all(body.sessionId) as SQLiteMessageRow[];
+  const messages = loadSessionMessages(db, body.sessionId);
 
   const llmConfig = loadLLMConfig();
   const startTime = Date.now();
@@ -85,35 +70,20 @@ app.post('/session', async (c) => {
 // SSE endpoint — streams progress events during session analysis.
 // onProgress is non-async because analyzeSession calls it without await;
 // stream.writeSSE is fire-and-forget for progress events (non-fatal if missed).
-app.get('/session/stream', async (c) => {
-  if (!isLLMConfigured()) {
-    return c.json({
-      success: false,
-      error: 'LLM not configured. Run `code-insights config llm` to configure a provider.',
-    }, 400);
-  }
-
+app.get('/session/stream', requireLLM(), async (c) => {
   const sessionId = c.req.query('sessionId');
   if (!sessionId) {
     return c.json({ error: 'Missing required query param: sessionId' }, 400);
   }
 
   const db = getDb();
-
-  const session = db.prepare(`
-    SELECT id, project_id, project_name, project_path, summary, ended_at,
-           compact_count, auto_compact_count, slash_commands
-    FROM sessions WHERE id = ? AND deleted_at IS NULL
-  `).get(sessionId) as SessionData | undefined;
+  const session = loadSessionForAnalysis(db, sessionId);
 
   if (!session) {
     return c.json({ error: 'Session not found' }, 404);
   }
 
-  const messages = db.prepare(`
-    SELECT id, session_id, type, content, thinking, tool_calls, tool_results, usage, timestamp, parent_id
-    FROM messages WHERE session_id = ? ORDER BY timestamp ASC
-  `).all(sessionId) as SQLiteMessageRow[];
+  const messages = loadSessionMessages(db, sessionId);
 
   const llmConfig = loadLLMConfig();
   return streamSSE(c, async (stream) => {
@@ -192,35 +162,20 @@ app.get('/session/stream', async (c) => {
 // POST /api/analysis/prompt-quality
 // Body: { sessionId: string }
 // Runs prompt quality analysis on user messages in the session.
-app.post('/prompt-quality', async (c) => {
-  if (!isLLMConfigured()) {
-    return c.json({
-      success: false,
-      error: 'LLM not configured. Run `code-insights config llm` to configure a provider.',
-    }, 400);
-  }
-
+app.post('/prompt-quality', requireLLM(), async (c) => {
   const body = await c.req.json<{ sessionId?: string }>();
   if (!body.sessionId || typeof body.sessionId !== 'string') {
     return c.json({ error: 'Missing required field: sessionId' }, 400);
   }
 
   const db = getDb();
-
-  const session = db.prepare(`
-    SELECT id, project_id, project_name, project_path, summary, ended_at,
-           compact_count, auto_compact_count, slash_commands
-    FROM sessions WHERE id = ? AND deleted_at IS NULL
-  `).get(body.sessionId) as SessionData | undefined;
+  const session = loadSessionForAnalysis(db, body.sessionId);
 
   if (!session) {
     return c.json({ error: 'Session not found' }, 404);
   }
 
-  const messages = db.prepare(`
-    SELECT id, session_id, type, content, thinking, tool_calls, tool_results, usage, timestamp, parent_id
-    FROM messages WHERE session_id = ? ORDER BY timestamp ASC
-  `).all(body.sessionId) as SQLiteMessageRow[];
+  const messages = loadSessionMessages(db, body.sessionId);
 
   const llmConfig = loadLLMConfig();
   const pqStart = Date.now();
@@ -255,35 +210,20 @@ app.post('/prompt-quality', async (c) => {
 // SSE endpoint — streams progress events during prompt quality analysis.
 // onProgress is non-async because analyzePromptQuality calls it without await;
 // stream.writeSSE is fire-and-forget for progress events (non-fatal if missed).
-app.get('/prompt-quality/stream', async (c) => {
-  if (!isLLMConfigured()) {
-    return c.json({
-      success: false,
-      error: 'LLM not configured. Run `code-insights config llm` to configure a provider.',
-    }, 400);
-  }
-
+app.get('/prompt-quality/stream', requireLLM(), async (c) => {
   const sessionId = c.req.query('sessionId');
   if (!sessionId) {
     return c.json({ error: 'Missing required query param: sessionId' }, 400);
   }
 
   const db = getDb();
-
-  const session = db.prepare(`
-    SELECT id, project_id, project_name, project_path, summary, ended_at,
-           compact_count, auto_compact_count, slash_commands
-    FROM sessions WHERE id = ? AND deleted_at IS NULL
-  `).get(sessionId) as SessionData | undefined;
+  const session = loadSessionForAnalysis(db, sessionId);
 
   if (!session) {
     return c.json({ error: 'Session not found' }, 404);
   }
 
-  const messages = db.prepare(`
-    SELECT id, session_id, type, content, thinking, tool_calls, tool_results, usage, timestamp, parent_id
-    FROM messages WHERE session_id = ? ORDER BY timestamp ASC
-  `).all(sessionId) as SQLiteMessageRow[];
+  const messages = loadSessionMessages(db, sessionId);
 
   const llmConfig = loadLLMConfig();
   return streamSSE(c, async (stream) => {
@@ -358,13 +298,7 @@ app.get('/prompt-quality/stream', async (c) => {
 // POST /api/analysis/recurring
 // Body: { projectId?: string; limit?: number }
 // Finds recurring insight patterns across sessions.
-app.post('/recurring', async (c) => {
-  if (!isLLMConfigured()) {
-    return c.json({
-      success: false,
-      error: 'LLM not configured. Run `code-insights config llm` to configure a provider.',
-    }, 400);
-  }
+app.post('/recurring', requireLLM(), async (c) => {
 
   const body = await c.req.json<{ projectId?: string; limit?: number }>();
   const db = getDb();

@@ -430,7 +430,7 @@ describe('Reflect routes', () => {
       });
       expect(res.status).toBe(400);
       const body = await res.json();
-      expect(body.error).toBe('LLM not configured.');
+      expect(body.error).toContain('LLM not configured');
     });
 
     it('streams SSE error when no sessions with facets found', async () => {
