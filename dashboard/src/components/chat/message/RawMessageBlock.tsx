@@ -2,20 +2,26 @@ import { useState } from 'react';
 import { Code } from 'lucide-react';
 
 interface RawMessageBlockProps {
-  label: string;    // e.g., "SKILL LOAD", "COMMAND OUTPUT", "EXIT COMMAND"
+  label: string;    // e.g., "Skill Load", "Command Output", "Exit Command"
   content: string;  // Raw message content
 }
+
+const CHAR_LIMIT = 500;
 
 /**
  * Renders hidden protocol messages (skill-load, command-frame, exit-command)
  * when the "Show raw messages" toggle is on. Displays as a dashed-border
- * monospace block with a type label, truncated at 3 lines with expand.
+ * monospace block with a type label, truncated at 3 lines or 500 chars with expand.
  */
 export function RawMessageBlock({ label, content }: RawMessageBlockProps) {
   const [expanded, setExpanded] = useState(false);
   const lines = content.split('\n');
-  const needsTruncation = lines.length > 3;
-  const displayContent = expanded ? content : lines.slice(0, 3).join('\n');
+  const needsTruncation = lines.length > 3 || content.length > CHAR_LIMIT;
+  const displayContent = expanded
+    ? content
+    : lines.length > 3
+      ? lines.slice(0, 3).join('\n')
+      : content.slice(0, CHAR_LIMIT);
 
   return (
     <div
@@ -34,6 +40,7 @@ export function RawMessageBlock({ label, content }: RawMessageBlockProps) {
       </div>
       {needsTruncation && (
         <button
+          type="button"
           onClick={() => setExpanded((v) => !v)}
           className="mt-1 text-xs text-muted-foreground hover:text-foreground cursor-pointer transition-colors"
         >

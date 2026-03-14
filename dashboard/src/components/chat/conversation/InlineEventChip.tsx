@@ -16,7 +16,6 @@ export function InlineEventChip({ command, timestamp }: InlineEventChipProps) {
 
   return (
     <div
-      role="status"
       aria-label={`Slash command ${command} at ${formattedTime}`}
       className="flex justify-center items-center gap-1.5 py-1.5 px-4"
     >
