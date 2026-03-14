@@ -9,8 +9,11 @@ import { parseJsonField } from '@/lib/types';
 import { ThinkingBlock } from './ThinkingBlock';
 import { AssistantMarkdown } from './markdown/AssistantMarkdown';
 import { UserMarkdown } from './markdown/UserMarkdown';
-import { parseAgentMessage } from './preprocess';
+import { parseAgentMessage, classifyUserMessage } from './preprocess';
 import { AgentMessageBubble } from './AgentMessageBubble';
+import { RawMessageBlock } from './RawMessageBlock';
+import { ContextBreakDivider } from '../conversation/ContextBreakDivider';
+import { InlineEventChip } from '../conversation/InlineEventChip';
 
 interface MessageBubbleProps {
   message: Message;
@@ -18,6 +21,7 @@ interface MessageBubbleProps {
   nextToolResults?: ToolResult[];
   sourceTool?: string;
   searchQuery?: string;
+  showRawMessages?: boolean;
 }
 
 function getAssistantConfig(sourceTool?: string): { name: string; avatarColor: string } {
@@ -36,7 +40,7 @@ function getAssistantConfig(sourceTool?: string): { name: string; avatarColor: s
   }
 }
 
-export function MessageBubble({ message, showHeader = true, nextToolResults = [], sourceTool, searchQuery }: MessageBubbleProps) {
+export function MessageBubble({ message, showHeader = true, nextToolResults = [], sourceTool, searchQuery, showRawMessages = false }: MessageBubbleProps) {
   const isUser = message.type === 'user';
   const isSystem = message.type === 'system';
   const hasContent = message.content?.trim();
@@ -65,6 +69,14 @@ export function MessageBubble({ message, showHeader = true, nextToolResults = []
     return <AgentMessageBubble parsed={agentMessage} timestamp={message.timestamp} />;
   }
 
+  // Classify user messages to route to the correct renderer.
+  // Must run on RAW content before preprocessUserContent strips XML tags.
+  // Only 'human' kind flows to UserMarkdown — all others bypass preprocessing.
+  const userMessageClass = useMemo(
+    () => (isUser && hasContent) ? classifyUserMessage(message.content) : null,
+    [isUser, hasContent, message.content]
+  );
+
   if (isSystem) {
     return (
       <div className="flex justify-center py-2 px-4">
@@ -75,24 +87,52 @@ export function MessageBubble({ message, showHeader = true, nextToolResults = []
 
   if (isUser) {
     if (!hasContent) return null;
-    return (
-      <div className={cn('flex justify-end px-4', showHeader ? 'pt-4 pb-2' : 'pb-2')}>
-        <div className="max-w-[80%]">
-          {showHeader && (
-            <div className="flex items-center justify-end gap-2 mb-1">
-              <span className="text-xs text-muted-foreground">{format(new Date(message.timestamp), 'h:mm a')}</span>
-              <span className="font-medium text-sm">You</span>
-              <div className="shrink-0 w-7 h-7 rounded-full flex items-center justify-center bg-blue-500">
-                <User className="h-3.5 w-3.5 text-white" />
+
+    // Route by message class — classifyUserMessage returns null only when !isUser || !hasContent,
+    // both of which are already guarded above, so we can assert non-null here.
+    const cls = userMessageClass!;
+
+    switch (cls.kind) {
+      case 'auto-compact':
+        return <ContextBreakDivider timestamp={message.timestamp} />;
+
+      case 'user-compact':
+      case 'slash-command':
+        return <InlineEventChip command={cls.command} timestamp={message.timestamp} />;
+
+      case 'exit-command':
+        if (!showRawMessages) return null;
+        return <RawMessageBlock label="Exit Command" content={message.content} />;
+
+      case 'skill-load':
+        if (!showRawMessages) return null;
+        return <RawMessageBlock label="Skill Load" content={message.content} />;
+
+      case 'command-frame':
+        if (!showRawMessages) return null;
+        return <RawMessageBlock label="Command Output" content={message.content} />;
+
+      case 'human':
+      default:
+        return (
+          <div className={cn('flex justify-end px-4', showHeader ? 'pt-4 pb-2' : 'pb-2')}>
+            <div className="max-w-[80%]">
+              {showHeader && (
+                <div className="flex items-center justify-end gap-2 mb-1">
+                  <span className="text-xs text-muted-foreground">{format(new Date(message.timestamp), 'h:mm a')}</span>
+                  <span className="font-medium text-sm">You</span>
+                  <div className="shrink-0 w-7 h-7 rounded-full flex items-center justify-center bg-blue-500">
+                    <User className="h-3.5 w-3.5 text-white" />
+                  </div>
+                </div>
+              )}
+              <div className="bg-blue-500/10 text-foreground rounded-2xl rounded-tr-sm px-4 py-2.5">
+                <UserMarkdown content={message.content} searchQuery={searchQuery} />
               </div>
             </div>
-          )}
-          <div className="bg-blue-500/10 text-foreground rounded-2xl rounded-tr-sm px-4 py-2.5">
-            <UserMarkdown content={message.content} searchQuery={searchQuery} />
           </div>
-        </div>
-      </div>
-    );
+        );
+    }
   }
 
   const { name: assistantName, avatarColor } = getAssistantConfig(sourceTool);
