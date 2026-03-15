@@ -2,7 +2,7 @@
 // Note: 'anthropic-dangerous-direct-browser-access' header is intentionally omitted here —
 // this runs server-side where direct API access is safe and expected.
 
-import type { LLMClient, LLMMessage, LLMResponse, ChatOptions, ContentBlock } from '../types.js';
+import type { LLMClient, LLMMessage, LLMResponse, ChatOptions } from '../types.js';
 
 export function createAnthropicClient(apiKey: string, model: string): LLMClient {
   return {

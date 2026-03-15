@@ -48,7 +48,9 @@ export const SHARED_ANALYST_SYSTEM_PROMPT = `You are a senior staff engineer ana
 export function buildCacheableConversationBlock(formattedMessages: string): ContentBlock {
   return {
     type: 'text',
-    text: `--- CONVERSATION ---\n${formattedMessages}\n--- END CONVERSATION ---`,
+    // Trailing double newline ensures the instruction block (user[1]) reads as a
+    // distinct section when providers flatten content blocks to a single string.
+    text: `--- CONVERSATION ---\n${formattedMessages}\n--- END CONVERSATION ---\n\n`,
     cache_control: { type: 'ephemeral' },
   };
 }
