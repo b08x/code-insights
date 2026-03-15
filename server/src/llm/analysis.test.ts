@@ -24,6 +24,7 @@ vi.mock('./client.js', () => ({
     chat: mockChat,
     estimateTokens: (text: string) => Math.ceil(text.length / 4),
   }),
+  loadLLMConfig: () => ({ provider: 'test', model: 'test-model' }),
 }));
 
 const { analyzeSession, analyzePromptQuality, findRecurringInsights, extractFacetsOnly } =
