@@ -14,7 +14,7 @@
 
 Turn your AI coding sessions into knowledge.
 
-Parses session history from Claude Code, Cursor, Codex CLI, and Copilot CLI. Stores structured data in a local SQLite database. Surfaces insights through terminal analytics and a built-in browser dashboard.
+Parses session history from Claude Code, Cursor, Codex CLI, Copilot CLI, and VS Code Copilot Chat. Stores structured data in a local SQLite database. Surfaces insights through terminal analytics and a built-in browser dashboard — with cross-session pattern detection and LLM-powered synthesis.
 
 **No accounts. No cloud. No data leaves your machine.**
 
@@ -34,12 +34,15 @@ code-insights dashboard # Open the built-in dashboard at localhost:7890
 
 ## What It Does
 
-- **Multi-tool support** — parses sessions from Claude Code, Cursor, Codex CLI, and Copilot CLI
+- **Multi-tool support** — parses sessions from Claude Code, Cursor, Codex CLI, Copilot CLI, and VS Code Copilot Chat
 - **Terminal analytics** — `code-insights stats` shows cost, usage, and activity breakdowns
-- **Built-in dashboard** — browser UI for session browsing, analytics charts, and LLM-powered insights
+- **Built-in dashboard** — browser UI for session browsing, analytics, insights, patterns, and export
+- **Reflect & Patterns** — cross-session pattern detection with weekly synthesis: friction points (with attribution), effective patterns (with driver classification), prompt quality analysis, and working style rules
+- **LLM analysis** — generates summaries, decisions, learnings, prompt quality (7 deficit + 3 strength categories), and session facets for pattern aggregation
+- **Export** — LLM-powered cross-session synthesis in 4 formats: Agent Rules, Knowledge Brief, Obsidian, and Notion
+- **Cost tracking** — per-session LLM analysis cost with provider, model, and token breakdown
+- **Session character** — each session is classified into one of 7 types (deep_focus, bug_hunt, feature_build, exploration, refactor, learning, quick_task)
 - **Auto-sync hook** — `install-hook` keeps your database up to date automatically
-- **LLM analysis** — generates summaries, decisions (with context, reasoning, and trade-offs), learnings (with root cause and transferable takeaway), and prompt quality analysis with session traits (via your own API key or local Ollama)
-- **Session character** — each session is classified into one of 7 types (deep_focus, bug_hunt, feature_build, exploration, refactor, learning, quick_task) using LLM analysis
 - **PR link detection** — GitHub PR links referenced in sessions are automatically extracted and displayed
 
 ## Supported AI Tools
@@ -50,6 +53,7 @@ code-insights dashboard # Open the built-in dashboard at localhost:7890
 | Cursor | Workspace storage SQLite (macOS, Linux, Windows) |
 | Codex CLI | `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` |
 | Copilot CLI | `~/.copilot/session-state/{id}/events.jsonl` |
+| VS Code Copilot Chat | Platform-specific Copilot Chat storage |
 
 ## CLI Reference
 
@@ -59,6 +63,7 @@ code-insights sync                     # Sync sessions to local database
 code-insights sync --force             # Re-sync all sessions
 code-insights sync --source cursor     # Sync only from a specific tool
 code-insights sync --dry-run           # Preview without making changes
+code-insights sync prune               # Soft-delete sessions with preview
 code-insights status                   # Show sync statistics
 code-insights dashboard                # Start dashboard server and open browser
 code-insights dashboard --port 8080    # Custom port (default: 7890)
@@ -67,6 +72,10 @@ code-insights stats cost               # Cost breakdown by project and model
 code-insights stats projects           # Per-project detail cards
 code-insights stats today              # Today's sessions
 code-insights stats models             # Model usage distribution
+code-insights stats patterns           # Cross-session patterns summary
+code-insights reflect                  # Cross-session LLM synthesis
+code-insights reflect --week 2026-W11  # Reflect on a specific ISO week
+code-insights reflect backfill         # Backfill facets for legacy sessions
 code-insights config                   # Show configuration
 code-insights config llm               # Configure LLM provider (interactive)
 code-insights install-hook             # Auto-sync when Claude Code sessions end
@@ -80,7 +89,7 @@ code-insights reset --confirm          # Delete all local data
 ## Architecture
 
 ```
-Session files (Claude Code, Cursor, Codex CLI, Copilot CLI)
+Session files (Claude Code, Cursor, Codex CLI, Copilot CLI, VS Code Copilot Chat)
                           │
                           ▼
                ┌──────────────────┐
@@ -95,9 +104,15 @@ Session files (Claude Code, Cursor, Codex CLI, Copilot CLI)
           ┌─────────┘          └──────────┐
           ▼                               ▼
   ┌───────────────┐            ┌──────────────────┐
-  │  stats commands│            │  Hono API server │
+  │  stats/reflect │            │  Hono API server │
   │  (terminal)    │            │  + React SPA     │
   └───────────────┘            │  localhost:7890   │
+                               └──────────────────┘
+                                        │
+                                        ▼
+                               ┌──────────────────┐
+                               │  LLM Providers   │  analysis, facets,
+                               │  (your API key)  │  reflect, export
                                └──────────────────┘
 ```
 
@@ -121,7 +136,7 @@ See [`cli/README.md`](cli/README.md) for the full CLI reference, and [`CONTRIBUT
 
 ## Privacy
 
-Session data stays on your machine in `~/.code-insights/data.db`. No accounts, no cloud sync, no telemetry beyond anonymous usage counts. LLM analysis uses your own API key (or Ollama locally) — session content goes only to the provider you configure.
+Session data stays on your machine in `~/.code-insights/data.db`. No accounts, no cloud sync. Anonymous usage telemetry is opt-out (`code-insights telemetry disable`). LLM analysis uses your own API key (or Ollama locally) — session content goes only to the provider you configure.
 
 ## License
 

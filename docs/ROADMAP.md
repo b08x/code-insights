@@ -184,7 +184,7 @@ This roadmap outlines the development phases for Code Insights. Timelines are fl
 | 3.4.0 | — | Multi-source parser fixes (Codex, Cursor, Copilot), agent message rendering | ✅ Done |
 | 3.5.1 | 7 | Session-level export templates (Knowledge Base, Agent Rules), prompt quality | ✅ Done |
 | 3.6.0 | 7 | LLM-powered Export Page (cross-session synthesis, 4 formats, SSE streaming) | ✅ Done |
-| 3.6.1 | 8–9 | Reflect & Patterns, taxonomy revisions, ISO weeks, cost tracking (Schema V7) | ✅ Done |
+| 4.0.0 | 8–9 | Reflect & Patterns, taxonomy revisions, ISO weeks, prompt caching, cost tracking (Schema V7) | ✅ Done |
 
 ---
 

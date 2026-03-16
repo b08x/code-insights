@@ -4,7 +4,7 @@
 
 <h1 align="center">Code Insights CLI</h1>
 
-Analyze AI coding sessions from the terminal. Parses session history from Claude Code, Cursor, Codex CLI, and Copilot CLI — stores everything in a local SQLite database — and serves a built-in browser dashboard.
+Analyze AI coding sessions from the terminal. Parses session history from Claude Code, Cursor, Codex CLI, Copilot CLI, and VS Code Copilot Chat — stores everything in a local SQLite database — and serves a built-in browser dashboard with cross-session pattern detection.
 
 **Local-first. No accounts. No cloud. No data leaves your machine.**
 
@@ -51,6 +51,7 @@ The dashboard opens at `http://localhost:7890` and shows your sessions, analytic
 | **Cursor** | Workspace storage SQLite (macOS, Linux, Windows) |
 | **Codex CLI** | `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` |
 | **Copilot CLI** | `~/.copilot/session-state/{id}/events.jsonl` |
+| **VS Code Copilot Chat** | Platform-specific Copilot Chat storage |
 
 Sessions from all tools are discovered automatically during sync.
 
@@ -62,9 +63,11 @@ code-insights dashboard
 
 Opens the built-in React dashboard at `http://localhost:7890`. The dashboard provides:
 
-- **Session Browser** — search, filter, and view full session details
+- **Session Browser** — search, filter, soft-delete, and view full session details with chat view
 - **Analytics** — usage patterns, cost trends, activity charts
-- **LLM Insights** — AI-generated summaries, decisions (with reasoning and trade-offs), learnings (with root cause analysis), prompt quality scoring with session traits
+- **LLM Insights** — AI-generated summaries, decisions, learnings, and prompt quality analysis (7 deficit + 3 strength categories with dimension scores)
+- **Patterns** — weekly cross-session synthesis: friction points (with attribution), effective patterns (with driver classification), working style rules
+- **Export** — LLM-powered cross-session synthesis in 4 formats (Agent Rules, Knowledge Brief, Obsidian, Notion)
 - **Settings** — configure your LLM provider for analysis
 
 <p align="center">
@@ -135,6 +138,9 @@ code-insights sync --verbose
 
 # Regenerate titles for all sessions
 code-insights sync --regenerate-titles
+
+# Soft-delete sessions (preview + confirm)
+code-insights sync prune
 ```
 
 ### Terminal Analytics
@@ -154,6 +160,9 @@ code-insights stats today
 
 # Model usage distribution and cost chart
 code-insights stats models
+
+# Cross-session patterns summary
+code-insights stats patterns
 ```
 
 <p align="center">
@@ -168,6 +177,33 @@ code-insights stats models
 | `--project <name>` | Scope to a specific project (fuzzy matching) |
 | `--source <tool>` | Filter by source tool |
 | `--no-sync` | Skip auto-sync before displaying stats |
+
+### Reflect & Patterns
+
+Cross-session pattern detection and synthesis. Requires an LLM provider to be configured.
+
+```bash
+# Generate weekly cross-session synthesis (current week)
+code-insights reflect
+
+# Reflect on a specific ISO week
+code-insights reflect --week 2026-W11
+
+# Scope to a specific project
+code-insights reflect --project "my-project"
+
+# Backfill facets for sessions that were synced before Reflect existed
+code-insights reflect backfill
+
+# Backfill prompt quality analysis
+code-insights reflect backfill --prompt-quality
+```
+
+The Reflect feature analyzes your sessions to surface:
+- **Friction points** — recurring obstacles classified into 9 categories with attribution (user-actionable, AI capability, environmental)
+- **Effective patterns** — working strategies across 8 categories with driver classification (user-driven, AI-driven, collaborative)
+- **Prompt quality** — how well you communicate with AI tools (7 deficit + 3 strength categories)
+- **Working style** — rules and skills derived from your sessions
 
 ### Status & Maintenance
 
@@ -211,7 +247,7 @@ CODE_INSIGHTS_TELEMETRY_DISABLED=1 code-insights sync
 
 ## LLM Configuration
 
-Session analysis (summaries, decisions, learnings) requires an LLM provider. Configure it via CLI or the dashboard Settings page.
+Session analysis (summaries, decisions, learnings, facets) and Reflect synthesis require an LLM provider. Configure it via CLI or the dashboard Settings page.
 
 ```bash
 code-insights config llm

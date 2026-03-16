@@ -2,6 +2,52 @@
 
 All notable changes to `@code-insights/cli` will be documented in this file.
 
+## [4.0.0] - 2026-03-16
+
+### Added
+
+- **Reflect & Patterns** — Cross-session pattern detection and synthesis via LLM. New `reflect` CLI command generates weekly insights: friction points, effective patterns, prompt quality analysis, and working style rules. New `stats patterns` subcommand shows patterns in the terminal. New Patterns dashboard page with weekly report card layout and ISO week navigation.
+- **Session facets** — Each analyzed session now produces structured facets (outcome, workflow, friction, effective patterns, course corrections) stored in a dedicated `session_facets` table. Facets power Reflect aggregation.
+- **Friction taxonomy** — 9 canonical friction categories (wrong-approach, knowledge-gap, stale-assumptions, incomplete-requirements, context-loss, scope-creep, repeated-mistakes, documentation-gap, tooling-limitation) with attribution model (user-actionable, AI capability, environmental) and CoT reasoning.
+- **Effective pattern taxonomy** — 8 canonical pattern categories (structured-planning, incremental-implementation, verification-workflow, systematic-debugging, self-correction, context-gathering, domain-expertise, effective-tooling) with driver classification (user-driven, AI-driven, collaborative).
+- **Prompt quality taxonomy** — 7 deficit + 3 strength categories replacing efficiency scores. Two-layer output: user-facing takeaways (before/after) and categorized findings for Reflect aggregation. 5 dimension scores (context_provision, request_specificity, scope_management, information_timing, correction_quality).
+- **ISO week navigation** — `reflect --week 2026-W11` replaces sliding `--period` windows. Dashboard WeekSelector with session counts and snapshot status per week.
+- **Reflect backfill** — `reflect backfill` extracts facets for sessions synced before Reflect existed. Handles both missing and outdated sessions in one pass. `--prompt-quality` flag for PQ-specific backfill.
+- **Reflect snapshots** — Cross-session synthesis results are cached in `reflect_snapshots` table with staleness detection and auto-load.
+- **LLM prompt caching** — Shared cacheable conversation prefix for Anthropic (prompt-caching beta) and OpenAI (automatic prefix caching). Estimated ~32% input token savings on Anthropic.
+- **LLM cost tracking** — New `analysis_usage` table tracks per-session analysis cost with provider, model, token counts, and duration. Dashboard cost UI on session detail page.
+- **Soft-delete sessions** — `sync prune` with preview+confirm UX. Trash button in dashboard. Deleted sessions filtered from all API endpoints.
+- **Chat view system events** — Context break dividers, inline command chips for slash commands, protocol noise hidden. Raw message toggle for full conversation view.
+- **VS Code Copilot Chat support** — Added to supported tools table and provider documentation (provider existed since v2.1.0 but was undocumented in READMEs).
+- **Message classification V6** — `compact_count`, `auto_compact_count`, `slash_commands` columns. V6 prompt context signals for better LLM analysis. Auto force-sync and stale insight advisory on V6 migration.
+- **PQ signals in Reflect** — Prompt quality category aggregation wired into friction-wins synthesis for richer weekly reports.
+
+### Changed
+
+- **SQLite Schema V5** — `deleted_at` column for soft-delete support.
+- **SQLite Schema V6** — `compact_count`, `auto_compact_count`, `slash_commands` columns on sessions.
+- **SQLite Schema V7** — `analysis_usage` table with composite PK `(session_id, analysis_type)`.
+- **`reflect --period` → `reflect --week`** — CLI flag replaced. Use ISO week format `YYYY-WNN` (default: current week).
+- **Prompt quality metadata shape** — Dimension scores replace efficiency score. Dashboard handles both new and legacy formats via dual-read.
+- **Friction display** — Bar chart replaced with category+description list matching effective patterns layout.
+- **Patterns page** — Multiple redesigns: 2-tab→3-tab layout, hero card, weekly report card, data-driven week navigation.
+- **Session analysis prompt** — Restructured for better facet quality with auto-applied LLM-suggested titles.
+- **Actor-neutral classification** — Friction/pattern prompts use neutral category definitions with evidence-based attribution decision trees.
+
+### Fixed
+
+- **Inflated user_message_count** — Claude Code JSONL parser now correctly counts user messages.
+- **Gemini JSON response mode** — Enabled JSON response mode to prevent malformed LLM output.
+- **Insights API default limit** — Raised from 100 to 5000 to prevent truncated results.
+- **Week range generation** — Monday milliseconds normalized to UTC midnight; correct Monday bucketing in GROUP BY queries.
+- **PostHog telemetry routing** — CLI and dashboard telemetry routed through correct endpoints.
+
+### Improved
+
+- **Test coverage** — Expanded to 80%+ across CLI and server packages. Added migration idempotency tests, V6 classification tests, shared-aggregation coverage.
+- **Code organization** — Major refactoring: split monolithic `analysis.ts` and `prompts.ts` into focused modules, shared normalizer infrastructure, route helpers (`trackAnalysisResult`, `streamSessionAnalysis`, `streamBatchBackfill`), dashboard component decomposition.
+- **Normalizer infrastructure** — Shared `normalizeCategory()` used by friction, pattern, and prompt quality normalizers.
+
 ## [3.6.1] - 2026-03-04
 
 ### Changed
