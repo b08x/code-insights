@@ -6,30 +6,33 @@ action: warn
 conditions:
   - field: content
     operator: regex_match
-    pattern: \bclaudeinsight\s+(init|sync|connect|status|reset|install-hook|uninstall-hook)\b
+    pattern: \b(claudeinsight|codeinsight|code-insight)\s+(init|sync|status|reset|open|dashboard|stats|reflect|config|telemetry|install-hook|uninstall-hook)\b
 ---
 
 **Wrong CLI Binary Name Detected!**
 
-The CLI binary is **`code-insights`**, NOT `claudeinsight`.
+The CLI binary is **`code-insights`** (with hyphen, plural), NOT `claudeinsight`, `codeinsight`, or `code-insight`.
 
 **Correct usage:**
 ```bash
 code-insights init
 code-insights sync
-code-insights connect
-code-insights status
+code-insights open
+code-insights dashboard
+code-insights stats
+code-insights reflect
+code-insights config
+code-insights telemetry
 code-insights install-hook
 code-insights uninstall-hook
 code-insights reset
 ```
 
 **Also note:**
-- There is no `open` or `link` command. The correct command is `connect`.
-- Package name is `code-insights`
+- Package name is `@code-insights/cli`
 - Config directory is `~/.code-insights/`
 
 **Common mistakes:**
 - ❌ `claudeinsight sync` → ✅ `code-insights sync`
-- ❌ `claudeinsight open` → ✅ `code-insights connect`
-- ❌ `codeinsight sync` → ✅ `code-insights sync`
+- ❌ `codeinsight stats` → ✅ `code-insights stats`
+- ❌ `code-insight reflect` → ✅ `code-insights reflect`

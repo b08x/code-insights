@@ -1,13 +1,9 @@
 ---
 name: verify-before-checkout
 enabled: true
-event: all
+event: bash
 action: warn
-tool_matcher: Bash
-conditions:
-  - field: command
-    operator: regex_match
-    pattern: git\s+(checkout|switch)\s+(?!-[bBcC]\s)(?!--\s)
+pattern: git\s+(checkout|switch)\s+(?!-[bBcC]\s)(?!--\s)
 ---
 
 **Pre-Checkout Verification**
