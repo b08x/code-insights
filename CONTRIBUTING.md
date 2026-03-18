@@ -79,7 +79,10 @@ pnpm build
 ### 4. Test locally
 
 ```bash
-# Test CLI commands
+# Primary testing path — syncs sessions and opens the dashboard
+code-insights
+
+# Test individual commands
 code-insights sync --dry-run
 code-insights stats
 code-insights dashboard

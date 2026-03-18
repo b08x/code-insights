@@ -25,11 +25,24 @@ Parses session history from Claude Code, Cursor, Codex CLI, Copilot CLI, and VS 
 ## Quick Start
 
 ```bash
-npm install -g @code-insights/cli
+# Try instantly (no install needed)
+npx @code-insights/cli
 
-code-insights init      # Set up config and local database
-code-insights sync      # Parse sessions from all detected AI tools
-code-insights dashboard # Open the built-in dashboard at localhost:7890
+# Or install globally
+npm install -g @code-insights/cli
+code-insights                          # sync sessions + open dashboard
+```
+
+### Individual commands
+
+```bash
+code-insights stats                    # terminal analytics (no dashboard needed)
+code-insights stats today              # today's sessions
+
+code-insights dashboard                # start dashboard server (auto-syncs first)
+code-insights dashboard --no-sync      # start dashboard without syncing
+code-insights sync                     # sync sessions only
+code-insights init                     # customize settings (optional)
 ```
 
 ## What It Does
@@ -58,7 +71,8 @@ code-insights dashboard # Open the built-in dashboard at localhost:7890
 ## CLI Reference
 
 ```bash
-code-insights init                     # Interactive setup
+code-insights                          # sync + open dashboard (zero-config)
+code-insights init                     # customize settings (optional)
 code-insights sync                     # Sync sessions to local database
 code-insights sync --force             # Re-sync all sessions
 code-insights sync --source cursor     # Sync only from a specific tool
@@ -66,6 +80,7 @@ code-insights sync --dry-run           # Preview without making changes
 code-insights sync prune               # Soft-delete sessions with preview
 code-insights status                   # Show sync statistics
 code-insights dashboard                # Start dashboard server and open browser
+code-insights dashboard --no-sync      # Start dashboard without syncing
 code-insights dashboard --port 8080    # Custom port (default: 7890)
 code-insights stats                    # Terminal overview (last 7 days)
 code-insights stats cost               # Cost breakdown by project and model

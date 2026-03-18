@@ -27,17 +27,26 @@ code-insights --version
 ## Quick Start
 
 ```bash
-# 1. Initialize (creates ~/.code-insights/ config and database)
-code-insights init
+# Try instantly (no install needed)
+npx @code-insights/cli
 
-# 2. Sync sessions from all detected AI tools
-code-insights sync
-
-# 3. Open the built-in dashboard
-code-insights dashboard
+# Or after installing globally:
+code-insights                          # sync sessions + open dashboard
 ```
 
 The dashboard opens at `http://localhost:7890` and shows your sessions, analytics, and LLM-powered insights.
+
+### Individual commands
+
+```bash
+code-insights stats                    # terminal analytics (no dashboard needed)
+code-insights stats today              # today's sessions
+
+code-insights dashboard                # start dashboard server (auto-syncs first)
+code-insights dashboard --no-sync      # start dashboard without syncing
+code-insights sync                     # sync sessions only
+code-insights init                     # customize settings (optional)
+```
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/melagiri/code-insights/master/docs/assets/screenshots/session-insight-light.png" alt="Session detail — insights, learnings, decisions, and conversation" width="800" />
@@ -90,7 +99,10 @@ code-insights dashboard --no-open      # Start server without opening browser
 ### Setup & Configuration
 
 ```bash
-# Interactive setup — prompts for Claude dir, excluded projects, etc.
+# Sync sessions and open dashboard — no setup required
+code-insights
+
+# Customize settings (optional) — prompts for Claude dir, excluded projects, etc.
 code-insights init
 
 # Show current configuration

@@ -130,8 +130,11 @@ Cross-session pattern detection and synthesis, powered by session facets:
 
 #### Setup & Sync
 
+Running `code-insights` with no arguments automatically syncs sessions and opens the dashboard — no configuration required.
+
 ```bash
-code-insights init                         # Interactive setup (provider, API key)
+code-insights                              # Sync + open dashboard (zero-config)
+code-insights init                         # Optional: customize settings (provider, API key)
 code-insights sync                         # Sync sessions to SQLite
 code-insights sync --force                 # Re-sync all sessions
 code-insights sync --dry-run               # Preview without changes

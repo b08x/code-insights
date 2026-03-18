@@ -53,13 +53,10 @@ export async function initCommand(_options: InitOptions = {}): Promise<void> {
   console.log(chalk.green('\n  Configuration saved!'));
   console.log(chalk.gray(`  Config location: ${getConfigDir()}/config.json`));
 
-  console.log(chalk.cyan('\n  Setup complete! Next steps:\n'));
-  console.log(chalk.white('  1. Sync your sessions:'));
-  console.log(chalk.gray('     code-insights sync\n'));
-  console.log(chalk.white('  2. View your stats:'));
-  console.log(chalk.gray('     code-insights stats\n'));
-  console.log(chalk.white('  3. Check today\'s activity:'));
-  console.log(chalk.gray('     code-insights stats today\n'));
+  console.log(chalk.cyan('\n  Setup complete! You can now run:\n'));
+  console.log(chalk.gray('     code-insights              # sync + open dashboard'));
+  console.log(chalk.gray('     code-insights stats        # terminal analytics'));
+  console.log(chalk.gray('     code-insights config llm   # configure AI analysis (optional)\n'));
 
   trackEvent('cli_init', { success: true });
 }

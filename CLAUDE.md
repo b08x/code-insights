@@ -80,7 +80,8 @@ pnpm build            # Compile TypeScript to dist/
 
 # After building, link for local testing:
 npm link
-code-insights init                     # Interactive setup
+code-insights                          # Sync + open dashboard (zero-config)
+code-insights init                     # Optional: customize settings
 code-insights sync                     # Sync sessions to SQLite
 code-insights sync --force             # Re-sync all sessions
 code-insights sync --dry-run           # Preview without changes
@@ -88,7 +89,8 @@ code-insights sync -q                  # Quiet mode (for hook usage)
 code-insights sync --source cursor     # Sync only from a specific tool
 code-insights status                   # Show sync statistics
 code-insights open                     # Open dashboard in browser (no server start)
-code-insights dashboard                # Start server + open dashboard
+code-insights dashboard                # Start server + open dashboard (auto-syncs first)
+code-insights dashboard --no-sync      # Start server + open dashboard without syncing
 code-insights install-hook             # Auto-sync on session end
 code-insights uninstall-hook           # Remove auto-sync hook
 code-insights config                   # Show current configuration

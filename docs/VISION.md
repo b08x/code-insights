@@ -15,7 +15,8 @@ There is no central Code Insights server. No accounts, no sign-ups, no cloud. Al
 ### 2. Developers Can Handle It
 
 Developers using AI coding tools are technical. They can:
-- Run `code-insights init` and answer three questions
+- Run `code-insights` and get a working dashboard immediately (no setup required)
+- Optionally run `code-insights init` to customize settings and answer three questions
 - Install a post-session hook with one command
 - Open a local dashboard that just works
 
@@ -102,7 +103,7 @@ Message classification V6 schema added `compact_count`, `auto_compact_count`, an
 
 ## Success Looks Like
 
-A developer installs Code Insights, runs `code-insights init`, installs the hook, and from then on has a local dashboard showing:
+A developer installs Code Insights, runs `code-insights` (or `npx @code-insights/cli`), installs the hook, and from then on has a local dashboard showing:
 - What they built with AI coding tools this week
 - Key decisions and why they made them
 - Patterns in how they use AI assistance across tools

@@ -42,6 +42,8 @@ code-insights init
 
 This creates `~/.code-insights/config.json` and initializes the SQLite database at `~/.code-insights/data.db`. No Firebase credentials are required.
 
+> **Note:** `init` is optional for new installations, but required when upgrading from v2 because the config format changed.
+
 ### Step 3: Re-sync All Sessions
 
 ```bash
@@ -57,6 +59,8 @@ code-insights dashboard
 ```
 
 The built-in dashboard starts at `http://localhost:7890`. No Firebase connection URL needed.
+
+Or simply run `code-insights` (no arguments) to sync and open the dashboard in one step.
 
 ### Step 5 (Optional): Re-configure LLM Analysis
 
