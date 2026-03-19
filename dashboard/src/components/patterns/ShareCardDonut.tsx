@@ -4,7 +4,7 @@
  * Uses <circle> stroke-dasharray/stroke-dashoffset for segments.
  * Recharts is NOT used here — html-to-image has canvas compatibility issues
  * with foreign object elements that Recharts relies on.
- * All colors are hardcoded hex literals.
+ * All colors are hardcoded hex or rgba() (rgba for alpha transparency — 8-digit hex breaks html-to-image).
  */
 
 interface DonutDataItem {
@@ -53,7 +53,7 @@ export function ShareCardDonut({ data, size, strokeWidth }: ShareCardDonutProps)
           cy={cy}
           r={r}
           fill="none"
-          stroke="#ffffff12"
+          stroke="rgba(255,255,255,0.07)"
           strokeWidth={strokeWidth}
         />
         {/* Segments */}
