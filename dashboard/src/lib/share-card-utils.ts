@@ -1,7 +1,7 @@
 // Utilities for the shareable working style card.
 // All display names and colors are hardcoded — no CSS variables, no Tailwind.
 
-import { toPng } from 'html-to-image';
+import { toJpeg } from 'html-to-image';
 
 // Keep in sync with SOURCE_LABELS in dashboard/src/components/sessions/CompactSessionRow.tsx
 export const SOURCE_TOOL_DISPLAY_NAMES: Record<string, string> = {
@@ -83,8 +83,9 @@ export function computeMilestones(
 }
 
 /**
- * Capture the given DOM element as a PNG and trigger a browser download.
- * Uses 2x pixel ratio for a crisp export.
+ * Capture the given DOM element as a JPEG and trigger a browser download.
+ * Uses 2x pixel ratio for crisp output (552px → 1104px exported — retina-crisp, reasonable file size).
+ * JPEG at quality 0.92 compresses gradient-heavy cards 3-5x smaller than PNG.
  *
  * html-to-image cannot capture elements positioned far off-screen (left: -9999px)
  * because SVG foreignObject serialization clips elements outside the viewport.
@@ -102,21 +103,22 @@ export async function downloadShareCard(element: HTMLElement): Promise<void> {
 
   let dataUrl: string;
   try {
-    dataUrl = await toPng(element, {
+    dataUrl = await toJpeg(element, {
       pixelRatio: 2,
-      width: 1200,
-      height: 630,
+      width: 552,
+      height: 290,
+      quality: 0.92,
       backgroundColor: '#0f0f23',
     });
   } finally {
-    // Always restore — even if toPng throws
+    // Always restore — even if toJpeg throws
     element.style.left = prevLeft;
     element.style.top = prevTop;
     element.style.zIndex = prevZIndex;
   }
 
   const link = document.createElement('a');
-  link.download = 'code-insights-working-style.png';
+  link.download = 'code-insights-working-style.jpg';
   link.href = dataUrl;
   link.click();
 }
