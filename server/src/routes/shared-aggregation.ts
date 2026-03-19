@@ -135,6 +135,15 @@ export interface RateLimitInfo {
   examples: string[];
 }
 
+export interface PQDimensionScores {
+  overall: number;
+  context_provision: number | null;  // null if no data for this dimension
+  request_specificity: number | null;
+  scope_management: number | null;
+  information_timing: number | null;
+  correction_quality: number | null;
+}
+
 export interface AggregatedData {
   frictionCategories: AggregatedFrictionCategory[];
   effectivePatterns: AggregatedEffectivePattern[];
@@ -150,7 +159,9 @@ export interface AggregatedData {
   sourceTools: string[];     // distinct AI tool identifiers used within the scope
   pqDeficits: AggregatedPQCategory[];
   pqStrengths: AggregatedPQCategory[];
-  pqAverageScore: number | null;  // grand average of 5 PQ dimension scores (0-100), null if no PQ data
+  pqScores: PQDimensionScores | null;  // per-dimension PQ scores + overall (0-100), null if no PQ data
+  lifetimeSessions: number;            // all-time session count (no date filter)
+  totalTokens: number;                 // sum of input+output tokens for sessions in scope
 }
 
 /**
@@ -411,7 +422,18 @@ export function getAggregatedData(
   }
 
   const { pqDeficits, pqStrengths } = aggregatePQFindings(db, where, params);
-  const pqAverageScore = computePQAverageScore(db, where, params);
+  const pqScores = computePQScores(db, where, params);
+
+  // Lifetime session count — no date filter, respects project/source scope only
+  const { where: lifetimeWhere, params: lifetimeParams } = buildWhereClause('all', project, source);
+  const lifetimeRow = db.prepare(
+    `SELECT COUNT(*) as count FROM sessions s ${lifetimeWhere}`
+  ).get(...lifetimeParams) as { count: number };
+
+  // Token sum for sessions in scope (input + output tokens)
+  const tokenRow = db.prepare(
+    `SELECT COALESCE(SUM(total_input_tokens + total_output_tokens), 0) as total FROM sessions s ${where}`
+  ).get(...params) as { total: number };
 
   return {
     frictionCategories: mergedFriction,
@@ -428,7 +450,9 @@ export function getAggregatedData(
     sourceTools: sourceToolRows.map(r => r.source_tool),
     pqDeficits,
     pqStrengths,
-    pqAverageScore,
+    pqScores,
+    lifetimeSessions: lifetimeRow.count,
+    totalTokens: tokenRow.total,
   };
 }
 
@@ -487,15 +511,15 @@ export function aggregatePQFindings(
 }
 
 /**
- * Compute the grand average of PQ dimension scores across all prompt_quality insights in scope.
- * Parses metadata.dimension_scores from each insight row and averages the 5 standard dimensions.
+ * Compute per-dimension PQ scores + overall average across all prompt_quality insights in scope.
+ * Parses metadata.dimension_scores from each insight row and averages each of the 5 dimensions.
  * Returns null if no PQ insights exist in scope or none have dimension_scores.
  */
-export function computePQAverageScore(
+export function computePQScores(
   db: ReturnType<typeof getDb>,
   where: string,
   params: (string | number)[]
-): number | null {
+): PQDimensionScores | null {
   const hasWhere = where.length > 0;
   const extraPrefix = hasWhere ? 'AND' : 'WHERE';
 
@@ -537,16 +561,24 @@ export function computePQAverageScore(
     }
   }
 
-  // Compute per-dimension averages for dimensions that have at least one data point
-  const dimAverages: number[] = [];
-  for (const key of DIMENSION_KEYS) {
-    if (counts[key] > 0) {
-      dimAverages.push(sums[key] / counts[key]);
-    }
-  }
+  // Require at least one dimension to have data
+  const hasData = DIMENSION_KEYS.some(k => counts[k] > 0);
+  if (!hasData) return null;
 
-  if (dimAverages.length === 0) return null;
+  // Per-dimension averages — null for dimensions with no data points (honest signal)
+  const dimScores = Object.fromEntries(
+    DIMENSION_KEYS.map(k => [k, counts[k] > 0 ? Math.round(sums[k] / counts[k]) : null])
+  ) as Record<typeof DIMENSION_KEYS[number], number | null>;
 
-  const grand = dimAverages.reduce((s, v) => s + v, 0) / dimAverages.length;
-  return Math.round(grand);
+  const dimAverages = DIMENSION_KEYS.filter(k => counts[k] > 0).map(k => dimScores[k] as number);
+  const overall = Math.round(dimAverages.reduce((s, v) => s + v, 0) / dimAverages.length);
+
+  return {
+    overall,
+    context_provision: dimScores.context_provision,
+    request_specificity: dimScores.request_specificity,
+    scope_management: dimScores.scope_management,
+    information_timing: dimScores.information_timing,
+    correction_quality: dimScores.correction_quality,
+  };
 }

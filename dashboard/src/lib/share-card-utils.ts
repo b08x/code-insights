@@ -1,58 +1,34 @@
-// Utilities for the shareable working style card.
+// Utilities for the shareable AI Fluency Score card.
 // Canvas 2D implementation — no external dependencies, pixel-perfect text rendering.
-// V2: Content-dense redesign — stacked bar, strengths pills, prompt clarity score.
+// V3: Score card + fingerprint — single hero score, 5 rainbow bars, evidence lines.
+//
+// Resolution: drawn at 2× physical pixels (2400×1260) for HiDPI sharpness,
+// exported as 1200×630 PNG (OG image standard). The 2× internal resolution
+// ensures crisp text rendering on Retina/HiDPI displays.
 
-// Keep in sync with SOURCE_LABELS in dashboard/src/components/sessions/CompactSessionRow.tsx
-export const SOURCE_TOOL_DISPLAY_NAMES: Record<string, string> = {
-  'claude-code': 'Claude Code',
-  'cursor': 'Cursor',
-  'codex-cli': 'Codex CLI',
-  'copilot-cli': 'Copilot CLI',
-  'copilot': 'VS Code Copilot',
-};
-
-export interface ToolPillColors {
-  bg: string;
-  text: string;
-  border: string;
-}
-
-export const SOURCE_TOOL_PILL_COLORS: Record<string, ToolPillColors> = {
-  'claude-code': { bg: '#2a1f16', text: '#fb923c', border: 'rgba(251,146,60,0.3)' },
-  'cursor':      { bg: '#161d2e', text: '#60a5fa', border: 'rgba(96,165,250,0.3)' },
-  'codex-cli':   { bg: '#142319', text: '#4ade80', border: 'rgba(74,222,128,0.3)' },
-  'copilot-cli': { bg: '#0f2027', text: '#22d3ee', border: 'rgba(34,211,238,0.3)' },
-  'copilot':     { bg: '#1c172e', text: '#a78bfa', border: 'rgba(167,139,250,0.3)' },
-};
-
-// Character type colors — match SESSION_CHARACTER_COLORS hues
-const CHARACTER_COLORS: Record<string, string> = {
-  deep_focus:    '#6366f1',
-  bug_hunt:      '#ef4444',
-  feature_build: '#10b981',
-  exploration:   '#f59e0b',
-  refactor:      '#06b6d4',
-  learning:      '#8b5cf6',
-  quick_task:    '#64748b',
-};
-
-// Keep in sync with SESSION_CHARACTER_LABELS in dashboard/src/lib/constants/colors.ts
-const CHARACTER_LABELS: Record<string, string> = {
-  deep_focus:    'Deep Focus',
-  bug_hunt:      'Bug Hunt',
-  feature_build: 'Feature Build',
-  exploration:   'Exploration',
-  refactor:      'Refactor',
-  learning:      'Learning',
-  quick_task:    'Quick Task',
-};
+import type { PQDimensionScores } from '@/lib/api';
+import {
+  drawIcon, drawToolIcon, loadToolIcons, deduplicateToolsForIcons,
+  ICON_BOOK_OPEN, ICON_TARGET, ICON_EYE, ICON_CLOCK, ICON_GIT_BRANCH,
+  ICON_BAR_CHART_3, ICON_ZAP,
+} from '@/lib/share-card-icons';
+import { SOURCE_TOOL_DISPLAY_NAMES } from '@/lib/share-card-icons';
 
 const FONT_STACK = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+const MONO_STACK = '"SF Mono", "Fira Code", "Cascadia Code", Consolas, monospace';
 
-function abbreviateCount(n: number): string {
-  if (n >= 10000) return `${Math.floor(n / 1000)}K`;
-  if (n >= 1000) return `${(n / 1000).toFixed(1)}K`;
-  return String(n);
+// Physical resolution multiplier — draw at 2× for HiDPI PNG export
+const DPR = 2;
+
+export interface ShareCardProps {
+  tagline: string;
+  dimensionScores: PQDimensionScores | null; // null = no PQ data
+  totalSessions: number;       // sessions in 4-week scoring window
+  totalTokens: number;         // tokens in 4-week scoring window
+  lifetimeSessions: number;    // all-time session count
+  sourceTools: string[];
+  currentWeek: string;         // for month/year in header
+  effectivePatterns?: Array<{ label: string; frequency: number }>; // top 3 by frequency
 }
 
 /** Truncate text to fit within maxWidth, appending ellipsis if needed. */
@@ -65,38 +41,69 @@ function truncateText(ctx: CanvasRenderingContext2D, text: string, maxWidth: num
   return truncated + '\u2026';
 }
 
-/** Draw the app logo (blue rounded rect + white lines) at (x, y) with given size. */
+/**
+ * Draw the favicon logo — indigo/purple gradient rounded rect with white magnifying
+ * glass and amber crosshair. Matches dashboard/public/favicon.svg exactly.
+ * (x, y) is top-left of the square; size is the side length in canvas pixels.
+ */
 function drawLogo(ctx: CanvasRenderingContext2D, x: number, y: number, size: number): void {
-  const rx = size * 0.25;
-  ctx.fillStyle = '#3b82f6';
+  const scale = size / 32; // favicon viewBox is 32×32
+
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(scale, scale);
+
+  // Background: indigo→purple gradient rounded rect (rx=7)
+  const bgGrad = ctx.createLinearGradient(0, 0, 32, 32);
+  bgGrad.addColorStop(0, '#6366f1');
+  bgGrad.addColorStop(1, '#8b5cf6');
+  ctx.fillStyle = bgGrad;
   ctx.beginPath();
-  ctx.roundRect(x, y, size, size, rx);
+  ctx.roundRect(0, 0, 32, 32, 7);
   ctx.fill();
 
+  // Magnifying glass: white circle at (18,14) r=6
   ctx.strokeStyle = 'white';
-  ctx.lineWidth = size * 0.13;
+  ctx.lineWidth = 1.5;
   ctx.lineCap = 'round';
-  const pad = size * 0.28;
-
   ctx.beginPath();
-  ctx.moveTo(x + pad, y + size * 0.36);
-  ctx.lineTo(x + size - pad, y + size * 0.36);
+  ctx.arc(18, 14, 6, 0, Math.PI * 2);
   ctx.stroke();
 
+  // Handle: white line from (22.2,18.2) to (25.5,21.5)
   ctx.beginPath();
-  ctx.moveTo(x + pad, y + size * 0.50);
-  ctx.lineTo(x + size - pad * 1.5, y + size * 0.50);
+  ctx.moveTo(22.2, 18.2);
+  ctx.lineTo(25.5, 21.5);
   ctx.stroke();
 
+  // Amber crosshair center dot at (18,13) r=0.7
+  const accentGrad = ctx.createLinearGradient(0, 0, 32, 32);
+  accentGrad.addColorStop(0, '#fbbf24');
+  accentGrad.addColorStop(1, '#f59e0b');
+  ctx.fillStyle = accentGrad;
   ctx.beginPath();
-  ctx.moveTo(x + pad, y + size * 0.64);
-  ctx.lineTo(x + size - pad * 0.8, y + size * 0.64);
+  ctx.arc(18, 13, 0.7, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Amber crosshair vertical line (18,11)→(18,15)
+  ctx.strokeStyle = accentGrad;
+  ctx.lineWidth = 0.7;
+  ctx.beginPath();
+  ctx.moveTo(18, 11);
+  ctx.lineTo(18, 15);
   ctx.stroke();
+
+  // Amber crosshair horizontal line (16,13)→(20,13)
+  ctx.beginPath();
+  ctx.moveTo(16, 13);
+  ctx.lineTo(20, 13);
+  ctx.stroke();
+
+  ctx.restore();
 }
 
 /**
- * Derive month + year label from an ISO week string (e.g. "2026-W11" to "Mar 2026").
- * Uses the Monday of that ISO week to avoid wrong month for historical weeks.
+ * Derive month + year label from an ISO week string (e.g. "2026-W11" → "Mar 2026").
  */
 function getMonthYearFromWeek(isoWeek: string): string {
   const match = /^(\d{4})-W(\d{2})$/.exec(isoWeek);
@@ -113,337 +120,478 @@ function getMonthYearFromWeek(isoWeek: string): string {
   return weekMonday.toLocaleDateString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' });
 }
 
-export interface ShareCardProps {
-  tagline: string;
-  taglineSubtitle?: string;
-  totalSessions: number;
-  streak: number;
-  sourceTools: string[];
-  characterDistribution: Record<string, number>;
-  currentWeek: string;
-  // V2 additions:
-  promptClarityScore?: number;              // 0-100, undefined = no PQ data
-  effectivePatterns?: Array<{               // top 3 by frequency
-    label: string;
-    frequency: number;
-  }>;
+/** Format token count: 1,200,000 → "1.2M tokens", 850,000 → "850K tokens". */
+function abbreviateTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M tokens`;
+  if (n >= 1_000) return `${Math.round(n / 1_000)}K tokens`;
+  return `${n} tokens`;
 }
 
+/** Score color tiers — arc gradient start/end and number color. */
+function scoreColors(score: number | null): { numberColor: string; arcStart: string; arcEnd: string } {
+  if (score === null) return { numberColor: '#64748b', arcStart: '#64748b', arcEnd: '#475569' };
+  if (score >= 80) return { numberColor: '#f1f5f9', arcStart: '#6366f1', arcEnd: '#d946ef' };
+  if (score >= 60) return { numberColor: '#e2e8f0', arcStart: '#6366f1', arcEnd: '#a855f7' };
+  if (score >= 40) return { numberColor: '#cbd5e1', arcStart: '#f59e0b', arcEnd: '#eab308' };
+  return { numberColor: '#94a3b8', arcStart: '#64748b', arcEnd: '#475569' };
+}
+
+// Fingerprint bar definitions — order matches V3 spec
+const FINGERPRINT_BARS = [
+  { label: 'CONTEXT',       field: 'context_provision',   color: '#38bdf8', icon: ICON_BOOK_OPEN,   yCentre: 252 },
+  { label: 'CLARITY',       field: 'request_specificity', color: '#818cf8', icon: ICON_TARGET,      yCentre: 284 },
+  { label: 'FOCUS',         field: 'scope_management',    color: '#a855f7', icon: ICON_EYE,         yCentre: 316 },
+  { label: 'TIMING',        field: 'information_timing',  color: '#d946ef', icon: ICON_CLOCK,       yCentre: 348 },
+  { label: 'ORCHESTRATION', field: 'correction_quality',  color: '#fb7185', icon: ICON_GIT_BRANCH,  yCentre: 380 },
+] as const;
+
+// Effective pattern pill colors — cycle through these for top 3 patterns
+const PATTERN_PILL_COLORS = [
+  { bg: 'rgba(167,139,250,0.12)', border: 'rgba(167,139,250,0.3)', text: '#c4b5fd' },
+  { bg: 'rgba(52,211,153,0.10)',  border: 'rgba(52,211,153,0.3)',  text: '#6ee7b7' },
+  { bg: 'rgba(251,191,36,0.10)',  border: 'rgba(251,191,36,0.3)',  text: '#fcd34d' },
+];
+
 /**
- * Draw the full share card onto the given canvas at 1200x630px.
- * The canvas must already have width=1200 and height=630 set.
- * V2: Content-dense layout — stacked bar, strengths pills, prompt clarity score.
+ * Draw the full share card onto the given canvas.
+ * The canvas must be set to LOGICAL_W * DPR × LOGICAL_H * DPR before calling.
+ * ctx.scale(DPR, DPR) is applied internally — all coordinates use logical pixels.
+ * V3: Score card + fingerprint layout.
+ * toolIcons pre-loaded via loadToolIcons() for async image rendering.
  */
-export function drawShareCard(canvas: HTMLCanvasElement, props: ShareCardProps): void {
+export function drawShareCard(
+  canvas: HTMLCanvasElement,
+  props: ShareCardProps,
+  toolIcons: Map<string, HTMLImageElement>
+): void {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
 
+  // Logical dimensions — all drawing coordinates use these
   const W = 1200;
   const H = 630;
   const PAD = 48;
   const CONTENT_W = W - PAD * 2; // 1104
 
+  // Scale up for HiDPI: draw at DPR× physical resolution
+  ctx.scale(DPR, DPR);
+
   // ── Background ──────────────────────────────────────────────────────────────
 
   const bg = ctx.createLinearGradient(0, 0, W, H);
-  bg.addColorStop(0, '#0f0f23');
-  bg.addColorStop(1, '#1a1a3e');
+  bg.addColorStop(0, '#0c0c18');
+  bg.addColorStop(1, '#141428');
   ctx.fillStyle = bg;
   ctx.fillRect(0, 0, W, H);
 
-  const glow1 = ctx.createRadialGradient(-60, -60, 0, -60, -60, 380);
-  glow1.addColorStop(0, 'rgba(59,130,246,0.18)');
-  glow1.addColorStop(1, 'rgba(59,130,246,0)');
+  const glow1 = ctx.createRadialGradient(-60, -60, 0, -60, -60, 400);
+  glow1.addColorStop(0, 'rgba(99,102,241,0.12)');
+  glow1.addColorStop(1, 'rgba(99,102,241,0)');
   ctx.fillStyle = glow1;
   ctx.fillRect(0, 0, W, H);
 
-  const glow2 = ctx.createRadialGradient(W + 80, H + 80, 0, W + 80, H + 80, 500);
-  glow2.addColorStop(0, 'rgba(168,85,247,0.14)');
+  const glow2 = ctx.createRadialGradient(1260, 690, 0, 1260, 690, 500);
+  glow2.addColorStop(0, 'rgba(168,85,247,0.10)');
   glow2.addColorStop(1, 'rgba(168,85,247,0)');
   ctx.fillStyle = glow2;
   ctx.fillRect(0, 0, W, H);
 
-  // ── Section 1: Header (y = 48) ──────────────────────────────────────────────
+  const glow3 = ctx.createRadialGradient(240, 320, 0, 240, 320, 200);
+  glow3.addColorStop(0, 'rgba(167,139,250,0.08)');
+  glow3.addColorStop(1, 'rgba(167,139,250,0)');
+  ctx.fillStyle = glow3;
+  ctx.fillRect(0, 0, W, H);
+
+  // ── Section 1: Header (y=48) ─────────────────────────────────────────────────
 
   const LOGO_SIZE = 28;
   drawLogo(ctx, PAD, PAD, LOGO_SIZE);
 
   ctx.font = `600 13px ${FONT_STACK}`;
-  ctx.fillStyle = '#a0a0b8';
+  ctx.fillStyle = '#64748b';
   ctx.letterSpacing = '2px';
   ctx.fillText('CODE INSIGHTS', PAD + LOGO_SIZE + 10, PAD + LOGO_SIZE * 0.72);
   ctx.letterSpacing = '0px';
 
   const monthYear = getMonthYearFromWeek(props.currentWeek);
   ctx.font = `500 14px ${FONT_STACK}`;
-  ctx.fillStyle = '#64748b';
+  ctx.fillStyle = '#475569';
   ctx.textAlign = 'right';
   ctx.fillText(monthYear, W - PAD, PAD + LOGO_SIZE * 0.72);
   ctx.textAlign = 'left';
 
-  // ── Section 2: Tagline + Subtitle (y = 128) ─────────────────────────────────
+  // ── Section 2: Archetype Identity (y=138) ────────────────────────────────────
 
-  const TAGLINE_Y = 128;
-  ctx.font = `bold 44px ${FONT_STACK}`;
-  ctx.fillStyle = '#a78bfa';
-  ctx.fillText(truncateText(ctx, props.tagline, CONTENT_W), PAD, TAGLINE_Y);
+  const displayTagline = props.tagline || 'AI Coding Profile';
+  ctx.font = `700 40px ${FONT_STACK}`;
+  ctx.fillStyle = '#e2e0ff';
+  ctx.fillText(truncateText(ctx, displayTagline, CONTENT_W), PAD, 138);
 
-  let contentCursor = TAGLINE_Y + 10;
-  if (props.taglineSubtitle) {
-    const SUBTITLE_Y = 164;
-    ctx.font = `400 22px ${FONT_STACK}`;
-    ctx.fillStyle = '#8b8ba0';
-    ctx.fillText(truncateText(ctx, props.taglineSubtitle, CONTENT_W), PAD, SUBTITLE_Y);
-    contentCursor = SUBTITLE_Y + 10;
+  // ── Section 3: Hero Score Circle (center at x=200, y=320) ────────────────────
+
+  const SCORE_CX = 200;
+  const SCORE_CY = 320;
+  const SCORE_R = 90;
+  const score = props.dimensionScores?.overall ?? null;
+  const colors = scoreColors(score);
+
+  // Hero watermark — favicon logo drawn large at very low opacity, centered behind score
+  ctx.globalAlpha = 0.04;
+  const WATERMARK_SIZE = 160;
+  drawLogo(ctx, SCORE_CX - WATERMARK_SIZE / 2, SCORE_CY - WATERMARK_SIZE / 2, WATERMARK_SIZE);
+  ctx.globalAlpha = 1.0;
+
+  // Track ring (full circle background)
+  ctx.beginPath();
+  ctx.arc(SCORE_CX, SCORE_CY, SCORE_R, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+  ctx.lineWidth = 8;
+  ctx.stroke();
+
+  // Score arc (filled portion) — save/restore to prevent lineCap leaking to subsequent strokes
+  if (score !== null && score > 0) {
+    ctx.save();
+    const arcGradient = ctx.createLinearGradient(
+      SCORE_CX - SCORE_R, SCORE_CY,
+      SCORE_CX + SCORE_R, SCORE_CY
+    );
+    arcGradient.addColorStop(0, colors.arcStart);
+    arcGradient.addColorStop(1, colors.arcEnd);
+
+    const startAngle = -Math.PI / 2; // 12 o'clock
+    const endAngle = startAngle + (score / 100) * Math.PI * 2;
+
+    ctx.beginPath();
+    ctx.arc(SCORE_CX, SCORE_CY, SCORE_R, startAngle, endAngle);
+    ctx.strokeStyle = arcGradient;
+    ctx.lineWidth = 8;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+    ctx.restore();
   }
 
-  // ── Section 3: Stat Boxes ───────────────────────────────────────────────────
+  // Score number
+  ctx.textAlign = 'center';
+  if (score !== null) {
+    ctx.font = `700 72px ${FONT_STACK}`;
+    ctx.fillStyle = colors.numberColor;
+    ctx.fillText(String(score), SCORE_CX, 316);
+  } else {
+    ctx.font = `700 64px ${FONT_STACK}`;
+    ctx.fillStyle = '#64748b';
+    ctx.fillText('—', SCORE_CX, 316);
+  }
 
-  const STAT_BOX_W = 180;
-  const STAT_BOX_H = 88;
-  const STAT_GAP = 16;
-  const STAT_RADIUS = 8;
-  const STAT_TOP = contentCursor + 36;
+  ctx.font = `600 13px ${FONT_STACK}`;
+  ctx.fillStyle = '#64748b';
+  ctx.letterSpacing = '1.5px';
+  ctx.fillText('AI FLUENCY', SCORE_CX, 354);
+  ctx.letterSpacing = '0px';
 
-  const stats = [
-    { value: abbreviateCount(props.totalSessions), label: 'SESSIONS' },
-    { value: props.streak > 0 ? `${props.streak}d` : '\u2014', label: 'STREAK' },
-    {
-      value: props.promptClarityScore !== undefined ? String(props.promptClarityScore) : '\u2014',
-      label: 'PROMPT CLARITY',
-    },
-  ];
+  ctx.font = `600 11px ${FONT_STACK}`;
+  ctx.fillStyle = '#4a4a62';
+  ctx.letterSpacing = '2px';
+  ctx.fillText('SCORE', SCORE_CX, 372);
+  ctx.letterSpacing = '0px';
 
-  for (let i = 0; i < stats.length; i++) {
-    const bx = PAD + i * (STAT_BOX_W + STAT_GAP);
-    const by = STAT_TOP;
+  ctx.textAlign = 'left';
 
+  // ── Section 4: Fingerprint Bars (right zone) ──────────────────────────────────
+  //
+  // Label zone: LABEL_LEFT_X → BAR_START_X - GAP
+  // Labels (icon + text) are right-aligned to LABEL_RIGHT_X so all bars start
+  // at exactly BAR_START_X regardless of label width.
+
+  const BAR_START_X = 560;
+  const BAR_END_X = W - PAD; // 1152
+  const BAR_MAX_W = BAR_END_X - BAR_START_X; // 592
+  const BAR_H = 20;
+  const BAR_RADIUS = 10;
+  const ICON_SIZE = 16;
+  const ICON_GAP = 8;
+  const LABEL_RIGHT_X = BAR_START_X - 14; // all labels right-align here
+  const MIN_FILL_W = 20;
+
+  for (const bar of FINGERPRINT_BARS) {
+    const barY = bar.yCentre - BAR_H / 2;
+    // Dimension score is null if no data for this dimension — show track only (no fill)
+    const dimScore: number | null = props.dimensionScores
+      ? (props.dimensionScores[bar.field as keyof PQDimensionScores] as number | null)
+      : null;
+
+    // Draw bar track (full width pill)
     ctx.fillStyle = 'rgba(255,255,255,0.04)';
     ctx.beginPath();
-    ctx.roundRect(bx, by, STAT_BOX_W, STAT_BOX_H, STAT_RADIUS);
+    ctx.roundRect(BAR_START_X, barY, BAR_MAX_W, BAR_H, BAR_RADIUS);
     ctx.fill();
 
-    ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.roundRect(bx, by, STAT_BOX_W, STAT_BOX_H, STAT_RADIUS);
+    ctx.roundRect(BAR_START_X, barY, BAR_MAX_W, BAR_H, BAR_RADIUS);
     ctx.stroke();
 
-    ctx.font = `bold 44px ${FONT_STACK}`;
-    ctx.fillStyle = '#f1f5f9';
-    ctx.textAlign = 'center';
-    ctx.fillText(stats[i].value, bx + STAT_BOX_W / 2, by + 52);
+    // Draw bar fill — only if dimension has data. Null = no data, skip fill entirely.
+    if (dimScore !== null) {
+      const fillW = Math.max(MIN_FILL_W, Math.round((dimScore / 100) * BAR_MAX_W));
+      ctx.fillStyle = bar.color;
+      ctx.beginPath();
+      ctx.roundRect(BAR_START_X, barY, fillW, BAR_H, BAR_RADIUS);
+      ctx.fill();
+    }
 
-    ctx.font = `600 14px ${FONT_STACK}`;
+    // Draw label: icon + text, right-aligned at LABEL_RIGHT_X
+    // Measure first, then position so the right edge lands exactly at LABEL_RIGHT_X
+    ctx.font = `500 12px ${FONT_STACK}`;
+    const labelTextW = ctx.measureText(bar.label).width;
+    const totalLabelW = ICON_SIZE + ICON_GAP + labelTextW;
+    const iconX = LABEL_RIGHT_X - totalLabelW;
+    const iconY = bar.yCentre - ICON_SIZE / 2;
+
+    drawIcon(ctx, bar.icon, iconX, iconY, ICON_SIZE, bar.color);
+
+    ctx.fillStyle = '#6b6b88';
+    ctx.fillText(bar.label, iconX + ICON_SIZE + ICON_GAP, bar.yCentre + 4);
+  }
+
+  // ── Section 5: Evidence Lines (y=420, y=452) ──────────────────────────────────
+  // Line 1: scoring context — sample size + time window
+  // Line 2: total sessions + tool logos with names
+
+  const EVIDENCE_CENTER_X = 600;
+  const EVIDENCE_Y1 = 422;
+  const EVIDENCE_Y2 = 458;
+
+  // Line 1: "Score from {N} sessions · {tokens} · last 4 weeks"
+  if (props.totalSessions > 0 || props.dimensionScores) {
+    const ICON_SMALL = 16;
+    const prefix = 'Score from ';
+    const sessionLabel = `${props.totalSessions} session${props.totalSessions !== 1 ? 's' : ''}`;
+    const tokenLabel = abbreviateTokens(props.totalTokens);
+    const windowLabel = 'last 4 weeks';
+    const SEP = '  ·  ';
+
+    ctx.font = `500 17px ${FONT_STACK}`;
+    const prefixW = ctx.measureText(prefix).width;
+    const sessionW = ctx.measureText(sessionLabel).width;
+    const tokenW = ctx.measureText(tokenLabel).width;
+    const windowW = ctx.measureText(windowLabel).width;
+    const sepW = ctx.measureText(SEP).width;
+
+    const line1TotalW = prefixW + sessionW + sepW + tokenW + sepW + windowW;
+    let x1 = EVIDENCE_CENTER_X - line1TotalW / 2;
+
     ctx.fillStyle = '#64748b';
-    ctx.fillText(stats[i].label, bx + STAT_BOX_W / 2, by + 72);
+    ctx.fillText(prefix, x1, EVIDENCE_Y1);
+    x1 += prefixW;
+
+    ctx.fillStyle = '#94a3b8';
+    ctx.fillText(sessionLabel, x1, EVIDENCE_Y1);
+    x1 += sessionW;
+
+    ctx.fillStyle = '#3a3a52';
+    ctx.fillText(SEP, x1, EVIDENCE_Y1);
+    x1 += sepW;
+
+    ctx.fillStyle = '#94a3b8';
+    ctx.fillText(tokenLabel, x1, EVIDENCE_Y1);
+    x1 += tokenW;
+
+    ctx.fillStyle = '#3a3a52';
+    ctx.fillText(SEP, x1, EVIDENCE_Y1);
+    x1 += sepW;
+
+    ctx.fillStyle = '#64748b';
+    ctx.fillText(windowLabel, x1, EVIDENCE_Y1);
+  } else {
+    ctx.font = `500 17px ${FONT_STACK}`;
+    ctx.fillStyle = '#475569';
+    ctx.textAlign = 'center';
+    ctx.fillText('Get started at code-insights.app', EVIDENCE_CENTER_X, EVIDENCE_Y1);
     ctx.textAlign = 'left';
   }
 
-  const statBottom = STAT_TOP + STAT_BOX_H;
+  // Line 2: {N} total sessions · [logo] Tool Name [logo] Tool Name ...
+  {
+    const lifetimeLabel = `${props.lifetimeSessions} total sessions`;
+    const dedupedTools = deduplicateToolsForIcons(props.sourceTools).slice(0, 4);
+    const LOGO_PX = 20;
+    const LOGO_TEXT_GAP = 6;
+    const LOGO_ENTRY_GAP = 16; // gap between tool entries
+    const SEP = '  ·  ';
 
-  // ── Section 4: Character Distribution Bar ───────────────────────────────────
+    ctx.font = `400 15px ${FONT_STACK}`;
+    const totalSessionsW = ctx.measureText(lifetimeLabel).width;
+    const sepW2 = ctx.measureText(SEP).width;
 
-  const sortedChars = Object.entries(props.characterDistribution)
-    .filter(([, v]) => v > 0)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5);
-  const charTotal = sortedChars.reduce((s, [, v]) => s + v, 0);
+    // Pre-measure each tool entry width: logo + gap + label text
+    const toolEntries = dedupedTools
+      .filter(t => toolIcons.has(t))
+      .map(t => {
+        const label = SOURCE_TOOL_DISPLAY_NAMES[t] ?? t;
+        const labelW = ctx.measureText(label).width;
+        return { tool: t, label, entryW: LOGO_PX + LOGO_TEXT_GAP + labelW };
+      });
 
-  let sectionBottom = statBottom;
+    const logosW = toolEntries.length > 0
+      ? toolEntries.reduce((s, e) => s + e.entryW, 0) + (toolEntries.length - 1) * LOGO_ENTRY_GAP
+      : 0;
 
-  if (sortedChars.length > 0 && charTotal > 0) {
-    const BAR_TOP = statBottom + 32;
-    const BAR_H = 36;
-    const BAR_RADIUS = 6;
+    const line2TotalW = totalSessionsW + (toolEntries.length > 0 ? sepW2 + logosW : 0);
+    let x2 = EVIDENCE_CENTER_X - line2TotalW / 2;
 
-    // Clip to rounded rect so segments get rounded corners from the overall shape
-    ctx.save();
-    ctx.beginPath();
-    ctx.roundRect(PAD, BAR_TOP, CONTENT_W, BAR_H, BAR_RADIUS);
-    ctx.clip();
+    ctx.fillStyle = '#64748b';
+    ctx.fillText(lifetimeLabel, x2, EVIDENCE_Y2);
+    x2 += totalSessionsW;
 
-    let segX = PAD;
-    for (let i = 0; i < sortedChars.length; i++) {
-      const [key, count] = sortedChars[i];
-      const pct = count / charTotal;
-      // Last segment fills the remainder to avoid a rounding gap at the bar's right edge
-      const segW = (i === sortedChars.length - 1)
-        ? (PAD + CONTENT_W) - segX
-        : Math.round(pct * CONTENT_W);
-      const color = CHARACTER_COLORS[key] ?? '#64748b';
+    if (toolEntries.length > 0) {
+      ctx.fillStyle = '#3a3a52';
+      ctx.fillText(SEP, x2, EVIDENCE_Y2);
+      x2 += sepW2;
 
-      ctx.fillStyle = color;
-      ctx.fillRect(segX, BAR_TOP, segW, BAR_H);
+      for (let i = 0; i < toolEntries.length; i++) {
+        const { tool, label, entryW } = toolEntries[i];
+        const img = toolIcons.get(tool);
+        if (img) {
+          const cy = EVIDENCE_Y2 - LOGO_PX / 2 + 2;
+          drawToolIcon(ctx, img, x2 + LOGO_PX / 2, cy, LOGO_PX);
+        }
+        x2 += LOGO_PX + LOGO_TEXT_GAP;
 
-      // Inline label for segments >= 15%
-      if (pct >= 0.15) {
-        const label = `${CHARACTER_LABELS[key] ?? key} ${Math.round(pct * 100)}%`;
-        ctx.font = `500 12px ${FONT_STACK}`;
-        ctx.fillStyle = 'rgba(255,255,255,0.95)';
-        ctx.textAlign = 'center';
-        ctx.fillText(label, segX + segW / 2, BAR_TOP + BAR_H * 0.62);
-        ctx.textAlign = 'left';
+        ctx.fillStyle = '#94a3b8';
+        ctx.fillText(label, x2, EVIDENCE_Y2);
+        x2 += entryW - LOGO_PX - LOGO_TEXT_GAP;
+
+        if (i < toolEntries.length - 1) x2 += LOGO_ENTRY_GAP;
       }
-
-      segX += segW;
     }
-    ctx.restore();
-
-    // Legend row (y = BAR_TOP + BAR_H + 14)
-    const LEGEND_Y = BAR_TOP + BAR_H + 14;
-    ctx.font = `400 13px ${FONT_STACK}`;
-    let legendX = PAD;
-    const DOT_R = 5;
-    const LEGEND_GAP = 24;
-
-    for (const [key, count] of sortedChars) {
-      const pct = Math.round((count / charTotal) * 100);
-      const label = `${CHARACTER_LABELS[key] ?? key} ${pct}%`;
-      const color = CHARACTER_COLORS[key] ?? '#64748b';
-
-      ctx.fillStyle = color;
-      ctx.beginPath();
-      ctx.arc(legendX + DOT_R, LEGEND_Y - 4, DOT_R, 0, Math.PI * 2);
-      ctx.fill();
-
-      ctx.fillStyle = '#94a3b8';
-      ctx.fillText(label, legendX + DOT_R * 2 + 6, LEGEND_Y);
-      legendX += ctx.measureText(label).width + DOT_R * 2 + 6 + LEGEND_GAP;
-    }
-
-    sectionBottom = LEGEND_Y + 6;
   }
 
-  // ── Section 5: Strengths Pills ──────────────────────────────────────────────
+  // ── Section 6: Effective Pattern Pills (y=494) ────────────────────────────────
 
   const topPatterns = (props.effectivePatterns ?? []).slice(0, 3);
-
   if (topPatterns.length > 0) {
-    const STRENGTHS_TOP = sectionBottom + 16;
-    const PILL_H = 32;
-    const PILL_PAD_X = 14;
+    const PILL_H = 28;
+    const PILL_PAD_X = 12;
     const PILL_GAP = 10;
+    const PILL_Y = 494;
 
-    ctx.font = `600 11px ${FONT_STACK}`;
-    ctx.fillStyle = '#64748b';
-    ctx.letterSpacing = '1.5px';
-    ctx.fillText('STRENGTHS', PAD, STRENGTHS_TOP);
-    ctx.letterSpacing = '0px';
+    ctx.font = `500 13px ${FONT_STACK}`;
+    const STAR = '★ ';
+    const starW = ctx.measureText(STAR).width;
 
-    const PILLS_START_Y = STRENGTHS_TOP + 16;
-    let pillX = PAD;
-    let pillRow = 0;
-    const MAX_ROWS = 2;
+    // Measure all pills first to center them as a group
+    const pillWidths = topPatterns.map(p => {
+      const labelW = ctx.measureText(p.label).width;
+      return PILL_PAD_X * 2 + starW + labelW;
+    });
+    const totalPillsW = pillWidths.reduce((s, w) => s + w, 0) + PILL_GAP * (topPatterns.length - 1);
+    let pillX = EVIDENCE_CENTER_X - totalPillsW / 2;
 
-    ctx.font = `500 14px ${FONT_STACK}`;
-    for (const pattern of topPatterns) {
-      const starW = ctx.measureText('★').width;
-      const labelW = ctx.measureText(pattern.label).width;
-      const pillW = PILL_PAD_X * 2 + starW + 6 + labelW;
+    for (let i = 0; i < topPatterns.length; i++) {
+      const pattern = topPatterns[i];
+      const pillW = pillWidths[i];
+      const pc = PATTERN_PILL_COLORS[i % PATTERN_PILL_COLORS.length];
 
-      // Wrap to next row if needed
-      if (pillX + pillW > W - PAD && pillRow < MAX_ROWS - 1) {
-        pillX = PAD;
-        pillRow++;
-      }
-      if (pillRow >= MAX_ROWS) break;
-
-      const pillY = PILLS_START_Y + pillRow * (PILL_H + PILL_GAP);
-
-      ctx.fillStyle = 'rgba(167,139,250,0.1)';
+      // Pill background
+      ctx.fillStyle = pc.bg;
       ctx.beginPath();
-      ctx.roundRect(pillX, pillY, pillW, PILL_H, PILL_H / 2);
+      ctx.roundRect(pillX, PILL_Y, pillW, PILL_H, PILL_H / 2);
       ctx.fill();
 
-      ctx.strokeStyle = 'rgba(167,139,250,0.25)';
+      // Pill border
+      ctx.strokeStyle = pc.border;
       ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.roundRect(pillX, pillY, pillW, PILL_H, PILL_H / 2);
+      ctx.roundRect(pillX, PILL_Y, pillW, PILL_H, PILL_H / 2);
       ctx.stroke();
 
-      const textBaseline = pillY + PILL_H * 0.64;
-      ctx.fillStyle = '#a78bfa';
-      ctx.fillText('★', pillX + PILL_PAD_X, textBaseline);
-
-      ctx.fillStyle = '#c4b5fd';
-      ctx.fillText(pattern.label, pillX + PILL_PAD_X + starW + 6, textBaseline);
+      // Star + label text
+      const textBaseline = PILL_Y + PILL_H * 0.65;
+      ctx.fillStyle = pc.text;
+      ctx.fillText(STAR, pillX + PILL_PAD_X, textBaseline);
+      ctx.fillText(pattern.label, pillX + PILL_PAD_X + starW, textBaseline);
 
       pillX += pillW + PILL_GAP;
     }
   }
 
-  // ── Section 6: Footer (pinned to bottom) ────────────────────────────────────
+  // ── Section 7: Footer (pinned to bottom) ─────────────────────────────────────
 
-  const DIVIDER_Y = H - 120; // 510
-  const FOOTER_Y = H - 84;   // 546
+  const DIVIDER_Y = H - 90; // 540
+  const FOOTER_Y = H - 54;  // 576
 
-  ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+  ctx.strokeStyle = 'rgba(255,255,255,0.06)';
   ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.moveTo(PAD, DIVIDER_Y);
   ctx.lineTo(W - PAD, DIVIDER_Y);
   ctx.stroke();
 
-  const FOOTER_LOGO_SIZE = 20;
-  drawLogo(ctx, PAD, FOOTER_Y - 14, FOOTER_LOGO_SIZE);
+  const FOOTER_LOGO_SIZE = 22;
+  drawLogo(ctx, PAD, FOOTER_Y - FOOTER_LOGO_SIZE + 4, FOOTER_LOGO_SIZE);
 
-  ctx.font = `400 16px ${FONT_STACK}`;
-  ctx.fillStyle = '#64748b';
+  ctx.font = `400 15px ${FONT_STACK}`;
+  ctx.fillStyle = '#475569';
   ctx.fillText('code-insights.app', PAD + FOOTER_LOGO_SIZE + 10, FOOTER_Y);
 
-  // Tool pills in footer center (after URL + 24px gap)
-  const urlW = ctx.measureText('code-insights.app').width;
-  const TOOL_PILL_START_X = PAD + FOOTER_LOGO_SIZE + 10 + urlW + 24;
-  const tools = props.sourceTools.slice(0, 4);
-  const TOOL_PILL_H = 22;
-  const TOOL_PILL_PAD_X = 10;
+  // CLI CTA: `npx @code-insights/cli` — monospace, terminal-style with subtle bg
+  const CLI_CMD = 'npx @code-insights/cli';
+  ctx.font = `500 13px ${MONO_STACK}`;
+  const cmdW = ctx.measureText(CLI_CMD).width;
+  const CMD_PAD_X = 10;
+  const CMD_PAD_Y = 6;
+  const CMD_H = 22;
+  const cmdBoxW = cmdW + CMD_PAD_X * 2;
+  const cmdBoxX = W - PAD - cmdBoxW;
+  const cmdBoxY = FOOTER_Y - CMD_H + CMD_PAD_Y - 1;
 
-  ctx.font = `500 11px ${FONT_STACK}`;
-  let toolX = TOOL_PILL_START_X;
-  for (const tool of tools) {
-    const colors = SOURCE_TOOL_PILL_COLORS[tool] ?? { bg: '#1e293b', text: '#94a3b8', border: 'rgba(148,163,184,0.3)' };
-    const label = SOURCE_TOOL_DISPLAY_NAMES[tool] ?? tool;
-    const textW = ctx.measureText(label).width;
-    const pillW = textW + TOOL_PILL_PAD_X * 2;
+  // Terminal command background
+  ctx.fillStyle = 'rgba(255,255,255,0.06)';
+  ctx.beginPath();
+  ctx.roundRect(cmdBoxX, cmdBoxY, cmdBoxW, CMD_H, 4);
+  ctx.fill();
 
-    ctx.fillStyle = colors.bg;
-    ctx.beginPath();
-    ctx.roundRect(toolX, FOOTER_Y - TOOL_PILL_H + 4, pillW, TOOL_PILL_H, TOOL_PILL_H / 2);
-    ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.roundRect(cmdBoxX, cmdBoxY, cmdBoxW, CMD_H, 4);
+  ctx.stroke();
 
-    ctx.strokeStyle = colors.border;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.roundRect(toolX, FOOTER_Y - TOOL_PILL_H + 4, pillW, TOOL_PILL_H, TOOL_PILL_H / 2);
-    ctx.stroke();
-
-    ctx.fillStyle = colors.text;
-    ctx.fillText(label, toolX + TOOL_PILL_PAD_X, FOOTER_Y - 1);
-
-    toolX += pillW + 8;
-  }
-
-  // Footer right: #MyCodeStyle hashtag
-  ctx.font = `500 14px ${FONT_STACK}`;
-  ctx.fillStyle = '#a78bfa';
-  ctx.textAlign = 'right';
-  ctx.fillText('#MyCodeStyle', W - PAD, FOOTER_Y);
-  ctx.textAlign = 'left';
+  ctx.fillStyle = '#a5b4fc';
+  ctx.fillText(CLI_CMD, cmdBoxX + CMD_PAD_X, FOOTER_Y);
 }
 
 /**
- * Create an ephemeral canvas, draw the share card, and trigger a PNG download.
- * No DOM element ref needed — canvas is created and discarded in memory.
+ * Create an ephemeral 2× canvas, draw the share card at HiDPI resolution,
+ * then export as a 1200×630 PNG (OG image standard for X, LinkedIn, Slack,
+ * Discord). The draw canvas is 2400×1260 (2× of 1200×630 logical coords)
+ * for crisp text on Retina/HiDPI displays.
  */
 export async function downloadShareCard(props: ShareCardProps): Promise<void> {
-  const canvas = document.createElement('canvas');
-  canvas.width = 1200;
-  canvas.height = 630;
-  drawShareCard(canvas, props);
+  // Pre-load tool logos before drawing (canvas drawImage requires loaded images)
+  const toolIcons = await loadToolIcons(props.sourceTools);
+
+  // Internal draw canvas: 1200×630 logical, 2400×1260 physical (DPR=2)
+  const LOGICAL_W = 1200;
+  const LOGICAL_H = 630;
+
+  const drawCanvas = document.createElement('canvas');
+  drawCanvas.width = LOGICAL_W * DPR;   // 2400
+  drawCanvas.height = LOGICAL_H * DPR;  // 1260
+  drawShareCard(drawCanvas, props, toolIcons);
+
+  // Export at 1200×630 (OG standard) — scale from 2400×1260 internal (clean 2× downscale)
+  const exportCanvas = document.createElement('canvas');
+  exportCanvas.width = LOGICAL_W;
+  exportCanvas.height = LOGICAL_H;
+  const exportCtx = exportCanvas.getContext('2d');
+  if (!exportCtx) throw new Error('Failed to get 2D context for export canvas');
+
+  exportCtx.drawImage(drawCanvas, 0, 0, LOGICAL_W, LOGICAL_H);
 
   const blob = await new Promise<Blob>((resolve, reject) =>
-    canvas.toBlob((b) => {
+    exportCanvas.toBlob((b) => {
       if (b) resolve(b);
       else reject(new Error('canvas.toBlob returned null'));
     }, 'image/png')
@@ -451,7 +599,7 @@ export async function downloadShareCard(props: ShareCardProps): Promise<void> {
 
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
-  link.download = 'code-insights-working-style.png';
+  link.download = 'code-insights-ai-fluency.png';
   link.href = url;
   link.click();
   URL.revokeObjectURL(url);
