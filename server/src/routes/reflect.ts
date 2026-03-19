@@ -173,10 +173,15 @@ app.post('/generate', requireLLM(), async (c) => {
           const tagline = typeof rawTagline === 'string'
             ? rawTagline.slice(0, 40)
             : undefined;
+          const rawSubtitle = parsed && (parsed as Record<string, unknown>)['tagline_subtitle'];
+          const tagline_subtitle = typeof rawSubtitle === 'string'
+            ? rawSubtitle.slice(0, 80)
+            : undefined;
           results['working-style'] = {
             section: 'working-style',
             ...(parsed ?? {}),
             tagline,
+            tagline_subtitle,
             workflowDistribution: aggregated.workflowDistribution,
             outcomeDistribution: aggregated.outcomeDistribution,
             characterDistribution: aggregated.characterDistribution,
