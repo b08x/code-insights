@@ -40,7 +40,7 @@ export function ShareCardDonut({ data, size, strokeWidth }: ShareCardDonutProps)
   });
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
       {/* Donut */}
       <svg
         width={size}
@@ -74,24 +74,24 @@ export function ShareCardDonut({ data, size, strokeWidth }: ShareCardDonutProps)
       </svg>
 
       {/* Legend */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
         {data.map((d, i) => {
           const pct = Math.round((d.value / total) * 100);
           return (
-            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
               <div
                 style={{
-                  width: '8px',
-                  height: '8px',
+                  width: '4px',
+                  height: '4px',
                   borderRadius: '50%',
                   backgroundColor: d.color,
                   flexShrink: 0,
                 }}
               />
-              <span style={{ fontSize: '11px', color: '#94a3b8', whiteSpace: 'nowrap' }}>
+              <span style={{ fontSize: '5px', color: '#94a3b8', whiteSpace: 'nowrap' }}>
                 {d.label}
               </span>
-              <span style={{ fontSize: '11px', color: '#475569', marginLeft: '2px' }}>
+              <span style={{ fontSize: '5px', color: '#475569', marginLeft: '1px' }}>
                 {pct}%
               </span>
             </div>
