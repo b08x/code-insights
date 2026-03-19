@@ -18,12 +18,13 @@ export interface ToolPillColors {
   border: string;
 }
 
+// Border colors use rgba() — 8-digit hex (#fb923c4d) breaks html-to-image SVG serialization
 export const SOURCE_TOOL_PILL_COLORS: Record<string, ToolPillColors> = {
-  'claude-code': { bg: '#2a1f16', text: '#fb923c', border: '#fb923c4d' },
-  'cursor':      { bg: '#161d2e', text: '#60a5fa', border: '#60a5fa4d' },
-  'codex-cli':   { bg: '#142319', text: '#4ade80', border: '#4ade804d' },
-  'copilot-cli': { bg: '#0f2027', text: '#22d3ee', border: '#22d3ee4d' },
-  'copilot':     { bg: '#1c172e', text: '#a78bfa', border: '#a78bfa4d' },
+  'claude-code': { bg: '#2a1f16', text: '#fb923c', border: 'rgba(251,146,60,0.3)' },
+  'cursor':      { bg: '#161d2e', text: '#60a5fa', border: 'rgba(96,165,250,0.3)' },
+  'codex-cli':   { bg: '#142319', text: '#4ade80', border: 'rgba(74,222,128,0.3)' },
+  'copilot-cli': { bg: '#0f2027', text: '#22d3ee', border: 'rgba(34,211,238,0.3)' },
+  'copilot':     { bg: '#1c172e', text: '#a78bfa', border: 'rgba(167,139,250,0.3)' },
 };
 
 export interface MilestonePill {
@@ -90,6 +91,7 @@ export async function downloadShareCard(element: HTMLElement): Promise<void> {
     pixelRatio: 2,
     width: 1200,
     height: 630,
+    backgroundColor: '#0f0f23',
   });
 
   const link = document.createElement('a');

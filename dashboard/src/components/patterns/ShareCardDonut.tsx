@@ -53,7 +53,7 @@ export function ShareCardDonut({ data, size, strokeWidth }: ShareCardDonutProps)
           cy={cy}
           r={r}
           fill="none"
-          stroke="#ffffff12"
+          stroke="rgba(255,255,255,0.07)"
           strokeWidth={strokeWidth}
         />
         {/* Segments */}
