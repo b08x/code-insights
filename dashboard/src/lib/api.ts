@@ -260,6 +260,7 @@ export interface FacetAggregation {
   rateLimitInfo: RateLimitInfo | null;
   streak: number;
   sourceToolCount: number;
+  sourceTools: string[];
 }
 
 export function fetchFacetAggregation(params?: {

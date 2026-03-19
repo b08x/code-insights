@@ -147,6 +147,7 @@ export interface AggregatedData {
   rateLimitInfo: RateLimitInfo | null;
   streak: number;            // consecutive days with at least one session (ignores period filter)
   sourceToolCount: number;   // distinct AI tools used within the scope
+  sourceTools: string[];     // distinct AI tool identifiers used within the scope
   pqDeficits: AggregatedPQCategory[];
   pqStrengths: AggregatedPQCategory[];
 }
@@ -362,6 +363,11 @@ export function getAggregatedData(
     `SELECT COUNT(DISTINCT source_tool) as count FROM sessions s ${where}`
   ).get(...params) as { count: number };
 
+  // Fetch distinct source tool identifiers within scope (for share card tool pills)
+  const sourceToolRows = db.prepare(
+    `SELECT DISTINCT source_tool FROM sessions s ${where}`
+  ).all(...params) as Array<{ source_tool: string }>;
+
   // Streak: count consecutive days (backward from today) with at least one session.
   // Always uses all-time scope — filtering by period would cap streak at the window size.
   // Respects project and source filters since those are user-scope constraints.
@@ -417,6 +423,7 @@ export function getAggregatedData(
     rateLimitInfo,
     streak,
     sourceToolCount: sourceToolRow.count,
+    sourceTools: sourceToolRows.map(r => r.source_tool),
     pqDeficits,
     pqStrengths,
   };

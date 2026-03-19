@@ -357,6 +357,8 @@ export default function PatternsPage() {
         streak={aggregation?.streak}
         rateLimitCount={aggregation?.rateLimitInfo?.count}
         rateLimitSessionsAffected={aggregation?.rateLimitInfo?.sessionsAffected}
+        sourceTools={aggregation?.sourceTools}
+        currentWeek={currentWeek}
       />
 
       {/* 2-tab layout */}
