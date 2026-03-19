@@ -361,8 +361,9 @@ export default function PatternsPage() {
         rateLimitSessionsAffected={aggregation?.rateLimitInfo?.sessionsAffected}
         sourceTools={aggregation?.sourceTools}
         currentWeek={currentWeek}
-        promptClarityScore={aggregation?.pqAverageScore ?? undefined}
-        effectivePatterns={aggregation?.effectivePatterns?.slice(0, 3).map(ep => ({ label: ep.label, frequency: ep.frequency }))}
+        pqScores={aggregation?.pqScores}
+        lifetimeSessions={aggregation?.lifetimeSessions}
+        totalTokens={aggregation?.totalTokens}
       />
 
       {/* 2-tab layout */}

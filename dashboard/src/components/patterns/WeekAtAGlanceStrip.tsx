@@ -11,6 +11,7 @@ import { Activity, CheckCircle2, LayoutGrid, Flame, Zap, Download } from 'lucide
 import { toast } from 'sonner';
 import { SESSION_CHARACTER_COLORS, SESSION_CHARACTER_LABELS } from '@/lib/constants/colors';
 import { downloadShareCard } from '@/lib/share-card-utils';
+import type { PQDimensionScores } from '@/lib/api';
 
 interface WeekAtAGlanceStripProps {
   tagline?: string;
@@ -25,8 +26,10 @@ interface WeekAtAGlanceStripProps {
   rateLimitSessionsAffected?: number;
   sourceTools?: string[];
   currentWeek: string;  // ISO week string (e.g. "2026-W11") — used for share card footer month
-  promptClarityScore?: number;  // 0-100, undefined = no PQ data — passed through to share card
-  effectivePatterns?: Array<{ label: string; frequency: number }>;  // top patterns for share card
+  // V3 share card props
+  pqScores?: PQDimensionScores | null;
+  lifetimeSessions?: number;
+  totalTokens?: number;
 }
 
 // DB outcome_satisfaction values: 'high' | 'medium' | 'low' | 'abandoned'
@@ -60,8 +63,9 @@ export function WeekAtAGlanceStrip({
   rateLimitSessionsAffected,
   sourceTools,
   currentWeek,
-  promptClarityScore,
-  effectivePatterns,
+  pqScores,
+  lifetimeSessions,
+  totalTokens,
 }: WeekAtAGlanceStripProps) {
   const outcomeTotal = Object.values(outcomeDistribution).reduce((s, v) => s + v, 0);
   const hasOutcomes = outcomeTotal > 0;
@@ -101,22 +105,20 @@ export function WeekAtAGlanceStrip({
     try {
       await downloadShareCard({
         tagline: displayTagline,
-        taglineSubtitle,
+        dimensionScores: pqScores ?? null,
         totalSessions,
-        streak: streak ?? 0,
+        totalTokens: totalTokens ?? 0,
+        lifetimeSessions: lifetimeSessions ?? totalSessions,
         sourceTools: sourceTools ?? [],
-        characterDistribution: characterDistribution ?? {},
         currentWeek,
-        promptClarityScore,
-        effectivePatterns,
       });
-      toast.success('Working style card downloaded');
+      toast.success('AI Fluency Score card downloaded');
     } catch {
       toast.error('Failed to generate card');
     } finally {
       setIsDownloading(false);
     }
-  }, [isDownloading, displayTagline, taglineSubtitle, totalSessions, streak, sourceTools, characterDistribution, currentWeek, promptClarityScore, effectivePatterns]);
+  }, [isDownloading, displayTagline, pqScores, totalSessions, totalTokens, lifetimeSessions, sourceTools, currentWeek]);
 
   return (
     <>
