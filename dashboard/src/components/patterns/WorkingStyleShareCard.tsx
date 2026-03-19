@@ -2,7 +2,9 @@
  * WorkingStyleShareCard — 1200×630px shareable PNG export card.
  *
  * CRITICAL RULES:
- * - ALL colors as hex literals — NO CSS variables, NO Tailwind classes
+ * - ALL colors as hex or rgba() — NO CSS variables, NO Tailwind classes
+ * - Use rgba() for any alpha transparency — 8-digit hex (#ffffff06) breaks html-to-image
+ * - NO background-clip:text — html-to-image cannot serialize it; use solid color instead
  * - fontFamily: system-ui stack
  * - All sizing in px — NO rem, NO responsive units
  * - Rendered off-screen (position: absolute; left: -9999px) for html-to-image capture
@@ -120,11 +122,21 @@ export const WorkingStyleShareCard = forwardRef<HTMLDivElement, WorkingStyleShar
           height: '630px',
           fontFamily: FONT_STACK,
           overflow: 'hidden',
-          // Background gradient
-          background: 'linear-gradient(135deg, #0f0f23 0%, #1a1a3e 100%)',
+          // Solid background — html-to-image toPng backgroundColor handles base color,
+          // gradient is layered via inner div for better serialization compat
+          backgroundColor: '#0f0f23',
         }}
       >
-        {/* Radial glow accents */}
+        {/* Gradient overlay — separate div for html-to-image compat */}
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background: 'linear-gradient(135deg, #0f0f23 0%, #1a1a3e 100%)',
+          }}
+        />
+
+        {/* Radial glow accents — rgba() instead of 8-digit hex for html-to-image compat */}
         <div
           style={{
             position: 'absolute',
@@ -133,7 +145,7 @@ export const WorkingStyleShareCard = forwardRef<HTMLDivElement, WorkingStyleShar
             width: '400px',
             height: '400px',
             borderRadius: '50%',
-            background: 'radial-gradient(circle, #3b82f620 0%, transparent 70%)',
+            background: 'radial-gradient(circle, rgba(59,130,246,0.13) 0%, transparent 70%)',
             pointerEvents: 'none',
           }}
         />
@@ -145,7 +157,7 @@ export const WorkingStyleShareCard = forwardRef<HTMLDivElement, WorkingStyleShar
             width: '500px',
             height: '500px',
             borderRadius: '50%',
-            background: 'radial-gradient(circle, #a855f718 0%, transparent 70%)',
+            background: 'radial-gradient(circle, rgba(168,85,247,0.09) 0%, transparent 70%)',
             pointerEvents: 'none',
           }}
         />
@@ -182,16 +194,14 @@ export const WorkingStyleShareCard = forwardRef<HTMLDivElement, WorkingStyleShar
           </div>
 
           {/* ── Tagline ── */}
+          {/* Solid color — html-to-image cannot render background-clip:text gradient */}
           <p
             style={{
               fontSize: '42px',
               fontWeight: 700,
               lineHeight: 1.15,
               margin: '0 0 24px 0',
-              background: 'linear-gradient(to right, #60a5fa, #c084fc)',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-              backgroundClip: 'text',
+              color: '#a78bfa',
               maxWidth: '900px',
             }}
           >
@@ -211,8 +221,8 @@ export const WorkingStyleShareCard = forwardRef<HTMLDivElement, WorkingStyleShar
                   width: '140px',
                   height: '64px',
                   borderRadius: '8px',
-                  background: '#ffffff06',
-                  border: '1px solid #ffffff10',
+                  backgroundColor: 'rgba(255,255,255,0.024)',
+                  border: '1px solid rgba(255,255,255,0.063)',
                   padding: '12px 16px',
                   boxSizing: 'border-box',
                   display: 'flex',
@@ -247,7 +257,7 @@ export const WorkingStyleShareCard = forwardRef<HTMLDivElement, WorkingStyleShar
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                   {sourceTools.map((tool) => {
                     const colors = SOURCE_TOOL_PILL_COLORS[tool] ?? {
-                      bg: '#1e293b', text: '#94a3b8', border: '#94a3b84d',
+                      bg: '#1e293b', text: '#94a3b8', border: 'rgba(148,163,184,0.3)',
                     };
                     return (
                       <span
@@ -285,9 +295,9 @@ export const WorkingStyleShareCard = forwardRef<HTMLDivElement, WorkingStyleShar
                         borderRadius: '999px',
                         fontSize: '12px',
                         fontWeight: 500,
-                        backgroundColor: '#ffffff0a',
+                        backgroundColor: 'rgba(255,255,255,0.04)',
                         color: '#94a3b8',
-                        border: '1px solid #ffffff15',
+                        border: '1px solid rgba(255,255,255,0.12)',
                       }}
                     >
                       <span style={{ color: m.iconColor }}>{m.icon}</span>
@@ -308,7 +318,7 @@ export const WorkingStyleShareCard = forwardRef<HTMLDivElement, WorkingStyleShar
 
           {/* ── Footer ── */}
           <div style={{ marginTop: 'auto', paddingTop: '16px' }}>
-            <div style={{ height: '1px', backgroundColor: '#ffffff12', marginBottom: '14px' }} />
+            <div style={{ height: '1px', backgroundColor: 'rgba(255,255,255,0.07)', marginBottom: '14px' }} />
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <svg width="18" height="18" viewBox="0 0 28 28" fill="none">
