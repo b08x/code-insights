@@ -6,15 +6,15 @@
  * Outcome keys match DB outcome_satisfaction values: 'high' | 'medium' | 'low' | 'abandoned'
  */
 
-import { useRef, useState, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { Activity, CheckCircle2, LayoutGrid, Flame, Zap, Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { SESSION_CHARACTER_COLORS, SESSION_CHARACTER_LABELS } from '@/lib/constants/colors';
-import { WorkingStyleShareCard } from './WorkingStyleShareCard';
 import { downloadShareCard } from '@/lib/share-card-utils';
 
 interface WeekAtAGlanceStripProps {
   tagline?: string;
+  taglineSubtitle?: string;
   totalSessions: number;
   totalAllSessions: number;
   outcomeDistribution: Record<string, number>;
@@ -47,6 +47,7 @@ const MAX_CHARACTER_BADGES = 3;
 
 export function WeekAtAGlanceStrip({
   tagline,
+  taglineSubtitle,
   totalSessions,
   totalAllSessions,
   outcomeDistribution,
@@ -87,22 +88,30 @@ export function WeekAtAGlanceStrip({
 
   const showStreak = (streak ?? 0) >= 2;
 
-  // Share card download
-  const shareCardRef = useRef<HTMLDivElement>(null);
+  // Share card download — canvas drawn ephemerally, no DOM element ref needed
   const [isDownloading, setIsDownloading] = useState(false);
 
   const handleDownload = useCallback(async () => {
-    if (!shareCardRef.current || isDownloading) return;
+    if (isDownloading || !displayTagline) return;
     setIsDownloading(true);
     try {
-      await downloadShareCard(shareCardRef.current);
+      await downloadShareCard({
+        tagline: displayTagline,
+        taglineSubtitle,
+        totalSessions,
+        streak: streak ?? 0,
+        sourceTools: sourceTools ?? [],
+        characterDistribution: characterDistribution ?? {},
+        outcomeDistribution,
+        currentWeek,
+      });
       toast.success('Working style card downloaded');
     } catch {
       toast.error('Failed to generate card');
     } finally {
       setIsDownloading(false);
     }
-  }, [isDownloading]);
+  }, [isDownloading, displayTagline, taglineSubtitle, totalSessions, streak, sourceTools, characterDistribution, outcomeDistribution, currentWeek]);
 
   return (
     <>
@@ -236,19 +245,6 @@ export function WeekAtAGlanceStrip({
         )}
       </div>
 
-      {/* Off-screen share card — mounted when tagline is available so html-to-image can capture it */}
-      {hasGenerated && displayTagline && (
-        <WorkingStyleShareCard
-          ref={shareCardRef}
-          tagline={displayTagline}
-          totalSessions={totalSessions}
-          streak={streak ?? 0}
-          sourceTools={sourceTools ?? []}
-          characterDistribution={characterDistribution ?? {}}
-          outcomeDistribution={outcomeDistribution}
-          currentWeek={currentWeek}
-        />
-      )}
     </>
   );
 }
