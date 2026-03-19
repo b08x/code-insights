@@ -85,14 +85,35 @@ export function computeMilestones(
 /**
  * Capture the given DOM element as a PNG and trigger a browser download.
  * Uses 2x pixel ratio for a crisp export.
+ *
+ * html-to-image cannot capture elements positioned far off-screen (left: -9999px)
+ * because SVG foreignObject serialization clips elements outside the viewport.
+ * We temporarily move the element to top:0/left:0 (behind page content via z-index:-1),
+ * capture, then restore — this ensures the element is in the serializable viewport.
  */
 export async function downloadShareCard(element: HTMLElement): Promise<void> {
-  const dataUrl = await toPng(element, {
-    pixelRatio: 2,
-    width: 1200,
-    height: 630,
-    backgroundColor: '#0f0f23',
-  });
+  // Temporarily bring element into the viewport for html-to-image capture
+  const prevLeft = element.style.left;
+  const prevTop = element.style.top;
+  const prevZIndex = element.style.zIndex;
+  element.style.left = '0px';
+  element.style.top = '0px';
+  element.style.zIndex = '-1';
+
+  let dataUrl: string;
+  try {
+    dataUrl = await toPng(element, {
+      pixelRatio: 2,
+      width: 1200,
+      height: 630,
+      backgroundColor: '#0f0f23',
+    });
+  } finally {
+    // Always restore — even if toPng throws
+    element.style.left = prevLeft;
+    element.style.top = prevTop;
+    element.style.zIndex = prevZIndex;
+  }
 
   const link = document.createElement('a');
   link.download = 'code-insights-working-style.png';
