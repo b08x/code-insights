@@ -236,6 +236,15 @@ export interface RateLimitInfo {
   examples: string[];
 }
 
+export interface PQDimensionScores {
+  overall: number;
+  context_provision: number;
+  request_specificity: number;
+  scope_management: number;
+  information_timing: number;
+  correction_quality: number;
+}
+
 export interface FacetAggregation {
   frictionCategories: Array<{
     category: string;
@@ -261,7 +270,9 @@ export interface FacetAggregation {
   streak: number;
   sourceToolCount: number;
   sourceTools: string[];
-  pqAverageScore: number | null;
+  pqScores: PQDimensionScores | null;
+  lifetimeSessions: number;
+  totalTokens: number;
 }
 
 export function fetchFacetAggregation(params?: {
