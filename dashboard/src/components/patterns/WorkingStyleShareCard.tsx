@@ -128,10 +128,15 @@ export const WorkingStyleShareCard = forwardRef<HTMLDivElement, WorkingStyleShar
         }}
       >
         {/* Gradient overlay — separate div for html-to-image compat */}
+        {/* zIndex: 0 + explicit sides (not inset shorthand) — SVG foreignObject doesn't reliably preserve DOM-order stacking */}
         <div
           style={{
             position: 'absolute',
-            inset: 0,
+            top: 0,
+            right: 0,
+            bottom: 0,
+            left: 0,
+            zIndex: 0,
             background: 'linear-gradient(135deg, #0f0f23 0%, #1a1a3e 100%)',
           }}
         />
@@ -145,6 +150,7 @@ export const WorkingStyleShareCard = forwardRef<HTMLDivElement, WorkingStyleShar
             width: '400px',
             height: '400px',
             borderRadius: '50%',
+            zIndex: 0,
             background: 'radial-gradient(circle, rgba(59,130,246,0.13) 0%, transparent 70%)',
             pointerEvents: 'none',
           }}
@@ -157,15 +163,17 @@ export const WorkingStyleShareCard = forwardRef<HTMLDivElement, WorkingStyleShar
             width: '500px',
             height: '500px',
             borderRadius: '50%',
+            zIndex: 0,
             background: 'radial-gradient(circle, rgba(168,85,247,0.09) 0%, transparent 70%)',
             pointerEvents: 'none',
           }}
         />
 
-        {/* Content area */}
+        {/* Content area — zIndex: 1 ensures content renders above overlay/glows in SVG foreignObject */}
         <div
           style={{
             position: 'relative',
+            zIndex: 1,
             padding: '40px',
             height: '100%',
             boxSizing: 'border-box',
