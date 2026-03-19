@@ -50,7 +50,7 @@ code-insights init                     # customize settings (optional)
 - **Multi-tool support** — parses sessions from Claude Code, Cursor, Codex CLI, Copilot CLI, and VS Code Copilot Chat
 - **Terminal analytics** — `code-insights stats` shows cost, usage, and activity breakdowns
 - **Built-in dashboard** — browser UI for session browsing, analytics, insights, patterns, and export
-- **Reflect & Patterns** — cross-session pattern detection with weekly synthesis: friction points (with attribution), effective patterns (with driver classification), prompt quality analysis, and working style rules
+- **Reflect & Patterns** — cross-session pattern detection with weekly synthesis: friction points (with attribution), effective patterns (with driver classification), prompt quality analysis, working style rules, and shareable working style card (downloadable PNG for social sharing)
 - **LLM analysis** — generates summaries, decisions, learnings, prompt quality (7 deficit + 3 strength categories), and session facets for pattern aggregation
 - **Export** — LLM-powered cross-session synthesis in 4 formats: Agent Rules, Knowledge Brief, Obsidian, and Notion
 - **Cost tracking** — per-session LLM analysis cost with provider, model, and token breakdown

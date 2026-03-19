@@ -75,7 +75,7 @@ Opens the built-in React dashboard at `http://localhost:7890`. The dashboard pro
 - **Session Browser** — search, filter, soft-delete, and view full session details with chat view
 - **Analytics** — usage patterns, cost trends, activity charts
 - **LLM Insights** — AI-generated summaries, decisions, learnings, and prompt quality analysis (7 deficit + 3 strength categories with dimension scores)
-- **Patterns** — weekly cross-session synthesis: friction points (with attribution), effective patterns (with driver classification), working style rules
+- **Patterns** — weekly cross-session synthesis: friction points (with attribution), effective patterns (with driver classification), working style rules, and shareable working style card (downloadable PNG)
 - **Export** — LLM-powered cross-session synthesis in 4 formats (Agent Rules, Knowledge Brief, Obsidian, Notion)
 - **Settings** — configure your LLM provider for analysis
 

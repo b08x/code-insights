@@ -185,6 +185,8 @@ This roadmap outlines the development phases for Code Insights. Timelines are fl
 | 3.5.1 | 7 | Session-level export templates (Knowledge Base, Agent Rules), prompt quality | ✅ Done |
 | 3.6.0 | 7 | LLM-powered Export Page (cross-session synthesis, 4 formats, SSE streaming) | ✅ Done |
 | 4.0.0 | 8–9 | Reflect & Patterns, taxonomy revisions, ISO weeks, prompt caching, cost tracking (Schema V7) | ✅ Done |
+| 4.1.0 | 10 | Zero-config first-run experience, dashboard auto-sync, guided empty states | ✅ Done |
+| 4.2.0 | 10 | Shareable working style card (1200×630 PNG export), computed milestones, streak fix | ✅ Done |
 
 ---
 
@@ -193,7 +195,7 @@ This roadmap outlines the development phases for Code Insights. Timelines are fl
 - Progress tracking: weekly snapshots, friction-to-pattern affinity map (ships here, not in taxonomy PR), transformation detection, `driver`-based filtering for user growth signals
 - Test suite expansion (Vitest)
 - Session merging across tools (linking related sessions from different AI tools)
-- Gamification and shareable badges (see `docs/plans/2026-03-08-gamification-shareable-badges.md`)
+- Shareable badges Phase 2: stats card variant, milestone-specific cards (see `docs/plans/2026-03-08-gamification-shareable-badges.md`)
 
 ---
 

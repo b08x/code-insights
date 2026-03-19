@@ -2,6 +2,18 @@
 
 All notable changes to `@code-insights/cli` will be documented in this file.
 
+## [4.2.0] - 2026-03-19
+
+### Added
+
+- **Shareable working style card** — Download a 1200×630 PNG card from the Patterns page showing your coding archetype tagline, session stats, AI tool pills, milestone badges, and character distribution donut chart. Designed for sharing on LinkedIn and X/Twitter. Privacy-safe: no project names, file paths, or sensitive data.
+- **Source tool names in aggregation** — The `/api/facets/aggregated` endpoint now returns `sourceTools: string[]` alongside the existing count, enabling tool-specific display on the share card.
+- **Computed milestones** — Session count, streak, multi-tool, and success rate milestones computed on-the-fly from existing data (no new DB tables).
+
+### Fixed
+
+- **Streak unit label** — Dashboard streak badge showed `w` (weeks) but the value is consecutive days. Fixed to `d` across both dashboard and share card.
+
 ## [4.1.0] - 2026-03-18
 
 ### Added
