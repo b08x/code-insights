@@ -3,7 +3,7 @@ name: block-pr-merge
 enabled: true
 event: bash
 action: block
-pattern: gh\s+pr\s+merge
+pattern: ^gh\s+pr\s+merge
 ---
 
 **PR Merge Blocked**

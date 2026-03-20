@@ -3,7 +3,7 @@ name: block-local-merge-to-main
 enabled: true
 event: bash
 action: block
-pattern: git\s+merge\s+
+pattern: ^git\s+merge\s+
 ---
 
 **Local Merge to Main Blocked**

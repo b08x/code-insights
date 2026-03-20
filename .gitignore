@@ -45,6 +45,7 @@ docs/plans/
 .claude/*
 !.claude/agents/
 !.claude/commands/
+!.claude/hooks/
 !.claude/hookify.*.md
 .code-insights/
 
