@@ -54,6 +54,14 @@ export function buildSessionMeta(session: SessionData): SessionMetadata | undefi
   return {
     compactCount: session.compact_count ?? 0,
     autoCompactCount: session.auto_compact_count ?? 0,
-    slashCommands: session.slash_commands ? JSON.parse(session.slash_commands) as string[] : [],
+    slashCommands: (() => {
+      if (!session.slash_commands) return [];
+      try {
+        const parsed = JSON.parse(session.slash_commands);
+        return Array.isArray(parsed) ? parsed as string[] : [];
+      } catch {
+        return [];
+      }
+    })(),
   };
 }

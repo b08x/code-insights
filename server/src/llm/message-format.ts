@@ -79,18 +79,20 @@ export function formatMessagesForAnalysis(messages: SQLiteMessageRow[]): string 
         roleLabel = 'System';
       }
 
-      // Parse JSON-encoded tool_calls
+      // Parse JSON-encoded tool_calls — guard with Array.isArray since bare `as` cast doesn't verify shape
       let toolCalls: ParsedToolCall[] = [];
       try {
-        toolCalls = m.tool_calls ? (JSON.parse(m.tool_calls) as ParsedToolCall[]) : [];
+        const parsed = m.tool_calls ? JSON.parse(m.tool_calls) : [];
+        toolCalls = Array.isArray(parsed) ? parsed as ParsedToolCall[] : [];
       } catch {
         toolCalls = [];
       }
 
-      // Parse JSON-encoded tool_results
+      // Parse JSON-encoded tool_results — same guard
       let toolResults: ParsedToolResult[] = [];
       try {
-        toolResults = m.tool_results ? (JSON.parse(m.tool_results) as ParsedToolResult[]) : [];
+        const parsed = m.tool_results ? JSON.parse(m.tool_results) : [];
+        toolResults = Array.isArray(parsed) ? parsed as ParsedToolResult[] : [];
       } catch {
         toolResults = [];
       }

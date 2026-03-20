@@ -249,12 +249,19 @@ export function getAggregatedData(
     `SELECT COUNT(*) as count FROM sessions s ${where}`
   ).get(...params) as { count: number };
 
-  // Parse examples and session_ids from json_group_array output, then normalize via alias + Levenshtein clustering
-  const parsedFriction = frictionCategories.map(fc => ({
-    ...fc,
-    examples: JSON.parse(fc.examples) as string[],
-    session_ids: JSON.parse(fc.session_ids) as string[],
-  }));
+  // Parse examples and session_ids from json_group_array output, then normalize via alias + Levenshtein clustering.
+  // Guard with Array.isArray — a corrupt DB row would otherwise pass silently and break .push() downstream.
+  const parsedFriction = frictionCategories.map(fc => {
+    const rawExamples = JSON.parse(fc.examples);
+    const rawSessionIds = JSON.parse(fc.session_ids);
+    if (!Array.isArray(rawExamples)) console.warn('[shared-aggregation] fc.examples is not an array after parse:', fc.category);
+    if (!Array.isArray(rawSessionIds)) console.warn('[shared-aggregation] fc.session_ids is not an array after parse:', fc.category);
+    return {
+      ...fc,
+      examples: Array.isArray(rawExamples) ? rawExamples as string[] : [],
+      session_ids: Array.isArray(rawSessionIds) ? rawSessionIds as string[] : [],
+    };
+  });
 
   const normalizedFriction = new Map<string, { count: number; total_severity: number; examples: string[]; session_ids: string[] }>();
   for (const fc of parsedFriction) {
