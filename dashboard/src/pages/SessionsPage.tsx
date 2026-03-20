@@ -34,6 +34,10 @@ export default function SessionsPage() {
     source: 'all',
     character: 'all',
     status: 'all',
+    dateRange: 'all',
+    dateFrom: '',
+    dateTo: '',
+    outcome: 'all',
     session: '',
   });
 
@@ -80,14 +84,21 @@ export default function SessionsPage() {
   );
 
   const handleFilterChange = useCallback(
-    (key: 'q' | 'character' | 'status', value: string) => {
+    (key: 'q' | 'character' | 'status' | 'dateRange' | 'dateFrom' | 'dateTo' | 'outcome', value: string) => {
       setFilter(key, value);
     },
     [setFilter]
   );
 
+  const handleSetFilters = useCallback(
+    (updates: Record<string, string>) => {
+      setFilters(updates as Parameters<typeof setFilters>[0]);
+    },
+    [setFilters]
+  );
+
   const handleClearFilters = useCallback(() => {
-    setFilters({ q: '', character: 'all', status: 'all' });
+    setFilters({ q: '', character: 'all', status: 'all', dateRange: 'all', dateFrom: '', dateTo: '', outcome: 'all' });
   }, [setFilters]);
 
   const selectedProjectName = useMemo(() => {
@@ -150,8 +161,13 @@ export default function SessionsPage() {
             q: filters.q,
             character: filters.character,
             status: filters.status,
+            dateRange: filters.dateRange,
+            dateFrom: filters.dateFrom,
+            dateTo: filters.dateTo,
+            outcome: filters.outcome,
           }}
           onFilterChange={handleFilterChange}
+          onSetFilters={handleSetFilters}
           onClearFilters={handleClearFilters}
           onSelectSession={handleSelectSession}
           loading={loading}
