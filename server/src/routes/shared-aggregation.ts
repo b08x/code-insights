@@ -6,6 +6,7 @@ import { normalizeFrictionCategory } from '../llm/friction-normalize.js';
 import { normalizePatternCategory, getPatternCategoryLabel } from '../llm/pattern-normalize.js';
 import { normalizePromptQualityCategory, PQ_CATEGORY_LABELS } from '../llm/prompt-quality-normalize.js';
 import { CANONICAL_PQ_STRENGTH_CATEGORIES } from '../llm/prompt-constants.js';
+import { safeParseJson } from '../utils.js';
 
 // ISO week regex: matches YYYY-WNN format (e.g., 2026-W10)
 const ISO_WEEK_RE = /^(\d{4})-W(\d{2})$/;
@@ -249,11 +250,11 @@ export function getAggregatedData(
     `SELECT COUNT(*) as count FROM sessions s ${where}`
   ).get(...params) as { count: number };
 
-  // Parse examples and session_ids from json_group_array output, then normalize via alias + Levenshtein clustering
+  // Parse examples and session_ids from json_group_array output, then normalize via alias + Levenshtein clustering.
   const parsedFriction = frictionCategories.map(fc => ({
     ...fc,
-    examples: JSON.parse(fc.examples) as string[],
-    session_ids: JSON.parse(fc.session_ids) as string[],
+    examples: safeParseJson<string[]>(fc.examples, []),
+    session_ids: safeParseJson<string[]>(fc.session_ids, []),
   }));
 
   const normalizedFriction = new Map<string, { count: number; total_severity: number; examples: string[]; session_ids: string[] }>();

@@ -2,6 +2,7 @@
 // Extracted from prompts.ts — used by prompt generator functions in prompts.ts.
 
 import type { SQLiteMessageRow, SessionMetadata } from './prompt-types.js';
+import { safeParseJson } from '../utils.js';
 
 // Internal types — only used within formatMessagesForAnalysis
 interface ParsedToolCall {
@@ -79,21 +80,9 @@ export function formatMessagesForAnalysis(messages: SQLiteMessageRow[]): string 
         roleLabel = 'System';
       }
 
-      // Parse JSON-encoded tool_calls
-      let toolCalls: ParsedToolCall[] = [];
-      try {
-        toolCalls = m.tool_calls ? (JSON.parse(m.tool_calls) as ParsedToolCall[]) : [];
-      } catch {
-        toolCalls = [];
-      }
-
-      // Parse JSON-encoded tool_results
-      let toolResults: ParsedToolResult[] = [];
-      try {
-        toolResults = m.tool_results ? (JSON.parse(m.tool_results) as ParsedToolResult[]) : [];
-      } catch {
-        toolResults = [];
-      }
+      // Parse JSON-encoded tool_calls and tool_results via safeParseJson
+      const toolCalls = safeParseJson<ParsedToolCall[]>(m.tool_calls, []);
+      const toolResults = safeParseJson<ParsedToolResult[]>(m.tool_results, []);
 
       const toolInfo = toolCalls.length > 0
         ? `\n[Tools used: ${toolCalls.map(t => t.name || 'unknown').join(', ')}]`

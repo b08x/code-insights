@@ -484,6 +484,38 @@ describe('parseAnalysisResponse', () => {
     expect(result.data.decisions).toEqual([]);
     expect(result.data.learnings).toEqual([]);
   });
+
+  // Fix 2: LLM response structure validation — array guard tests
+  it('coerces decisions to [] when LLM returns a non-array string value', () => {
+    // LLM returned "decisions": "none" — string is truthy so || [] would NOT catch this
+    const response = '<json>{ "summary": { "title": "Test", "content": "c", "bullets": [] }, "decisions": "none", "learnings": [] }</json>';
+    const result = parseAnalysisResponse(response);
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    // Must be an array — not the string "none"
+    expect(Array.isArray(result.data.decisions)).toBe(true);
+    expect(result.data.decisions).toEqual([]);
+  });
+
+  it('coerces learnings to [] when LLM returns a non-array value', () => {
+    const response = '<json>{ "summary": { "title": "Test", "content": "c", "bullets": [] }, "decisions": [], "learnings": {} }</json>';
+    const result = parseAnalysisResponse(response);
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(Array.isArray(result.data.learnings)).toBe(true);
+    expect(result.data.learnings).toEqual([]);
+  });
+
+  it('coerces facet arrays to [] when LLM returns non-array facets', () => {
+    // LLM returned friction_points as a string instead of an array
+    const response = '<json>{ "summary": { "title": "Test", "content": "c", "bullets": [] }, "decisions": [], "learnings": [], "facets": { "friction_points": "none", "effective_patterns": null } }</json>';
+    const result = parseAnalysisResponse(response);
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    // Both must be arrays — .some() calls on monitors must not throw
+    expect(Array.isArray(result.data.facets?.friction_points)).toBe(true);
+    expect(Array.isArray(result.data.facets?.effective_patterns)).toBe(true);
+  });
 });
 
 // ──────────────────────────────────────────────────────
@@ -574,6 +606,27 @@ describe('parsePromptQualityResponse', () => {
     expect(result.success).toBe(false);
     if (result.success) return;
     expect(result.error.error_type).toBe('no_json_found');
+  });
+
+  // Fix 2: array guard tests for parsePromptQualityResponse
+  it('coerces takeaways to [] when LLM returns a non-array string value', () => {
+    // LLM returned "takeaways": "none" — truthy string bypasses || [] coercion
+    const response = '<json>{ "efficiency_score": 80, "takeaways": "none", "findings": [] }</json>';
+    const result = parsePromptQualityResponse(response);
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(Array.isArray(result.data.takeaways)).toBe(true);
+    expect(result.data.takeaways).toEqual([]);
+  });
+
+  it('coerces findings to [] when LLM returns a non-array value (prevents .some() TypeError)', () => {
+    // LLM returned "findings": "none" — monitor on line 166 calls .some(), would throw without guard
+    const response = '<json>{ "efficiency_score": 80, "takeaways": [], "findings": "none" }</json>';
+    const result = parsePromptQualityResponse(response);
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(Array.isArray(result.data.findings)).toBe(true);
+    expect(result.data.findings).toEqual([]);
   });
 });
 
