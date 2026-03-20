@@ -147,8 +147,10 @@ export function parsePromptQualityResponse(response: string): ParseResult<Prompt
   parsed.efficiency_score = Math.max(0, Math.min(100, Math.round(parsed.efficiency_score)));
   parsed.message_overhead = parsed.message_overhead ?? 0;
   parsed.assessment = parsed.assessment || '';
-  parsed.takeaways = parsed.takeaways || [];
-  parsed.findings = parsed.findings || [];
+  // Guard against LLM returning non-array values (e.g. "findings": "none") —
+  // || [] alone won't catch truthy non-arrays, and .some() on line 166 would throw.
+  parsed.takeaways = Array.isArray(parsed.takeaways) ? parsed.takeaways : [];
+  parsed.findings = Array.isArray(parsed.findings) ? parsed.findings : [];
   parsed.dimension_scores = parsed.dimension_scores || {
     context_provision: 50,
     request_specificity: 50,

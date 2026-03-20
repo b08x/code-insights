@@ -607,6 +607,27 @@ describe('parsePromptQualityResponse', () => {
     if (result.success) return;
     expect(result.error.error_type).toBe('no_json_found');
   });
+
+  // Fix 2: array guard tests for parsePromptQualityResponse
+  it('coerces takeaways to [] when LLM returns a non-array string value', () => {
+    // LLM returned "takeaways": "none" — truthy string bypasses || [] coercion
+    const response = '<json>{ "efficiency_score": 80, "takeaways": "none", "findings": [] }</json>';
+    const result = parsePromptQualityResponse(response);
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(Array.isArray(result.data.takeaways)).toBe(true);
+    expect(result.data.takeaways).toEqual([]);
+  });
+
+  it('coerces findings to [] when LLM returns a non-array value (prevents .some() TypeError)', () => {
+    // LLM returned "findings": "none" — monitor on line 166 calls .some(), would throw without guard
+    const response = '<json>{ "efficiency_score": 80, "takeaways": [], "findings": "none" }</json>';
+    const result = parsePromptQualityResponse(response);
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(Array.isArray(result.data.findings)).toBe(true);
+    expect(result.data.findings).toEqual([]);
+  });
 });
 
 // ──────────────────────────────────────────────────────
