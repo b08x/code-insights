@@ -3,7 +3,7 @@ name: use-git-rm-for-tracked-files
 enabled: true
 event: bash
 action: block
-pattern: ^rm\s+(?!-rf\s+node_modules).*\.(md|ts|tsx|js|json|sh|css|html)
+pattern: ^rm\s+(?!-rf\s+(node_modules|\.next|dist|build)\b)
 ---
 
 **Use `git rm` instead of `rm` for tracked files.**

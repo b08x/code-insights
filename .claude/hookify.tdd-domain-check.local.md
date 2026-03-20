@@ -1,16 +1,19 @@
 ---
 name: tdd-domain-check
 enabled: true
-event: bash
+event: prompt
 action: warn
-pattern: git\s+commit
+conditions:
+  - field: user_prompt
+    operator: regex_match
+    pattern: (/start-feature|start.feature)
 ---
 
 **TDD Domain Check: Tests Required for MUST Domains**
 
-You are about to commit. If your change touches a TDD domain, confirm you have included tests.
+Before scoping this feature, check if it touches a TDD domain. If so, tests must be included in the implementation plan — not added as an afterthought.
 
-**MUST TDD domains** (tests required before committing implementation):
+**MUST TDD domains** (tests required alongside implementation):
 
 | Domain | Path | Required test location |
 |--------|------|----------------------|
@@ -19,15 +22,6 @@ You are about to commit. If your change touches a TDD domain, confirm you have i
 | Migrations | `cli/src/db/migrate.ts` or `schema.ts` | `cli/src/db/__tests__/migrate.test.ts` |
 | Shared utilities | `server/src/utils.ts`, `cli/src/utils/` | Co-located or `__tests__/*.test.ts` |
 
-**Pre-commit checklist for TDD domains:**
+**PM/TA action:** If the feature touches any MUST TDD domain, ensure the implementation plan includes test tasks alongside (or before) implementation tasks. Dev agents must not merge code in these domains without corresponding tests.
 
-1. `git diff --name-only --staged` — check which files you're committing
-2. If any staged file matches a MUST TDD path, verify a `.test.ts` file is also staged
-3. If you added implementation without tests: write the tests first, then commit both together
-
-**This is a warning, not a hard block.** If your change:
-- Only modifies non-domain code (dashboard, CLI command wiring) → safe to proceed
-- Adds tests for existing untested code → safe to proceed (tests-only commit is fine)
-- Adds implementation + tests together → safe to proceed
-
-If you're unsure, run: `pnpm test` and confirm all tests pass before committing.
+**Safe to skip TDD:** Dashboard-only changes, CLI command wiring, docs, configuration.

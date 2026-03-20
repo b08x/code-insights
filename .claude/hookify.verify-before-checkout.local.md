@@ -3,7 +3,7 @@ name: verify-before-checkout
 enabled: true
 event: bash
 action: warn
-pattern: git\s+(checkout|switch)\s+(?!-[bBcC]\s)(?!--\s)
+pattern: ^git\s+(checkout|switch)\s+(?!-[bBcC]\s)(?!--\s)
 ---
 
 **Pre-Checkout Verification**

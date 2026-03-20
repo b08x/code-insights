@@ -3,7 +3,7 @@ name: review-before-pr
 enabled: true
 event: bash
 action: warn
-pattern: gh\s+pr\s+create
+pattern: ^gh\s+pr\s+create
 ---
 
 **Code Review Required Before PR Creation**
