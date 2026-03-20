@@ -65,7 +65,7 @@ export interface Session {
   usage_source: string | null;
   compact_count: number;
   auto_compact_count: number;
-  slash_commands: string;       // JSON-encoded string[] — decode with parseJsonField<string[]>(x, [])
+  slash_commands: string | null; // JSON-encoded string[] — decode with parseJsonField<string[]>(x, [])
 }
 
 export type InsightType = 'summary' | 'decision' | 'learning' | 'technique' | 'prompt_quality';

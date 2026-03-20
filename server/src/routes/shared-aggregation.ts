@@ -6,6 +6,7 @@ import { normalizeFrictionCategory } from '../llm/friction-normalize.js';
 import { normalizePatternCategory, getPatternCategoryLabel } from '../llm/pattern-normalize.js';
 import { normalizePromptQualityCategory, PQ_CATEGORY_LABELS } from '../llm/prompt-quality-normalize.js';
 import { CANONICAL_PQ_STRENGTH_CATEGORIES } from '../llm/prompt-constants.js';
+import { safeParseJson } from '../utils.js';
 
 // ISO week regex: matches YYYY-WNN format (e.g., 2026-W10)
 const ISO_WEEK_RE = /^(\d{4})-W(\d{2})$/;
@@ -250,18 +251,11 @@ export function getAggregatedData(
   ).get(...params) as { count: number };
 
   // Parse examples and session_ids from json_group_array output, then normalize via alias + Levenshtein clustering.
-  // Guard with Array.isArray — a corrupt DB row would otherwise pass silently and break .push() downstream.
-  const parsedFriction = frictionCategories.map(fc => {
-    const rawExamples = JSON.parse(fc.examples);
-    const rawSessionIds = JSON.parse(fc.session_ids);
-    if (!Array.isArray(rawExamples)) console.warn('[shared-aggregation] fc.examples is not an array after parse:', fc.category);
-    if (!Array.isArray(rawSessionIds)) console.warn('[shared-aggregation] fc.session_ids is not an array after parse:', fc.category);
-    return {
-      ...fc,
-      examples: Array.isArray(rawExamples) ? rawExamples as string[] : [],
-      session_ids: Array.isArray(rawSessionIds) ? rawSessionIds as string[] : [],
-    };
-  });
+  const parsedFriction = frictionCategories.map(fc => ({
+    ...fc,
+    examples: safeParseJson<string[]>(fc.examples, []),
+    session_ids: safeParseJson<string[]>(fc.session_ids, []),
+  }));
 
   const normalizedFriction = new Map<string, { count: number; total_severity: number; examples: string[]; session_ids: string[] }>();
   for (const fc of parsedFriction) {

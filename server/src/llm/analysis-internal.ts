@@ -3,6 +3,7 @@
 
 import type { SessionMetadata } from './prompt-types.js';
 import type { SessionData, InsightRow } from './analysis-db.js';
+import { safeParseJson } from '../utils.js';
 
 // ─── Shared types ─────────────────────────────────────────────────────────────
 
@@ -54,14 +55,6 @@ export function buildSessionMeta(session: SessionData): SessionMetadata | undefi
   return {
     compactCount: session.compact_count ?? 0,
     autoCompactCount: session.auto_compact_count ?? 0,
-    slashCommands: (() => {
-      if (!session.slash_commands) return [];
-      try {
-        const parsed = JSON.parse(session.slash_commands);
-        return Array.isArray(parsed) ? parsed as string[] : [];
-      } catch {
-        return [];
-      }
-    })(),
+    slashCommands: safeParseJson<string[]>(session.slash_commands, []),
   };
 }

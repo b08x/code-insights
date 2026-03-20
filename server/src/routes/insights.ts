@@ -28,9 +28,6 @@ app.get('/', (c) => {
     params.push(sessionId);
   }
   if (type) {
-    if (!VALID_TYPES.includes(type as typeof VALID_TYPES[number])) {
-      return c.json({ error: `type must be one of: ${VALID_TYPES.join(', ')}` }, 400);
-    }
     conditions.push('i.type = ?');
     params.push(type);
   }
