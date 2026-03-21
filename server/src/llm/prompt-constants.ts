@@ -18,9 +18,15 @@ CATEGORIES — classify the TYPE of gap or obstacle:
 - "scope-creep": Work expanded beyond the boundaries of the stated task.
 - "repeated-mistakes": The same or similar error occurred multiple times despite earlier correction.
 - "documentation-gap": Relevant docs existed but were inaccessible or unfindable during the session.
-- "tooling-limitation": The AI coding tool or its underlying model genuinely could not perform a needed action — missing file system access, unsupported language feature, context window overflow, inability to run a specific command type. Diagnostic: Could ANY user prompt or approach have worked around this? If yes → it is NOT tooling-limitation. NOT this category if: the tool was rate-limited (create "rate-limit-hit"), an agent crashed or lost state (use wrong-approach or create "agent-orchestration-failure"), the wrong tool was chosen (wrong-approach), the user didn't know the tool could do something (knowledge-gap), or the tool worked differently than expected (stale-assumptions).
+- "tooling-limitation": The AI coding tool or its underlying model genuinely could not perform a needed action — missing file system access, unsupported language feature, context window overflow, inability to run a specific command type. Diagnostic: Could a reasonable user prompt or approach have achieved the same result? If the only workaround is unreasonably complex or loses significant fidelity, this IS a tooling-limitation. If a straightforward alternative existed → it is NOT tooling-limitation.
+  RECLASSIFY if any of these apply:
+  - Rate-limited or throttled → create "rate-limit-hit" instead
+  - Agent crashed or lost state → use "wrong-approach" or create "agent-orchestration-failure"
+  - Wrong tool chosen when a better one existed → "wrong-approach"
+  - User didn't know the tool could do something → "knowledge-gap"
+  - Tool worked differently than expected → "stale-assumptions"
 
-DISAMBIGUATION — categories frequently confused:
+DISAMBIGUATION — use these to break ties when two categories seem to fit:
 - tooling-limitation vs wrong-approach: Limitation = the tool CANNOT do it (no workaround exists). Wrong-approach = the tool CAN do it but a suboptimal method was chosen.
 - tooling-limitation vs knowledge-gap: Limitation = the capability genuinely does not exist. Knowledge-gap = the capability exists but was applied incorrectly.
 - tooling-limitation vs stale-assumptions: Limitation = permanent gap in the tool. Stale-assumptions = the tool USED TO work differently or the assumption about current behavior was wrong.

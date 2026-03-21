@@ -71,16 +71,28 @@ export function parseAnalysisResponse(response: string): ParseResult<AnalysisRes
   }
 
   // Observability: two-tier tooling-limitation monitor.
-  // Tier 1: _reasoning contains signals that suggest misclassification → likely wrong category.
-  // Tier 2: no conflicting signals → generic reminder to verify.
+  // Tier 1: _reasoning contains misclassification signals NOT in a negation context → likely wrong category.
+  // Tier 2: no conflicting signals (or signal was negated) → generic reminder to verify.
   // Re-evaluate after ~30 sessions with improved FRICTION_CLASSIFICATION_GUIDANCE.
   if (parsed.facets?.friction_points?.some(fp => fp.category === 'tooling-limitation')) {
-    const MISCLASS_SIGNALS = /rate.?limit|throttl|crash|lost state|wrong tool|didn.t know|older version|used to work/i;
+    // Expanded regex covers both literal terms and GPT-4o paraphrasing patterns
+    const MISCLASS_SIGNALS = /rate.?limit|throttl|quota.?exceed|crash|fail.{0,10}unexpect|lost.?state|context.{0,10}(?:drop|lost|unavail)|wrong.?tool|different.?(?:approach|method)|(?:didn.t|did not|unaware).{0,10}(?:know|capabil)|(?:older|previous).?version|used to (?:work|be)|behavio.?r.?change/i;
+    const NEGATION_CONTEXT = /\bnot\b|\bnor\b|\bisn.t\b|\bwasn.t\b|\brule[d]? out\b|\brejected?\b|\beliminated?\b|\breclassif/i;
     const toolingFps = parsed.facets.friction_points.filter(fp => fp.category === 'tooling-limitation');
     for (const fp of toolingFps) {
-      const match = fp._reasoning ? fp._reasoning.match(MISCLASS_SIGNALS)?.[0] : null;
-      if (match) {
-        console.warn(`[friction-monitor] Likely misclassification: "tooling-limitation" with reasoning mentioning "${match}" — review category`);
+      if (!fp._reasoning) {
+        console.warn('[friction-monitor] LLM classified friction as "tooling-limitation" without _reasoning — cannot verify');
+        continue;
+      }
+      const matchResult = fp._reasoning.match(MISCLASS_SIGNALS);
+      if (matchResult) {
+        // Check if the signal appears in a negation context (model correctly eliminating the alternative)
+        const matchIdx = fp._reasoning.search(MISCLASS_SIGNALS);
+        const preceding = fp._reasoning.slice(Math.max(0, matchIdx - 40), matchIdx);
+        if (!NEGATION_CONTEXT.test(preceding)) {
+          console.warn(`[friction-monitor] Likely misclassification: "tooling-limitation" with reasoning mentioning "${matchResult[0]}" — review category`);
+        }
+        // If negated, the model correctly considered and rejected the alternative — no warning
       } else {
         console.warn('[friction-monitor] LLM classified friction as "tooling-limitation" — verify genuine tool limitation');
       }
