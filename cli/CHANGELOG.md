@@ -2,6 +2,20 @@
 
 All notable changes to `@code-insights/cli` will be documented in this file.
 
+## [4.5.0] - 2026-03-21
+
+### Added
+
+- **Parallel LLM analysis** — Multiple sessions can now be analyzed concurrently. Replaced the single-state analysis guard with a per-session Map, enabling simultaneous session and prompt quality analysis without blocking. Each analysis owns its own AbortController and toast notification.
+
+### Fixed
+
+- **Search ESCAPE clause** — Fixed `ESCAPE '\'` in template literal SQL queries producing an empty string (JS escape sequence consumed the backslash), causing 500 errors on every search query. Now correctly produces `ESCAPE '\\'`.
+
+### Improved
+
+- **Dynamic code review specialists** — Replaced static outsider + wild card reviewers with 1–2 domain specialists (SQL/Database, React/Frontend, etc.) selected based on PR content. Includes a Runtime Verification Rule requiring reviewers to execute queries/assertions before approving.
+
 ## [4.4.0] - 2026-03-21
 
 ### Added

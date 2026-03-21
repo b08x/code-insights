@@ -226,6 +226,7 @@ This roadmap outlines the development phases for Code Insights. Timelines are fl
 | 4.2.0 | 10 | Shareable working style card (1200×630 PNG export), computed milestones, streak fix | ✅ Done |
 | 4.3.0 | 10 | AI Fluency Score card V3, PQ dimension scores, conservative palette, tool logos | ✅ Done |
 | 4.4.0 | 11 | Global search & command palette, advanced filtering, reliability hardening | ✅ Done |
+| 4.5.0 | — | Parallel LLM analysis, search ESCAPE fix, dynamic review specialists | ✅ Done |
 
 ---
 
