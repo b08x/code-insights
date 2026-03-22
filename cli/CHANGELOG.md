@@ -2,6 +2,16 @@
 
 All notable changes to `@code-insights/cli` will be documented in this file.
 
+## [4.6.0] - 2026-03-22
+
+### Changed
+
+- **README positioning rewrite** — Restructured both READMEs to lead with core value (decisions, learnings, prompt quality) rather than metrics. Feature showcase with 5 screenshot sections, trimmed CLI reference with pointer to cli/README.md. Primary CTA changed from `npm install -g` to `npx @code-insights/cli`.
+
+### Added
+
+- **Dashboard screenshots** — Patterns page (light/dark), Patterns rules tab (light/dark), and AI Fluency Score card added to docs/assets.
+
 ## [4.5.0] - 2026-03-21
 
 ### Added
