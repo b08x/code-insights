@@ -29,6 +29,7 @@ export interface ShareCardProps {
   sourceTools: string[];
   currentWeek: string;         // for month/year in header
   effectivePatterns?: Array<{ label: string; frequency: number }>; // top 3 by frequency
+  userProfile?: { name: string; avatarUrl: string; githubUsername: string }; // footer identity — optional, graceful fallback
 }
 
 /** Truncate text to fit within maxWidth, appending ellipsis if needed. */
@@ -153,6 +154,31 @@ const PATTERN_PILL_COLORS = [
 ];
 
 /**
+ * Load the user's GitHub avatar for use in the share card footer.
+ * Returns null if the URL is empty or the image fails to load (CORS or 404).
+ *
+ * github.com/{user}.png returns a 302 redirect to avatars.githubusercontent.com,
+ * but the redirect response lacks CORS headers — so `crossOrigin = 'anonymous'`
+ * on an <img> fails. We resolve the redirect via fetch() first (which follows
+ * redirects and gets a CORS-safe response from the CDN), convert to a blob URL,
+ * then load that blob URL into the Image element (same-origin, no taint).
+ */
+/**
+ * Load an avatar image from a base64 data URL (cached in localStorage).
+ * Since data URLs are same-origin, there are no CORS or canvas taint issues.
+ * Returns null if the URL is empty or the image fails to load.
+ */
+async function loadAvatarImage(dataUrl: string): Promise<HTMLImageElement | null> {
+  if (!dataUrl) return null;
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = dataUrl;
+  });
+}
+
+/**
  * Draw the full share card onto the given canvas.
  * The canvas must be set to LOGICAL_W * DPR × LOGICAL_H * DPR before calling.
  * ctx.scale(DPR, DPR) is applied internally — all coordinates use logical pixels.
@@ -162,7 +188,8 @@ const PATTERN_PILL_COLORS = [
 export function drawShareCard(
   canvas: HTMLCanvasElement,
   props: ShareCardProps,
-  toolIcons: Map<string, HTMLImageElement>
+  toolIcons: Map<string, HTMLImageElement>,
+  avatarImage?: HTMLImageElement | null
 ): void {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
@@ -529,11 +556,56 @@ export function drawShareCard(
   ctx.stroke();
 
   const FOOTER_LOGO_SIZE = 22;
-  drawLogo(ctx, PAD, FOOTER_Y - FOOTER_LOGO_SIZE + 4, FOOTER_LOGO_SIZE);
 
-  ctx.font = `400 15px ${FONT_STACK}`;
-  ctx.fillStyle = '#475569';
-  ctx.fillText('code-insights.app', PAD + FOOTER_LOGO_SIZE + 10, FOOTER_Y);
+  if (props.userProfile && avatarImage) {
+    // Draw circular avatar — larger than the logo for visibility
+    const AVATAR_SIZE = 36;
+    const AVATAR_R = AVATAR_SIZE / 2; // 18px radius
+    const avatarCX = PAD + AVATAR_R;
+    const avatarCY = FOOTER_Y - AVATAR_R + 6;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(avatarCX, avatarCY, AVATAR_R, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.drawImage(avatarImage, avatarCX - AVATAR_R, avatarCY - AVATAR_R, AVATAR_SIZE, AVATAR_SIZE);
+    ctx.restore();
+
+    // Draw subtle ring around avatar
+    ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(avatarCX, avatarCY, AVATAR_R, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Two-line text block: name + github URL, vertically centered against avatar
+    const textX = PAD + AVATAR_SIZE + 12;
+    const NAME_SIZE = 15;
+    const URL_SIZE = 12;
+    const LINE_GAP = 4; // gap between name and URL baselines beyond font size
+    const totalTextH = NAME_SIZE + LINE_GAP + URL_SIZE;
+    // Center the text block against the avatar center
+    const nameY = avatarCY - (totalTextH / 2) + NAME_SIZE; // baseline of name
+    const urlY = nameY + LINE_GAP + URL_SIZE; // baseline of URL
+
+    ctx.font = `500 ${NAME_SIZE}px ${FONT_STACK}`;
+    ctx.fillStyle = '#cbd5e1';
+    ctx.fillText(props.userProfile.name, textX, nameY);
+
+    // GitHub profile URL — smaller, muted
+    if (props.userProfile.githubUsername) {
+      ctx.font = `400 ${URL_SIZE}px ${FONT_STACK}`;
+      ctx.fillStyle = '#64748b';
+      ctx.fillText(`github.com/${props.userProfile.githubUsername}`, textX, urlY);
+    }
+  } else {
+    // Fallback: current layout (logo + site URL)
+    drawLogo(ctx, PAD, FOOTER_Y - FOOTER_LOGO_SIZE + 4, FOOTER_LOGO_SIZE);
+
+    ctx.font = `400 15px ${FONT_STACK}`;
+    ctx.fillStyle = '#475569';
+    ctx.fillText('code-insights.app', PAD + FOOTER_LOGO_SIZE + 10, FOOTER_Y);
+  }
 
   // CLI CTA: `npx @code-insights/cli` — monospace, terminal-style with subtle bg
   const CLI_CMD = 'npx @code-insights/cli';
@@ -569,8 +641,11 @@ export function drawShareCard(
  * for crisp text on Retina/HiDPI displays.
  */
 export async function downloadShareCard(props: ShareCardProps): Promise<void> {
-  // Pre-load tool logos before drawing (canvas drawImage requires loaded images)
-  const toolIcons = await loadToolIcons(props.sourceTools);
+  // Pre-load tool logos and avatar before drawing (canvas drawImage requires loaded images)
+  const [toolIcons, avatarImage] = await Promise.all([
+    loadToolIcons(props.sourceTools),
+    props.userProfile ? loadAvatarImage(props.userProfile.avatarUrl) : Promise.resolve(null),
+  ]);
 
   // Internal draw canvas: 1200×630 logical, 2400×1260 physical (DPR=2)
   const LOGICAL_W = 1200;
@@ -579,7 +654,7 @@ export async function downloadShareCard(props: ShareCardProps): Promise<void> {
   const drawCanvas = document.createElement('canvas');
   drawCanvas.width = LOGICAL_W * DPR;   // 2400
   drawCanvas.height = LOGICAL_H * DPR;  // 1260
-  drawShareCard(drawCanvas, props, toolIcons);
+  drawShareCard(drawCanvas, props, toolIcons, avatarImage);
 
   // Export at 1200×630 (OG standard) — scale from 2400×1260 internal (clean 2× downscale)
   const exportCanvas = document.createElement('canvas');

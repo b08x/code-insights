@@ -11,6 +11,9 @@ import { Activity, CheckCircle2, LayoutGrid, Flame, Zap, Download } from 'lucide
 import { toast } from 'sonner';
 import { SESSION_CHARACTER_COLORS, SESSION_CHARACTER_LABELS } from '@/lib/constants/colors';
 import { downloadShareCard } from '@/lib/share-card-utils';
+import { ProfilePromptDialog } from '@/components/ProfilePromptDialog';
+import { useUserProfile, isProfileComplete } from '@/hooks/useUserProfile';
+import type { UserProfile } from '@/hooks/useUserProfile';
 import type { PQDimensionScores } from '@/lib/api';
 
 interface WeekAtAGlanceStripProps {
@@ -100,11 +103,20 @@ export function WeekAtAGlanceStrip({
 
   // Share card download — canvas drawn ephemerally, no DOM element ref needed
   const [isDownloading, setIsDownloading] = useState(false);
+  const [profileDialogOpen, setProfileDialogOpen] = useState(false);
+  const { profile } = useUserProfile();
 
-  const handleDownload = useCallback(async () => {
+  // profileOverride: pass the just-saved profile from the dialog's onSave callback to avoid
+  // a stale closure — React hasn't re-rendered yet when onSave fires, so the hook value
+  // still holds the old (incomplete) profile. The override bypasses the stale value.
+  const triggerDownload = useCallback(async (profileOverride?: UserProfile) => {
     if (isDownloading || !displayTagline) return;
     setIsDownloading(true);
     try {
+      const activeProfile = profileOverride ?? profile;
+      const userProfile = activeProfile && isProfileComplete(activeProfile)
+        ? { name: activeProfile.name, avatarUrl: activeProfile.avatarDataUrl ?? '', githubUsername: activeProfile.githubUsername }
+        : undefined;
       await downloadShareCard({
         tagline: displayTagline,
         dimensionScores: pqScores ?? null,
@@ -114,6 +126,7 @@ export function WeekAtAGlanceStrip({
         sourceTools: sourceTools ?? [],
         currentWeek,
         effectivePatterns,
+        userProfile,
       });
       toast.success('AI Fluency Score card downloaded');
     } catch {
@@ -121,10 +134,33 @@ export function WeekAtAGlanceStrip({
     } finally {
       setIsDownloading(false);
     }
-  }, [isDownloading, displayTagline, pqScores, totalSessions, totalTokens, lifetimeSessions, sourceTools, currentWeek, effectivePatterns]);
+  }, [isDownloading, displayTagline, pqScores, totalSessions, totalTokens, lifetimeSessions, sourceTools, currentWeek, effectivePatterns, profile]);
+
+  const handleDownload = useCallback(() => {
+    if (isDownloading || !displayTagline) return;
+    if (!isProfileComplete(profile)) {
+      setProfileDialogOpen(true);
+      return;
+    }
+    triggerDownload();
+  }, [isDownloading, displayTagline, profile, triggerDownload]);
 
   return (
     <>
+      <ProfilePromptDialog
+        open={profileDialogOpen}
+        onOpenChange={setProfileDialogOpen}
+        onSave={(savedProfile) => {
+          setProfileDialogOpen(false);
+          // Pass savedProfile directly — React hasn't re-rendered yet so the hook
+          // value is still stale. The override ensures the card includes the profile.
+          triggerDownload(savedProfile);
+        }}
+        onSkip={() => {
+          setProfileDialogOpen(false);
+          triggerDownload();
+        }}
+      />
       <div className="rounded-lg border bg-gradient-to-br from-blue-500/5 to-violet-500/5 dark:from-blue-500/10 dark:to-violet-500/10 p-4 space-y-3">
         {/* Top row: tagline + streak/rate-limit badges + download button */}
         <div className="flex items-start justify-between gap-3 flex-wrap">

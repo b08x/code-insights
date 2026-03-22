@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { useLlmConfig, useSaveLlmConfig } from '@/hooks/useConfig';
+import { useUserProfile, normalizeGithubUsername } from '@/hooks/useUserProfile';
 import { fetchOllamaModels, testLlmConfig } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -17,6 +18,7 @@ import {
   ChevronRight,
   Check,
   Minus,
+  User,
 } from 'lucide-react';
 
 type LLMProvider = 'openai' | 'anthropic' | 'gemini' | 'ollama';
@@ -77,6 +79,29 @@ const PROVIDERS: ProviderInfo[] = [
 export default function SettingsPage() {
   const { data: llmConfig, isLoading: configLoading } = useLlmConfig();
   const saveMutation = useSaveLlmConfig();
+  const { profile, saveProfile } = useUserProfile();
+
+  // Profile card state
+  const [profileName, setProfileName] = useState(profile?.name ?? '');
+  const [profileGithubUsername, setProfileGithubUsername] = useState(profile?.githubUsername ?? '');
+  const [profileAvatarError, setProfileAvatarError] = useState(false);
+
+  // Sync profile fields when profile loads from localStorage
+  useEffect(() => {
+    setProfileName(profile?.name ?? '');
+    setProfileGithubUsername(profile?.githubUsername ?? '');
+    setProfileAvatarError(false);
+  }, [profile?.name, profile?.githubUsername]);
+
+  const profileNormalizedUsername = normalizeGithubUsername(profileGithubUsername);
+  const profileAvatarUrl = profileNormalizedUsername
+    ? `https://github.com/${profileNormalizedUsername}.png`
+    : '';
+
+  const handleSaveProfile = async () => {
+    await saveProfile(profileName, profileGithubUsername);
+    toast.success('Profile saved');
+  };
 
   const [llmProvider, setLlmProvider] = useState<LLMProvider>('openai');
   const [llmModel, setLlmModel] = useState('');
@@ -226,6 +251,80 @@ export default function SettingsPage() {
         <h1 className="text-2xl font-bold">Settings</h1>
         <p className="text-muted-foreground">Configure your Code Insights dashboard</p>
       </div>
+
+      {/* User Profile Card */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <User className="h-5 w-5" />
+            <CardTitle className="text-base">Your Profile</CardTitle>
+          </div>
+          <CardDescription>
+            Your name and GitHub avatar appear in the footer of downloaded share cards
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Live avatar preview */}
+          <div className="flex items-center gap-3">
+            <div className="h-12 w-12 rounded-full overflow-hidden bg-muted border border-border shrink-0 flex items-center justify-center">
+              {profileAvatarUrl && !profileAvatarError ? (
+                <img
+                  src={profileAvatarUrl}
+                  alt="GitHub avatar preview"
+                  className="h-full w-full object-cover"
+                  onError={() => setProfileAvatarError(true)}
+                  onLoad={() => setProfileAvatarError(false)}
+                />
+              ) : (
+                <span className="text-xl text-muted-foreground select-none">
+                  {profileName.trim().charAt(0).toUpperCase() || '?'}
+                </span>
+              )}
+            </div>
+            <div className="text-sm">
+              <p className="font-medium">{profileName.trim() || 'Your Name'}</p>
+              {profileNormalizedUsername ? (
+                <p className="text-muted-foreground text-xs">@{profileNormalizedUsername}</p>
+              ) : (
+                <p className="text-muted-foreground text-xs italic">Enter your GitHub username</p>
+              )}
+            </div>
+          </div>
+
+          <div>
+            <label className="text-sm font-medium">Display Name</label>
+            <Input
+              className="mt-1"
+              placeholder="e.g. Srikanth Rao"
+              value={profileName}
+              onChange={(e) => setProfileName(e.target.value)}
+            />
+          </div>
+
+          <div>
+            <label className="text-sm font-medium">GitHub Username</label>
+            <Input
+              className="mt-1"
+              placeholder="e.g. melagiri"
+              value={profileGithubUsername}
+              onChange={(e) => {
+                setProfileGithubUsername(e.target.value);
+                setProfileAvatarError(false);
+              }}
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Used to load your GitHub avatar on share cards. No @ prefix needed.
+            </p>
+          </div>
+
+          <Button
+            onClick={handleSaveProfile}
+            disabled={!profileName.trim() || !profileNormalizedUsername}
+          >
+            Save Profile
+          </Button>
+        </CardContent>
+      </Card>
 
       {/* Setup progress strip */}
       <div className="rounded-lg border bg-card px-4 py-3 flex items-center gap-4 flex-wrap">
