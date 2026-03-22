@@ -29,7 +29,7 @@ export interface ShareCardProps {
   sourceTools: string[];
   currentWeek: string;         // for month/year in header
   effectivePatterns?: Array<{ label: string; frequency: number }>; // top 3 by frequency
-  userProfile?: { name: string; avatarUrl: string }; // footer identity — optional, graceful fallback
+  userProfile?: { name: string; avatarUrl: string; githubUsername: string }; // footer identity — optional, graceful fallback
 }
 
 /** Truncate text to fit within maxWidth, appending ellipsis if needed. */
@@ -578,10 +578,26 @@ export function drawShareCard(
     ctx.arc(avatarCX, avatarCY, AVATAR_R, 0, Math.PI * 2);
     ctx.stroke();
 
-    // Name text — prominent enough to read
-    ctx.font = `500 16px ${FONT_STACK}`;
+    // Two-line text block: name + github URL, vertically centered against avatar
+    const textX = PAD + AVATAR_SIZE + 12;
+    const NAME_SIZE = 15;
+    const URL_SIZE = 12;
+    const LINE_GAP = 4; // gap between name and URL baselines beyond font size
+    const totalTextH = NAME_SIZE + LINE_GAP + URL_SIZE;
+    // Center the text block against the avatar center
+    const nameY = avatarCY - (totalTextH / 2) + NAME_SIZE; // baseline of name
+    const urlY = nameY + LINE_GAP + URL_SIZE; // baseline of URL
+
+    ctx.font = `500 ${NAME_SIZE}px ${FONT_STACK}`;
     ctx.fillStyle = '#cbd5e1';
-    ctx.fillText(props.userProfile.name, PAD + AVATAR_SIZE + 12, FOOTER_Y);
+    ctx.fillText(props.userProfile.name, textX, nameY);
+
+    // GitHub profile URL — smaller, muted
+    if (props.userProfile.githubUsername) {
+      ctx.font = `400 ${URL_SIZE}px ${FONT_STACK}`;
+      ctx.fillStyle = '#64748b';
+      ctx.fillText(`github.com/${props.userProfile.githubUsername}`, textX, urlY);
+    }
   } else {
     // Fallback: current layout (logo + site URL)
     drawLogo(ctx, PAD, FOOTER_Y - FOOTER_LOGO_SIZE + 4, FOOTER_LOGO_SIZE);
