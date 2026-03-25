@@ -35,8 +35,8 @@ Analyzes your sessions from **Claude Code, Cursor, Codex CLI, Copilot CLI, and V
 > If you have [Ollama](https://ollama.com) installed, `code-insights` will detect it automatically and use it for AI analysis. No account, no cost, no data leaves your machine.
 >
 > ```bash
-> ollama pull llama3.3   # recommended
-> code-insights sync     # Ollama detected automatically
+> ollama pull llama3.3        # recommended
+> npx @code-insights/cli      # Ollama detected automatically
 > ```
 
 ---
@@ -156,7 +156,7 @@ Session files (Claude Code, Cursor, Codex CLI, Copilot CLI, VS Code Copilot Chat
                                         ▼
                                ┌──────────────────┐
                                │  LLM Providers   │  analysis, facets,
-                               │  (your API key)  │  reflect, export
+                               │(API key or Ollama)│  reflect, export
                                └──────────────────┘
 ```
 
