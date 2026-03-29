@@ -24,13 +24,18 @@
     "./analysis/normalize-utils": "./dist/analysis/normalize-utils.js",
     "./analysis/friction-normalize": "./dist/analysis/friction-normalize.js",
     "./analysis/pattern-normalize": "./dist/analysis/pattern-normalize.js",
-    "./analysis/prompt-quality-normalize": "./dist/analysis/prompt-quality-normalize.js"
+    "./analysis/prompt-quality-normalize": "./dist/analysis/prompt-quality-normalize.js",
+    "./analysis/runner-types": "./dist/analysis/runner-types.js",
+    "./analysis/native-runner": "./dist/analysis/native-runner.js",
+    "./analysis/provider-runner": "./dist/analysis/provider-runner.js",
+    "./analysis/schemas/session-analysis.json": "./dist/analysis/schemas/session-analysis.json",
+    "./analysis/schemas/prompt-quality.json": "./dist/analysis/schemas/prompt-quality.json"
   },
   "bin": {
     "code-insights": "./dist/index.js"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node -e \"const{cpSync,mkdirSync}=require('fs');mkdirSync('dist/analysis/schemas',{recursive:true});cpSync('src/analysis/schemas/session-analysis.json','dist/analysis/schemas/session-analysis.json');cpSync('src/analysis/schemas/prompt-quality.json','dist/analysis/schemas/prompt-quality.json');\"",
     "dev": "tsc --watch",
     "start": "node dist/index.js",
     "test": "vitest run",
