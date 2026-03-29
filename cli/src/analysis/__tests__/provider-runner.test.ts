@@ -155,6 +155,48 @@ describe('ProviderRunner.runAnalysis() — Anthropic', () => {
   });
 });
 
+describe('ProviderRunner.runAnalysis() — Anthropic message shaping', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('extracts system message from messages array for Anthropic', async () => {
+    mockFetch.mockResolvedValueOnce(makeFetchResponse({
+      content: [{ text: '{}' }],
+      usage: { input_tokens: 10, output_tokens: 5 },
+    }));
+
+    const runner = new ProviderRunner(makeConfig({ provider: 'anthropic', model: 'claude-sonnet-4-20250514', apiKey: 'ak' }));
+    await runner.runAnalysis({ systemPrompt: 'BE HELPFUL', userPrompt: 'analyze' });
+
+    const body = JSON.parse((mockFetch.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.system).toBe('BE HELPFUL');
+    expect(body.messages).toEqual([{ role: 'user', content: 'analyze' }]);
+  });
+});
+
+describe('ProviderRunner.runAnalysis() — missing usage', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('returns zero tokens when usage is missing from OpenAI response', async () => {
+    mockFetch.mockResolvedValueOnce(makeFetchResponse({
+      choices: [{ message: { content: '{}' } }],
+      // no usage field
+    }));
+
+    const runner = new ProviderRunner(makeConfig());
+    const result = await runner.runAnalysis({ systemPrompt: 's', userPrompt: 'u' });
+
+    expect(result.inputTokens).toBe(0);
+    expect(result.outputTokens).toBe(0);
+  });
+});
+
+describe('ProviderRunner — constructor', () => {
+  it('throws on unknown provider', () => {
+    expect(() => new ProviderRunner({ provider: 'unknown' as never, model: 'x', apiKey: 'k' }))
+      .toThrow(/Unknown LLM provider/);
+  });
+});
+
 describe('ProviderRunner.runAnalysis() — Gemini', () => {
   beforeEach(() => vi.clearAllMocks());
 

@@ -96,6 +96,23 @@ describe('session-analysis.json schema sync', () => {
     }
   });
 
+  it('friction_points items have required category, description, severity, resolution fields', () => {
+    const fpSchema = (schema.properties?.facets as { properties?: Record<string, { items?: { required?: string[] } }> })
+      ?.properties?.friction_points?.items;
+    expect(fpSchema?.required).toContain('category');
+    expect(fpSchema?.required).toContain('description');
+    expect(fpSchema?.required).toContain('severity');
+    expect(fpSchema?.required).toContain('resolution');
+  });
+
+  it('effective_patterns items have required category, description, confidence fields', () => {
+    const epSchema = (schema.properties?.facets as { properties?: Record<string, { items?: { required?: string[] } }> })
+      ?.properties?.effective_patterns?.items;
+    expect(epSchema?.required).toContain('category');
+    expect(epSchema?.required).toContain('description');
+    expect(epSchema?.required).toContain('confidence');
+  });
+
   it('schema file is valid JSON', () => {
     // If loadSchema didn't throw, the file is valid JSON.
     expect(schema).toBeDefined();
@@ -129,6 +146,16 @@ describe('prompt-quality.json schema sync', () => {
     for (const field of DIMENSION_SCORES_REQUIRED) {
       expect(dimRequired, `Missing dimension_scores field '${field}' in prompt-quality.json`).toContain(field);
     }
+  });
+
+  it('findings items have required category, type, description, message_ref, impact, confidence fields', () => {
+    const fSchema = (schema.properties?.findings as { items?: { required?: string[] } })?.items;
+    expect(fSchema?.required).toContain('category');
+    expect(fSchema?.required).toContain('type');
+    expect(fSchema?.required).toContain('description');
+    expect(fSchema?.required).toContain('message_ref');
+    expect(fSchema?.required).toContain('impact');
+    expect(fSchema?.required).toContain('confidence');
   });
 
   it('schema file is valid JSON', () => {

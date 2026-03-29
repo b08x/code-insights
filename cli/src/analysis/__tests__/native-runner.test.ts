@@ -146,6 +146,22 @@ describe('ClaudeNativeRunner.runAnalysis()', () => {
       .rejects.toThrow(/non-JSON output/);
   });
 
+  it('throws when output is JSON but not an array', async () => {
+    mockExecFileSync.mockReturnValueOnce('{"type":"result"}' as unknown as Buffer);
+    const runner = new ClaudeNativeRunner();
+
+    await expect(runner.runAnalysis({ systemPrompt: 's', userPrompt: 'u' }))
+      .rejects.toThrow(/not an array/);
+  });
+
+  it('throws when event array is empty', async () => {
+    mockExecFileSync.mockReturnValueOnce('[]' as unknown as Buffer);
+    const runner = new ClaudeNativeRunner();
+
+    await expect(runner.runAnalysis({ systemPrompt: 's', userPrompt: 'u' }))
+      .rejects.toThrow(/no result event/);
+  });
+
   it('throws when JSON array has no result event', async () => {
     const noResultEnvelope = JSON.stringify([
       { type: 'system', subtype: 'init' },
@@ -156,6 +172,18 @@ describe('ClaudeNativeRunner.runAnalysis()', () => {
 
     await expect(runner.runAnalysis({ systemPrompt: 's', userPrompt: 'u' }))
       .rejects.toThrow(/no result event/);
+  });
+
+  it('throws on error_max_turns subtype', async () => {
+    const envelope = JSON.stringify([
+      { type: 'system', subtype: 'init' },
+      { type: 'result', subtype: 'error_max_turns', result: 'Max turns reached', is_error: true },
+    ]);
+    mockExecFileSync.mockReturnValueOnce(envelope as unknown as Buffer);
+    const runner = new ClaudeNativeRunner();
+
+    await expect(runner.runAnalysis({ systemPrompt: 's', userPrompt: 'u' }))
+      .rejects.toThrow(/claude -p reported an error.*Max turns/);
   });
 
   it('writes system prompt to a temp file', async () => {
