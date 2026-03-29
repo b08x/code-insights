@@ -142,11 +142,6 @@ function applyV6(db: Database.Database): void {
 }
 
 
-function applyV8(db: Database.Database): void {
-  db.exec(`ALTER TABLE analysis_usage ADD COLUMN session_message_count INTEGER`);
-  db.prepare('INSERT OR IGNORE INTO schema_version (version) VALUES (?)').run(8);
-}
-
 function applyV7(db: Database.Database): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS analysis_usage (
@@ -170,4 +165,8 @@ function applyV7(db: Database.Database): void {
       ON analysis_usage(analyzed_at DESC)
   `);
   db.prepare('INSERT OR IGNORE INTO schema_version (version) VALUES (?)').run(7);
+}
+function applyV8(db: Database.Database): void {
+  db.exec(`ALTER TABLE analysis_usage ADD COLUMN session_message_count INTEGER`);
+  db.prepare('INSERT OR IGNORE INTO schema_version (version) VALUES (?)').run(8);
 }
