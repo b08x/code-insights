@@ -155,6 +155,92 @@ describe('ProviderRunner.runAnalysis() — Anthropic', () => {
   });
 });
 
+describe('ProviderRunner.runAnalysis() — Gemini', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('calls Gemini endpoint with correct URL and payload', async () => {
+    const rawJson = '{"summary": {"title": "G", "content": "C", "bullets": []}}';
+    mockFetch.mockResolvedValueOnce(makeFetchResponse({
+      candidates: [{ content: { parts: [{ text: rawJson }] } }],
+      usageMetadata: { promptTokenCount: 150, candidatesTokenCount: 40 },
+    }));
+
+    const runner = new ProviderRunner(makeConfig({ provider: 'gemini', model: 'gemini-1.5-flash', apiKey: 'gk-test' }));
+    const result = await runner.runAnalysis({ systemPrompt: 'sys', userPrompt: 'user' });
+
+    const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toContain('generativelanguage.googleapis.com');
+    expect(url).toContain('gk-test');
+    expect(url).toContain('gemini-1.5-flash');
+
+    const body = JSON.parse(init.body as string);
+    // System message routed to systemInstruction, not contents
+    expect(body.systemInstruction).toEqual({ parts: [{ text: 'sys' }] });
+    expect(body.contents[0].parts[0].text).toBe('user');
+
+    expect(result.rawJson).toBe(rawJson);
+    expect(result.inputTokens).toBe(150);
+    expect(result.outputTokens).toBe(40);
+    expect(result.provider).toBe('gemini');
+  });
+
+  it('throws on Gemini API error', async () => {
+    mockFetch.mockResolvedValueOnce(makeFetchResponse(
+      { error: { message: 'API key not valid.' } },
+      400
+    ));
+
+    const runner = new ProviderRunner(makeConfig({ provider: 'gemini', model: 'gemini-1.5-flash', apiKey: 'bad' }));
+    await expect(runner.runAnalysis({ systemPrompt: 's', userPrompt: 'u' }))
+      .rejects.toThrow('API key not valid.');
+  });
+});
+
+describe('ProviderRunner.runAnalysis() — Ollama', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('calls Ollama endpoint with correct payload', async () => {
+    const rawJson = '{"summary": {"title": "O", "content": "C", "bullets": []}}';
+    mockFetch.mockResolvedValueOnce(makeFetchResponse({
+      message: { content: rawJson },
+      prompt_eval_count: 80,
+      eval_count: 30,
+    }));
+
+    const runner = new ProviderRunner(makeConfig({ provider: 'ollama', model: 'llama3', apiKey: undefined }));
+    const result = await runner.runAnalysis({ systemPrompt: 'sys', userPrompt: 'user' });
+
+    const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('http://localhost:11434/api/chat');
+
+    const body = JSON.parse(init.body as string);
+    expect(body.model).toBe('llama3');
+    expect(body.stream).toBe(false);
+
+    expect(result.rawJson).toBe(rawJson);
+    expect(result.inputTokens).toBe(80);
+    expect(result.outputTokens).toBe(30);
+    expect(result.provider).toBe('ollama');
+  });
+
+  it('uses custom baseUrl when provided', async () => {
+    mockFetch.mockResolvedValueOnce(makeFetchResponse({
+      message: { content: '{}' },
+    }));
+
+    const runner = new ProviderRunner(makeConfig({
+      provider: 'ollama',
+      model: 'mistral',
+      apiKey: undefined,
+      baseUrl: 'http://my-ollama:11434',
+    }));
+    await runner.runAnalysis({ systemPrompt: 's', userPrompt: 'u' });
+
+    const [url] = mockFetch.mock.calls[0] as [string];
+    expect(url).toBe('http://my-ollama:11434/api/chat');
+  });
+});
+
 describe('ProviderRunner — jsonSchema param', () => {
   beforeEach(() => vi.clearAllMocks());
 

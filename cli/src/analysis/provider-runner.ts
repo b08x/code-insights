@@ -18,6 +18,9 @@ import type { AnalysisRunner, RunAnalysisParams, RunAnalysisResult } from './run
 
 interface LLMMessage {
   role: 'system' | 'user' | 'assistant';
+  // Intentionally narrower than server/src/llm/types.ts LLMMessage (which allows ContentBlock[]).
+  // ProviderRunner always sends plain strings — prompt caching via ContentBlock[] is a
+  // dashboard/API concern. The insights CLI command builds simple system+user pairs.
   content: string;
 }
 
