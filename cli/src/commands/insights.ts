@@ -15,7 +15,6 @@
  *   Bypassed with --force.
  */
 
-import { randomUUID } from 'crypto';
 import chalk from 'chalk';
 import { getDb } from '../db/client.js';
 import { ClaudeNativeRunner } from '../analysis/native-runner.js';
@@ -28,14 +27,18 @@ import {
 } from '../analysis/prompts.js';
 import { formatMessagesForAnalysis } from '../analysis/message-format.js';
 import { parseAnalysisResponse, parsePromptQualityResponse } from '../analysis/response-parsers.js';
-import { normalizePatternCategory } from '../analysis/pattern-normalize.js';
-import { normalizePromptQualityCategory } from '../analysis/prompt-quality-normalize.js';
+import {
+  saveInsightsToDb,
+  deleteSessionInsights,
+  saveFacetsToDb,
+  convertToInsightRows,
+  convertPQToInsightRow,
+} from '../analysis/analysis-db.js';
+import { saveAnalysisUsage } from '../analysis/analysis-usage-db.js';
 import type { AnalysisRunner } from '../analysis/runner-types.js';
-import type { SQLiteMessageRow, AnalysisResponse, PromptQualityResponse } from '../analysis/prompt-types.js';
+import type { SQLiteMessageRow } from '../analysis/prompt-types.js';
 
-const ANALYSIS_VERSION = '3.0.0';
-
-// ── DB types (mirror server/src/llm/analysis-db.ts, no cross-package import) ──
+// ── DB types ──────────────────────────────────────────────────────────────────
 
 interface SessionRow {
   id: string;
@@ -50,26 +53,7 @@ interface SessionRow {
   slash_commands: string | null;
 }
 
-interface InsightRow {
-  id: string;
-  session_id: string;
-  project_id: string;
-  project_name: string;
-  type: string;
-  title: string;
-  content: string;
-  summary: string;
-  bullets: string;
-  confidence: number;
-  source: 'llm';
-  metadata: string | null;
-  timestamp: string;
-  created_at: string;
-  scope: string;
-  analysis_version: string;
-}
-
-// ── Inline DB helpers (CLI cannot import from @code-insights/server) ──────────
+// ── Session query helpers ─────────────────────────────────────────────────────
 
 function loadSessionForAnalysis(sessionId: string): SessionRow | null {
   const db = getDb();
@@ -89,267 +73,6 @@ function loadSessionMessages(sessionId: string): SQLiteMessageRow[] {
     WHERE session_id = ?
     ORDER BY timestamp ASC
   `).all(sessionId) as SQLiteMessageRow[];
-}
-
-function saveInsightsToDb(insights: InsightRow[]): void {
-  if (insights.length === 0) return;
-  const db = getDb();
-  const insert = db.prepare(`
-    INSERT OR REPLACE INTO insights (
-      id, session_id, project_id, project_name, type, title, content,
-      summary, bullets, confidence, source, metadata, timestamp,
-      created_at, scope, analysis_version
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `);
-  const insertMany = db.transaction((rows: InsightRow[]) => {
-    for (const row of rows) {
-      insert.run(
-        row.id, row.session_id, row.project_id, row.project_name,
-        row.type, row.title, row.content, row.summary, row.bullets,
-        row.confidence, row.source, row.metadata, row.timestamp,
-        row.created_at, row.scope, row.analysis_version,
-      );
-    }
-  });
-  insertMany(insights);
-}
-
-function deleteSessionInsights(sessionId: string, opts: {
-  excludeTypes?: string[];
-  excludeIds?: string[];
-}): void {
-  const db = getDb();
-  const conditions: string[] = ['session_id = ?'];
-  const params: (string | number)[] = [sessionId];
-
-  if (opts.excludeTypes && opts.excludeTypes.length > 0) {
-    conditions.push(`type NOT IN (${opts.excludeTypes.map(() => '?').join(', ')})`);
-    params.push(...opts.excludeTypes);
-  }
-  if (opts.excludeIds && opts.excludeIds.length > 0) {
-    conditions.push(`id NOT IN (${opts.excludeIds.map(() => '?').join(', ')})`);
-    params.push(...opts.excludeIds);
-  }
-
-  db.prepare(`DELETE FROM insights WHERE ${conditions.join(' AND ')}`).run(...params);
-}
-
-function saveFacetsToDb(
-  sessionId: string,
-  facets: NonNullable<AnalysisResponse['facets']>,
-): void {
-  const db = getDb();
-  const normalizedPatterns = Array.isArray(facets.effective_patterns)
-    ? facets.effective_patterns.map(ep => ({
-        ...ep,
-        category: ep.category ? normalizePatternCategory(ep.category) : 'uncategorized',
-      }))
-    : [];
-
-  db.prepare(`
-    INSERT OR REPLACE INTO session_facets
-    (session_id, outcome_satisfaction, workflow_pattern, had_course_correction,
-     course_correction_reason, iteration_count, friction_points, effective_patterns,
-     analysis_version)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    sessionId,
-    facets.outcome_satisfaction,
-    facets.workflow_pattern ?? null,
-    facets.had_course_correction ? 1 : 0,
-    facets.course_correction_reason ?? null,
-    facets.iteration_count,
-    JSON.stringify(Array.isArray(facets.friction_points) ? facets.friction_points : []),
-    JSON.stringify(normalizedPatterns),
-    ANALYSIS_VERSION,
-  );
-}
-
-function saveAnalysisUsage(data: {
-  session_id: string;
-  analysis_type: 'session' | 'prompt_quality';
-  provider: string;
-  model: string;
-  input_tokens: number;
-  output_tokens: number;
-  cache_creation_tokens?: number;
-  cache_read_tokens?: number;
-  estimated_cost_usd: number;
-  duration_ms?: number;
-  session_message_count?: number;
-}): void {
-  const db = getDb();
-  db.prepare(`
-    INSERT INTO analysis_usage
-      (session_id, analysis_type, provider, model,
-       input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens,
-       estimated_cost_usd, duration_ms, chunk_count, session_message_count)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
-    ON CONFLICT(session_id, analysis_type) DO UPDATE SET
-      provider = excluded.provider,
-      model = excluded.model,
-      input_tokens = excluded.input_tokens,
-      output_tokens = excluded.output_tokens,
-      cache_creation_tokens = excluded.cache_creation_tokens,
-      cache_read_tokens = excluded.cache_read_tokens,
-      estimated_cost_usd = excluded.estimated_cost_usd,
-      duration_ms = excluded.duration_ms,
-      chunk_count = excluded.chunk_count,
-      session_message_count = excluded.session_message_count
-  `).run(
-    data.session_id,
-    data.analysis_type,
-    data.provider,
-    data.model,
-    data.input_tokens,
-    data.output_tokens,
-    data.cache_creation_tokens ?? 0,
-    data.cache_read_tokens ?? 0,
-    data.estimated_cost_usd,
-    data.duration_ms ?? null,
-    data.session_message_count ?? null,
-  );
-}
-
-// ── Row converters ────────────────────────────────────────────────────────────
-
-function convertToInsightRows(response: AnalysisResponse, session: SessionRow): InsightRow[] {
-  const insights: InsightRow[] = [];
-  const now = new Date().toISOString();
-
-  insights.push({
-    id: randomUUID(),
-    session_id: session.id,
-    project_id: session.project_id,
-    project_name: session.project_name,
-    type: 'summary',
-    title: response.summary.title,
-    content: response.summary.content,
-    summary: response.summary.content,
-    bullets: JSON.stringify(response.summary.bullets),
-    confidence: 0.9,
-    source: 'llm',
-    metadata: response.summary.outcome
-      ? JSON.stringify({ outcome: response.summary.outcome })
-      : null,
-    timestamp: session.ended_at,
-    created_at: now,
-    scope: 'session',
-    analysis_version: ANALYSIS_VERSION,
-  });
-
-  for (const decision of (response.decisions ?? [])) {
-    const confidence = decision.confidence ?? 85;
-    if (confidence < 70) continue;
-
-    const content = decision.situation && decision.choice
-      ? `${decision.situation} → ${decision.choice}`
-      : decision.choice || decision.situation || decision.title;
-
-    insights.push({
-      id: randomUUID(),
-      session_id: session.id,
-      project_id: session.project_id,
-      project_name: session.project_name,
-      type: 'decision',
-      title: decision.title,
-      content,
-      summary: (decision.choice || content).slice(0, 200),
-      bullets: JSON.stringify(
-        (decision.alternatives || [])
-          .filter((a: { option?: string }) => a?.option)
-          .map((a: { option?: string; rejected_because?: string }) =>
-            `${a.option}: ${a.rejected_because || 'no reason given'}`)
-      ),
-      confidence: confidence / 100,
-      source: 'llm',
-      metadata: JSON.stringify({
-        situation: decision.situation,
-        choice: decision.choice,
-        reasoning: decision.reasoning,
-        alternatives: decision.alternatives,
-        trade_offs: decision.trade_offs,
-        revisit_when: decision.revisit_when,
-        evidence: decision.evidence,
-      }),
-      timestamp: session.ended_at,
-      created_at: now,
-      scope: 'session',
-      analysis_version: ANALYSIS_VERSION,
-    });
-  }
-
-  for (const learning of (response.learnings ?? [])) {
-    const confidence = learning.confidence ?? 80;
-    if (confidence < 70) continue;
-
-    const content = learning.takeaway || learning.title;
-
-    insights.push({
-      id: randomUUID(),
-      session_id: session.id,
-      project_id: session.project_id,
-      project_name: session.project_name,
-      type: 'learning',
-      title: learning.title,
-      content,
-      summary: content.slice(0, 200),
-      bullets: JSON.stringify([]),
-      confidence: confidence / 100,
-      source: 'llm',
-      metadata: JSON.stringify({
-        symptom: learning.symptom,
-        root_cause: learning.root_cause,
-        takeaway: learning.takeaway,
-        applies_when: learning.applies_when,
-        evidence: learning.evidence,
-      }),
-      timestamp: session.ended_at,
-      created_at: now,
-      scope: 'session',
-      analysis_version: ANALYSIS_VERSION,
-    });
-  }
-
-  return insights;
-}
-
-function convertPQToInsightRow(response: PromptQualityResponse, session: SessionRow): InsightRow {
-  const now = new Date().toISOString();
-
-  const normalizedFindings = (response.findings ?? []).map((f: { category?: string }) => ({
-    ...f,
-    category: f.category ? normalizePromptQualityCategory(f.category) : 'uncategorized',
-  }));
-  const normalizedTakeaways = (response.takeaways ?? []).map((t: { category?: string }) => ({
-    ...t,
-    category: t.category ? normalizePromptQualityCategory(t.category) : 'uncategorized',
-  }));
-
-  return {
-    id: randomUUID(),
-    session_id: session.id,
-    project_id: session.project_id,
-    project_name: session.project_name,
-    type: 'prompt_quality',
-    title: `Prompt Efficiency: ${response.efficiency_score}/100`,
-    content: response.assessment,
-    summary: response.assessment,
-    bullets: JSON.stringify([]),
-    confidence: 0.85,
-    source: 'llm',
-    metadata: JSON.stringify({
-      efficiency_score: response.efficiency_score,
-      message_overhead: response.message_overhead,
-      takeaways: normalizedTakeaways,
-      findings: normalizedFindings,
-      dimension_scores: response.dimension_scores,
-    }),
-    timestamp: session.ended_at,
-    created_at: now,
-    scope: 'session',
-    analysis_version: ANALYSIS_VERSION,
-  };
 }
 
 // ── Resume detection ──────────────────────────────────────────────────────────
@@ -401,6 +124,15 @@ export async function runInsightsCommand(options: InsightsCommandOptions): Promi
     throw new Error(`Session '${options.sessionId}' not found in local database.`);
   }
 
+  // SessionData is the shared type accepted by analysis-db converters.
+  // SessionRow uses null for optional fields (SQLite); SessionData uses undefined.
+  const sessionData = {
+    ...session,
+    compact_count: session.compact_count ?? undefined,
+    auto_compact_count: session.auto_compact_count ?? undefined,
+    slash_commands: session.slash_commands ?? undefined,
+  };
+
   // 3. Resume detection — hook mode only (skipped when --force)
   if (options.hookMode && !options.force) {
     if (isAlreadyAnalyzed(options.sessionId, session.message_count)) {
@@ -451,7 +183,7 @@ export async function runInsightsCommand(options: InsightsCommandOptions): Promi
   }
 
   // Save session insights (upsert: insert new, delete old)
-  const sessionInsights = convertToInsightRows(parsedSession.data, session);
+  const sessionInsights = convertToInsightRows(parsedSession.data, sessionData);
   saveInsightsToDb(sessionInsights);
   deleteSessionInsights(session.id, {
     excludeTypes: ['prompt_quality'],
@@ -495,7 +227,7 @@ export async function runInsightsCommand(options: InsightsCommandOptions): Promi
     throw new Error(`Prompt quality analysis failed: ${parsedPQ.error.error_message}`);
   }
 
-  const pqInsight = convertPQToInsightRow(parsedPQ.data, session);
+  const pqInsight = convertPQToInsightRow(parsedPQ.data, sessionData);
   saveInsightsToDb([pqInsight]);
   deleteSessionInsights(session.id, {
     excludeTypes: ['summary', 'decision', 'learning'],
