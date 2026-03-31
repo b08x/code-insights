@@ -12,6 +12,16 @@ Extract decisions, learnings, and prompt quality scores from your AI coding sess
   <img src="https://raw.githubusercontent.com/melagiri/code-insights/master/docs/assets/screenshots/code-insights-ai-fluency-score.png" alt="AI Fluency Score — your coding fingerprint across tools" width="600" />
 </p>
 
+---
+
+> **Claude Code users: zero-config analysis, zero cost.**
+> Install the hook once. Every session gets analyzed automatically using your Claude subscription.
+> ```bash
+> code-insights install-hook
+> ```
+
+---
+
 ## Quick Start
 
 ```bash
@@ -21,6 +31,7 @@ npx @code-insights/cli
 # Or install globally
 npm install -g @code-insights/cli
 code-insights                          # sync sessions + open dashboard
+code-insights install-hook             # auto-sync + auto-analyze on session end
 ```
 
 The dashboard opens at `http://localhost:7890` and shows your sessions, analytics, and LLM-powered insights.
@@ -220,13 +231,38 @@ code-insights open --project           # Open filtered to the current project
 code-insights reset --confirm
 ```
 
-### Auto-Sync Hook
+### Session Analysis
 
 ```bash
-# Install a Claude Code hook — auto-syncs when sessions end
+# Analyze a session using your configured LLM provider
+code-insights insights <session_id>
+
+# Analyze using Claude Code (no API key needed — uses your Claude subscription)
+code-insights insights <session_id> --native
+
+# Check for unanalyzed sessions (last 7 days)
+code-insights insights check
+
+# Batch analyze all unanalyzed sessions
+code-insights insights check --analyze
+
+# Custom lookback window
+code-insights insights check --days 14
+```
+
+### Auto-Sync & Auto-Analyze Hook
+
+```bash
+# Install Claude Code hooks — auto-sync + auto-analyze when sessions end
 code-insights install-hook
 
-# Remove the hook
+# Install only the sync hook (no analysis)
+code-insights install-hook --sync-only
+
+# Install only the analysis hook
+code-insights install-hook --analysis-only
+
+# Remove all hooks
 code-insights uninstall-hook
 ```
 
@@ -248,7 +284,9 @@ CODE_INSIGHTS_TELEMETRY_DISABLED=1 code-insights sync
 
 ## LLM Configuration
 
-Session analysis (summaries, decisions, learnings, facets) and Reflect synthesis require an LLM provider. Configure it via CLI or the dashboard Settings page.
+**Claude Code users don't need to configure anything.** Run `code-insights install-hook` and sessions are analyzed automatically using your Claude subscription.
+
+For other tools, or if you prefer a different model, configure a provider via CLI or the dashboard Settings page:
 
 ```bash
 code-insights config llm
@@ -258,6 +296,7 @@ code-insights config llm
 
 | Provider | Models | Requires API Key |
 |----------|--------|-----------------|
+| Claude Code (native) | Your Claude subscription model | No (via `install-hook`) |
 | Anthropic | claude-opus-4-6, claude-sonnet-4-6, etc. | Yes |
 | OpenAI | gpt-4o, gpt-4o-mini, etc. | Yes |
 | Google Gemini | gemini-2.0-flash, gemini-2.0-pro, etc. | Yes |

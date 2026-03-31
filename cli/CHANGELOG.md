@@ -2,6 +2,32 @@
 
 All notable changes to `@code-insights/cli` will be documented in this file.
 
+## [4.8.0] - 2026-03-31
+
+### Added
+
+- **Native session analysis** — New `code-insights insights` command analyzes sessions using `claude -p` (your Claude subscription) or any configured LLM provider. Supports `--native`, `--hook`, `--force`, `--quiet`, and `--source` flags. Two-pass analysis: session insights + prompt quality, with results saved to SQLite.
+
+- **Zero-config SessionEnd hook** — `code-insights install-hook` now installs both a `Stop` (sync) hook and a `SessionEnd` (analysis) hook. When a Claude Code session ends, insights are generated automatically using your Claude subscription — no API key needed. Supports `--sync-only` and `--analysis-only` flags.
+
+- **Backfill and recovery** — `code-insights insights check` finds unanalyzed sessions (last 7 days) with count-based behavior: auto-analyzes 1-2 silently, suggests `--analyze` for 3+, shows time estimate for 11+. `--days` flag overrides lookback window.
+
+- **AnalysisRunner interface** — Pluggable abstraction layer with `ClaudeNativeRunner` (uses `claude -p`) and `ProviderRunner` (uses configured LLM). Adding a new runner means implementing one interface.
+
+- **V8 schema migration** — `session_message_count` column on `analysis_usage` for resume detection. Sessions that are resumed after analysis get re-analyzed automatically.
+
+- **Dashboard dual-path CTA** — `LlmNudgeBanner` now shows "Install the Claude Code hook" as primary CTA (zero-config), with API provider configuration as secondary. Analysis provenance badge shows "Analyzed via Claude Code" on session detail for native-analyzed sessions.
+
+### Changed
+
+- **Prompt modules migrated to CLI** — 9 analysis modules (prompt builders, parsers, normalizers) moved from `server/src/llm/` to `cli/src/analysis/`. Server files become thin re-exports. Eliminates circular dependency and enables CLI-only analysis.
+
+- **DB helpers consolidated** — `analysis-db.ts` and `analysis-usage-db.ts` moved to CLI with server re-exports. Uses `COALESCE` pattern for shared upsert safety. Removed ~170 lines of inline duplicates.
+
+### Fixed
+
+- **Native runner auth** — Removed `--bare` flag from `claude -p` invocation, which was blocking OAuth/keychain subscription auth. Increased timeout from 120s to 300s for large sessions.
+
 ## [4.7.0] - 2026-03-25
 
 ### Added
