@@ -62,6 +62,7 @@ Read the full diff and commit messages. Then:
    - `docs/PRODUCT.md` — if product capabilities changed
    - `docs/VISION.md` — for major releases, if the vision expanded
    - `README.md` — if user-facing features or setup changed
+   - `cli/README.md` — if CLI usage, commands, or npm package description changed
 
 ---
 
@@ -84,6 +85,7 @@ Files to modify:
   {- docs/ROADMAP.md (if applicable)}
   {- docs/PRODUCT.md (if applicable)}
   {- docs/VISION.md (if applicable)}
+  {- cli/README.md (if applicable)}
 
 Approve, or tell me what to change?
 ```
@@ -150,7 +152,7 @@ Commit with specific files only (never `git add .`):
 # Add only the files we changed
 git add cli/package.json cli/CHANGELOG.md
 # Add any docs files that were modified (if applicable)
-# git add docs/ROADMAP.md docs/PRODUCT.md docs/VISION.md README.md
+# git add docs/ROADMAP.md docs/PRODUCT.md docs/VISION.md README.md cli/README.md
 
 git commit -m "$(cat <<'EOF'
 chore: bump version to vX.Y.Z
