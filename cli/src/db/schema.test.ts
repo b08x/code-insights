@@ -298,12 +298,12 @@ describe('runMigrations', () => {
     db.close();
   });
 
-  it('V8 schema version is 8 after migration', () => {
+  it('V9 schema version is 9 after migration', () => {
     const db = new Database(':memory:');
     runMigrations(db);
 
     const row = db.prepare('SELECT MAX(version) AS v FROM schema_version').get() as { v: number };
-    expect(row.v).toBe(8);
+    expect(row.v).toBe(9);
 
     db.close();
   });
