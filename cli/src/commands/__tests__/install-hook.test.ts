@@ -60,152 +60,115 @@ function writeSettings(data: unknown): void {
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe('installHookCommand', () => {
-  describe('default install (both hooks)', () => {
-    it('installs both Stop and SessionEnd hooks', async () => {
+  describe('default install', () => {
+    it('installs a single SessionEnd hook (no Stop hook)', async () => {
       const { installHookCommand } = await import('../install-hook.js');
-      await installHookCommand({});
+      await installHookCommand();
 
       const settings = readSettings();
       const hooks = settings.hooks as Record<string, unknown[]>;
 
       expect(hooks).toBeDefined();
-      expect(Array.isArray(hooks.Stop)).toBe(true);
+      // v4.9+: only SessionEnd hook, no Stop hook
+      expect(hooks.Stop).toBeUndefined();
       expect(Array.isArray(hooks.SessionEnd)).toBe(true);
-      expect(hooks.Stop).toHaveLength(1);
       expect(hooks.SessionEnd).toHaveLength(1);
     });
 
-    it('Stop hook contains sync command pointing to stable CLI entry', async () => {
+    it('SessionEnd hook runs session-end command with 10s timeout', async () => {
       const { installHookCommand } = await import('../install-hook.js');
-      await installHookCommand({});
-
-      const settings = readSettings();
-      const hooks = settings.hooks as Record<string, Array<{ hooks: Array<{ type: string; command: string; timeout?: number }> }>>;
-      const stopCmd = hooks.Stop[0].hooks[0];
-
-      expect(stopCmd.type).toBe('command');
-      expect(stopCmd.command).toContain('sync -q');
-      // Must use node + absolute path (not process.argv[1] which is unstable under npx)
-      expect(stopCmd.command).toMatch(/^node .+index\.js sync -q$/);
-    });
-
-    it('SessionEnd hook contains insights command with 300s timeout', async () => {
-      const { installHookCommand } = await import('../install-hook.js');
-      await installHookCommand({});
+      await installHookCommand();
 
       const settings = readSettings();
       const hooks = settings.hooks as Record<string, Array<{ hooks: Array<{ type: string; command: string; timeout?: number }> }>>;
       const sessionEndCmd = hooks.SessionEnd[0].hooks[0];
 
       expect(sessionEndCmd.type).toBe('command');
-      expect(sessionEndCmd.command).toContain('insights --hook --native -q');
-      expect(sessionEndCmd.command).toMatch(/^node .+index\.js insights --hook --native -q$/);
-      expect(sessionEndCmd.timeout).toBe(300000);
+      expect(sessionEndCmd.command).toContain('session-end --native -q');
+      // Must use node + absolute path (not process.argv[1] which is unstable under npx)
+      expect(sessionEndCmd.command).toMatch(/^node .+index\.js session-end --native -q$/);
+      // 10s timeout — session-end exits immediately after spawning the worker
+      expect(sessionEndCmd.timeout).toBe(10000);
     });
 
     it('preserves existing settings.json content', async () => {
       writeSettings({ theme: 'dark', someOtherKey: 42 });
 
       const { installHookCommand } = await import('../install-hook.js');
-      await installHookCommand({});
+      await installHookCommand();
 
       const settings = readSettings();
       expect(settings.theme).toBe('dark');
       expect(settings.someOtherKey).toBe(42);
     });
 
-    it('preserves existing non-code-insights hooks', async () => {
+    it('preserves existing non-code-insights SessionEnd hooks', async () => {
       writeSettings({
         hooks: {
-          Stop: [{ hooks: [{ type: 'command', command: 'other-tool sync' }] }],
+          SessionEnd: [{ hooks: [{ type: 'command', command: 'other-tool end-session' }] }],
         },
       });
 
       const { installHookCommand } = await import('../install-hook.js');
-      await installHookCommand({});
+      await installHookCommand();
 
       const settings = readSettings();
       const hooks = settings.hooks as Record<string, unknown[]>;
-      // Should have 2 Stop hooks: the existing one + our new one
-      expect(hooks.Stop).toHaveLength(2);
+      // Should have 2 SessionEnd hooks: the existing one + our new one
+      expect(hooks.SessionEnd).toHaveLength(2);
     });
-  });
 
-  describe('--sync-only + --analysis-only mutual exclusion', () => {
-    it('returns early with error message when both flags are set', async () => {
+    it('does not duplicate hook when installed twice', async () => {
       const { installHookCommand } = await import('../install-hook.js');
-      const consoleSpy = vi.spyOn(console, 'log');
-      await installHookCommand({ syncOnly: true, analysisOnly: true });
-
-      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Cannot use'));
-      // No settings file should have been written
-      expect(fs.existsSync(hooksFile())).toBe(false);
-    });
-  });
-
-  describe('--sync-only flag', () => {
-    it('installs only Stop hook when --sync-only is set', async () => {
-      const { installHookCommand } = await import('../install-hook.js');
-      await installHookCommand({ syncOnly: true });
+      await installHookCommand();
+      vi.resetModules();
+      const { installHookCommand: installHookCommand2 } = await import('../install-hook.js');
+      await installHookCommand2();
 
       const settings = readSettings();
       const hooks = settings.hooks as Record<string, unknown[]>;
-      expect(hooks.Stop).toHaveLength(1);
-      expect(hooks.SessionEnd).toBeUndefined();
-    });
-  });
-
-  describe('--analysis-only flag', () => {
-    it('installs only SessionEnd hook when --analysis-only is set', async () => {
-      const { installHookCommand } = await import('../install-hook.js');
-      await installHookCommand({ analysisOnly: true });
-
-      const settings = readSettings();
-      const hooks = settings.hooks as Record<string, unknown[]>;
+      // Second install must be idempotent — still exactly one code-insights hook
       expect(hooks.SessionEnd).toHaveLength(1);
+    });
+  });
+
+  describe('v4.8.x migration', () => {
+    it('removes legacy Stop hook on install', async () => {
+      writeSettings({
+        hooks: {
+          Stop: [{ hooks: [{ type: 'command', command: 'node /path/code-insights sync -q' }] }],
+        },
+      });
+
+      const { installHookCommand } = await import('../install-hook.js');
+      await installHookCommand();
+
+      const settings = readSettings();
+      const hooks = settings.hooks as Record<string, unknown[]>;
+      // Legacy Stop hook removed; only our new SessionEnd hook remains
       expect(hooks.Stop).toBeUndefined();
-    });
-  });
-
-  describe('duplicate detection', () => {
-    it('does not install Stop hook if code-insights Stop hook already exists', async () => {
-      const { installHookCommand } = await import('../install-hook.js');
-      await installHookCommand({ syncOnly: true });
-      await installHookCommand({ syncOnly: true });
-
-      const settings = readSettings();
-      const hooks = settings.hooks as Record<string, unknown[]>;
-      expect(hooks.Stop).toHaveLength(1);
-    });
-
-    it('does not install SessionEnd hook if code-insights SessionEnd hook already exists', async () => {
-      const { installHookCommand } = await import('../install-hook.js');
-      await installHookCommand({ analysisOnly: true });
-      await installHookCommand({ analysisOnly: true });
-
-      const settings = readSettings();
-      const hooks = settings.hooks as Record<string, unknown[]>;
       expect(hooks.SessionEnd).toHaveLength(1);
     });
 
-    it('shows consolidated already-installed message when both hooks exist on default install', async () => {
+    it('preserves non-code-insights Stop hooks during migration', async () => {
+      writeSettings({
+        hooks: {
+          Stop: [
+            { hooks: [{ type: 'command', command: 'other-tool cleanup' }] },
+            { hooks: [{ type: 'command', command: 'node /path/code-insights sync -q' }] },
+          ],
+        },
+      });
+
       const { installHookCommand } = await import('../install-hook.js');
-      await installHookCommand({});
-
-      const consoleSpy = vi.spyOn(console, 'log');
-      await installHookCommand({});
-
-      // Single consolidated message, not two separate ones
-      const alreadyInstalledCalls = consoleSpy.mock.calls.filter(
-        (args) => typeof args[0] === 'string' && String(args[0]).includes('already installed')
-      );
-      expect(alreadyInstalledCalls).toHaveLength(1);
-      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('sync + analysis'));
+      await installHookCommand();
 
       const settings = readSettings();
       const hooks = settings.hooks as Record<string, unknown[]>;
+      // Our code-insights Stop hook removed; non-code-insights one preserved
       expect(hooks.Stop).toHaveLength(1);
-      expect(hooks.SessionEnd).toHaveLength(1);
+      const remaining = hooks.Stop[0] as { hooks: Array<{ command: string }> };
+      expect(remaining.hooks[0].command).toBe('other-tool cleanup');
     });
   });
 });
@@ -215,11 +178,25 @@ describe('uninstallHookCommand', () => {
     vi.resetModules();
   });
 
-  it('removes both Stop and SessionEnd code-insights hooks', async () => {
+  it('removes v4.9+ SessionEnd session-end hook', async () => {
     writeSettings({
       hooks: {
-        Stop: [{ hooks: [{ type: 'command', command: 'node /usr/local/lib/node_modules/@code-insights/cli/dist/index.js sync -q' }] }],
-        SessionEnd: [{ hooks: [{ type: 'command', command: 'node /usr/local/lib/node_modules/@code-insights/cli/dist/index.js insights --hook --native -q', timeout: 300000 }] }],
+        SessionEnd: [{ hooks: [{ type: 'command', command: 'node /path/code-insights session-end --native -q', timeout: 10000 }] }],
+      },
+    });
+
+    const { uninstallHookCommand } = await import('../install-hook.js');
+    await uninstallHookCommand();
+
+    const settings = readSettings();
+    expect((settings.hooks as Record<string, unknown> | undefined)?.SessionEnd).toBeUndefined();
+  });
+
+  it('removes v4.8.x Stop and SessionEnd hooks (upgrade path)', async () => {
+    writeSettings({
+      hooks: {
+        Stop: [{ hooks: [{ type: 'command', command: 'node /path/code-insights sync -q' }] }],
+        SessionEnd: [{ hooks: [{ type: 'command', command: 'node /path/code-insights insights --hook --native -q', timeout: 300000 }] }],
       },
     });
 
@@ -256,7 +233,7 @@ describe('uninstallHookCommand', () => {
       hooks: {
         SessionEnd: [
           { hooks: [{ type: 'command', command: 'other-tool end-session' }] },
-          { hooks: [{ type: 'command', command: 'node /path/code-insights insights --hook --native -q', timeout: 300000 }] },
+          { hooks: [{ type: 'command', command: 'node /path/code-insights session-end --native -q', timeout: 10000 }] },
         ],
       },
     });
@@ -280,7 +257,7 @@ describe('uninstallHookCommand', () => {
     writeSettings({
       hooks: {
         Stop: [{ hooks: [{ type: 'command', command: 'node /path/code-insights sync -q' }] }],
-        SessionEnd: [{ hooks: [{ type: 'command', command: 'node /path/code-insights insights --hook --native -q', timeout: 300000 }] }],
+        SessionEnd: [{ hooks: [{ type: 'command', command: 'node /path/code-insights session-end --native -q', timeout: 10000 }] }],
       },
     });
 

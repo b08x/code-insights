@@ -7,6 +7,7 @@
   "exports": {
     ".": "./dist/index.js",
     "./db/client": "./dist/db/client.js",
+    "./db/queue": "./dist/db/queue.js",
     "./db/read": "./dist/db/read.js",
     "./db/write": "./dist/db/write.js",
     "./db/schema": "./dist/db/schema.js",

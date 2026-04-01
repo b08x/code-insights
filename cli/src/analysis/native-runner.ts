@@ -114,6 +114,9 @@ export class ClaudeNativeRunner implements AnalysisRunner {
         timeout: 300_000,    // 5-minute hard limit per analysis call
         maxBuffer: 10 * 1024 * 1024,  // 10 MB
         cwd: tmpdir(),       // Isolate claude -p session files from user's project
+        // Propagate CODE_INSIGHTS_HOOK_ACTIVE so the claude -p subprocess won't
+        // trigger another SessionEnd hook when its own session ends (breaks the loop).
+        env: { ...process.env, CODE_INSIGHTS_HOOK_ACTIVE: '1' },
       });
 
       // claude -p --output-format json wraps the response in an event array.

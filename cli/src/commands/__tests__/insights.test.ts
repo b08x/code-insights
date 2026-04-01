@@ -144,7 +144,7 @@ describe('V8 migration — session_message_count column', () => {
       .prepare('SELECT version FROM schema_version ORDER BY version')
       .all() as Array<{ version: number }>;
 
-    expect(rows.map(r => r.version)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+    expect(rows.map(r => r.version)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
     db.close();
   });
 
@@ -310,7 +310,7 @@ describe('runInsightsCommand — --force flag', () => {
   });
 });
 
-describe('runInsightsCommand — resume detection (hookMode)', () => {
+describe('runInsightsCommand — resume detection', () => {
   beforeEach(() => {
     mockDb = new Database(':memory:');
     runMigrations(mockDb);
@@ -333,7 +333,6 @@ describe('runInsightsCommand — resume detection (hookMode)', () => {
     await runInsightsCommand({
       sessionId: 'sess1',
       native: false,
-      hookMode: true,
       quiet: true,
     });
 
@@ -356,7 +355,6 @@ describe('runInsightsCommand — resume detection (hookMode)', () => {
     await runInsightsCommand({
       sessionId: 'sess1',
       native: false,
-      hookMode: true,
       quiet: true,
     });
 
@@ -374,7 +372,6 @@ describe('runInsightsCommand — resume detection (hookMode)', () => {
     await runInsightsCommand({
       sessionId: 'sess1',
       native: false,
-      hookMode: true,
       quiet: true,
     });
 
