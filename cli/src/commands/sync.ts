@@ -380,6 +380,10 @@ export async function syncSingleFile(options: {
   const provider = getProvider(options.sourceTool ?? 'claude-code');
   const session = await provider.parse(options.filePath);
   if (!session) return;
+
+  // Data quality invariant: skip trivial sessions (matches runSync filter at line ~194)
+  if (session.messageCount <= 2) return;
+
   insertSessionWithProjectAndReturnIsNew(session, false);
   insertMessages(session);
 }
