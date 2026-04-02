@@ -25,7 +25,14 @@ import { formatSessionMetaLine } from './message-format.js';
  * Shared system prompt for all LLM analysis calls.
  * Paired with buildCacheableConversationBlock() + an analysis-specific instruction block.
  */
-export const SHARED_ANALYST_SYSTEM_PROMPT = `You are a senior staff engineer analyzing an AI coding session. You will receive the conversation transcript followed by specific extraction instructions. Respond with valid JSON only, wrapped in <json>...</json> tags.`;
+export const SHARED_ANALYST_SYSTEM_PROMPT = `You are a senior staff engineer analyzing an AI coding session. You will receive the conversation transcript followed by specific extraction instructions.
+
+JSON SAFETY RULES:
+1. Respond with valid JSON only, wrapped in <json>...</json> tags.
+2. Escape all double quotes within string values using \\".
+3. Do not include newlines inside string values; use \\n if necessary.
+4. Ensure all property names are enclosed in double quotes.
+5. Check for trailing commas in arrays and objects and remove them.`;
 
 // =============================================================================
 // CACHEABLE CONVERSATION BLOCK

@@ -505,16 +505,26 @@ describe('parseAnalysisResponse', () => {
     expect(result.data.learnings).toEqual([]);
   });
 
-  it('parses raw JSON without tags', () => {
-    const response = `{
-  "summary": { "title": "Test", "content": "Content", "bullets": [] },
+  it('parses valid JSON when followed by extra text containing braces', () => {
+    const response = `Here is the JSON:
+  {
+  "summary": { "title": "Test", "content": "c", "bullets": [] },
   "decisions": [],
   "learnings": []
-}`;
+  }
+  Wait, I forgot some notes { extra: "stuff" } here.`;
     const result = parseAnalysisResponse(response);
     expect(result.success).toBe(true);
     if (!result.success) return;
     expect(result.data.summary.title).toBe('Test');
+  });
+
+  it('parses correctly when multiple balanced blocks exist (prefers larger)', () => {
+    const response = `Small: { "a": 1 } Large: { "summary": { "title": "Big", "content": "c", "bullets": [] }, "decisions": [], "learnings": [] }`;
+    const result = parseAnalysisResponse(response);
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.data.summary.title).toBe('Big');
   });
 
   it('returns error for completely malformed response', () => {

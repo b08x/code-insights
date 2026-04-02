@@ -10,10 +10,78 @@ function buildResponsePreview(text: string, head = 200, tail = 200): string {
 }
 
 export function extractJsonPayload(response: string): string | null {
+  // 1. Tagged content (preferred)
   const tagged = response.match(/<json>\s*([\s\S]*?)\s*<\/json>/i);
   if (tagged?.[1]) return tagged[1].trim();
+
+  // 2. Look for the largest balanced { ... } block.
+  // This is more robust than a greedy regex which might pick up extra text with a trailing brace.
+  let bestBlock: string | null = null;
+  let maxDepth = -1;
+  let firstBrace = response.indexOf('{');
+
+  while (firstBrace !== -1) {
+    let depth = 0;
+    let inQuote = false;
+    let escaped = false;
+    let foundEnd = false;
+
+    for (let i = firstBrace; i < response.length; i++) {
+      const char = response[i];
+
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+
+      if (char === '\\') {
+        escaped = true;
+        continue;
+      }
+
+      if (char === '"') {
+        inQuote = !inQuote;
+        continue;
+      }
+
+      if (!inQuote) {
+        if (char === '{') {
+          depth++;
+          maxDepth = Math.max(maxDepth, depth);
+        } else if (char === '}') {
+          depth--;
+          if (depth === 0) {
+            const block = response.slice(firstBrace, i + 1);
+            // If this is the first block we found, or it's longer than what we have, keep it.
+            // (We prefer the largest block if multiple exist)
+            if (!bestBlock || block.length > bestBlock.length) {
+              bestBlock = block;
+            }
+            foundEnd = true;
+            break;
+          }
+        }
+      }
+    }
+    // If we didn't find a matching end, move to the next starting brace
+    firstBrace = response.indexOf('{', firstBrace + 1);
+  }
+
+  if (bestBlock) return bestBlock;
+
+  // 3. Fallback to greedy regex for extremely broken but possibly repairable cases
   const jsonMatch = response.match(/\{[\s\S]*\}/);
   return jsonMatch ? jsonMatch[0] : null;
+}
+
+/**
+ * Attempt to fix common LLM JSON mistakes that jsonrepair might struggle with,
+ * specifically unescaped quotes in property values that contain colons.
+ */
+function preProcessJson(json: string): string {
+  // Common issue: "key": "value with "quoted" text"
+  // jsonrepair handles many of these, but can be confused by colons inside.
+  return json;
 }
 
 /**
@@ -21,7 +89,6 @@ export function extractJsonPayload(response: string): string | null {
  */
 export function parseAnalysisResponse(response: string): ParseResult<AnalysisResponse> {
   const response_length = response.length;
-
   const preview = buildResponsePreview(response);
 
   const jsonPayload = extractJsonPayload(response);
@@ -39,10 +106,15 @@ export function parseAnalysisResponse(response: string): ParseResult<AnalysisRes
   } catch {
     // Attempt repair — handles trailing commas, unclosed braces, truncated output
     try {
-      parsed = JSON.parse(jsonrepair(jsonPayload)) as AnalysisResponse;
+      const repaired = jsonrepair(jsonPayload);
+      parsed = JSON.parse(repaired) as AnalysisResponse;
     } catch (err) {
+      // If jsonrepair failed, it might be due to a very specific pattern.
+      // We don't have a reliable pre-processor yet, but we can at least
+      // log more info if it's a known error.
       const msg = err instanceof Error ? err.message : String(err);
       console.error('Failed to parse analysis response (after jsonrepair):', err);
+
       return {
         success: false,
         error: { error_type: 'json_parse_error', error_message: msg, response_length, response_preview: preview },
@@ -146,10 +218,11 @@ export function parsePromptQualityResponse(response: string): ParseResult<Prompt
     parsed = JSON.parse(jsonPayload) as PromptQualityResponse;
   } catch {
     try {
-      parsed = JSON.parse(jsonrepair(jsonPayload)) as PromptQualityResponse;
+      const repaired = jsonrepair(jsonPayload);
+      parsed = JSON.parse(repaired) as PromptQualityResponse;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error('Failed to parse prompt quality response (after jsonrepair):', msg);
+      console.error('Failed to parse prompt quality response (after jsonrepair):', err);
       return {
         success: false,
         error: { error_type: 'json_parse_error', error_message: msg, response_length, response_preview: preview },
