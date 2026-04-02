@@ -52,6 +52,22 @@ The project uses `pnpm` workspaces for dependency management.
 - **Privacy:** Follow the "local-first" principle. Ensure no session data is sent to the cloud except to the user-configured LLM provider for analysis.
 - **Hooks:** The project supports installing hooks into Claude Code to automate sync and analysis (`code-insights install-hook`).
 
+## LLM Providers
+
+Code Insights supports multiple LLM providers for session analysis and insight generation.
+
+- **Supported Providers:** OpenAI, Anthropic, Google Gemini, OpenRouter, Mistral, and Ollama (Local).
+- **Dynamic Model Discovery:** The platform supports fetching the latest available models from cloud providers once an API key is validated. This is handled by the `POST /api/config/llm/models` endpoint in the server.
+
+### Reference SDKs (Context7)
+
+Documentation and API patterns for these providers are referenced via the following Context7 library IDs:
+
+- **OpenRouter:** `/openrouterteam/typescript-sdk`
+- **Mistral:** `/mistralai/client-ts`
+- **Anthropic:** `/anthropics/anthropic-sdk-typescript`
+- **OpenAI:** `/openai/openai-node`
+
 ## Key Files & Directories
 
 - `cli/src/index.ts`: CLI entry point.
