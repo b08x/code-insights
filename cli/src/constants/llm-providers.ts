@@ -49,6 +49,28 @@ export const PROVIDERS: ProviderInfo[] = [
       { id: 'qwen2.5-coder', name: 'Qwen 2.5 Coder', description: 'Code-focused, free' },
     ],
   },
+  {
+    id: 'openrouter',
+    name: 'OpenRouter',
+    requiresApiKey: true,
+    apiKeyLink: 'https://openrouter.ai/settings/keys',
+    models: [
+      { id: 'anthropic/claude-3.5-sonnet', name: 'Claude 3.5 Sonnet' },
+      { id: 'openai/gpt-4o', name: 'GPT-4o' },
+      { id: 'meta-llama/llama-3.3-70b-instruct', name: 'Llama 3.3 70B' },
+    ],
+  },
+  {
+    id: 'mistral',
+    name: 'Mistral',
+    requiresApiKey: true,
+    apiKeyLink: 'https://console.mistral.ai/api-keys/',
+    models: [
+      { id: 'mistral-large-latest', name: 'Mistral Large' },
+      { id: 'mistral-small-latest', name: 'Mistral Small' },
+      { id: 'codestral-latest', name: 'Codestral' },
+    ],
+  },
 ];
 
 export function getProviderInfo(providerId: string): ProviderInfo | undefined {

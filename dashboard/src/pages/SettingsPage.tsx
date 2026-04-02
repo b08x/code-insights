@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { useLlmConfig, useSaveLlmConfig } from '@/hooks/useConfig';
 import { useUserProfile, normalizeGithubUsername } from '@/hooks/useUserProfile';
-import { fetchOllamaModels, testLlmConfig } from '@/lib/api';
+import { fetchLlmModels, fetchOllamaModels, testLlmConfig } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -21,7 +21,7 @@ import {
   User,
 } from 'lucide-react';
 
-type LLMProvider = 'openai' | 'anthropic' | 'gemini' | 'ollama';
+type LLMProvider = 'openai' | 'anthropic' | 'gemini' | 'ollama' | 'openrouter' | 'mistral';
 
 interface ProviderInfo {
   id: LLMProvider;
@@ -75,6 +75,28 @@ const PROVIDERS: ProviderInfo[] = [
       { id: 'qwen2.5-coder', name: 'Qwen 2.5 Coder' },
     ],
   },
+  {
+    id: 'openrouter',
+    name: 'OpenRouter',
+    requiresApiKey: true,
+    apiKeyLink: 'https://openrouter.ai/settings/keys',
+    models: [
+      { id: 'anthropic/claude-3.5-sonnet', name: 'Claude 3.5 Sonnet' },
+      { id: 'openai/gpt-4o', name: 'GPT-4o' },
+      { id: 'meta-llama/llama-3.3-70b-instruct', name: 'Llama 3.3 70B' },
+    ],
+  },
+  {
+    id: 'mistral',
+    name: 'Mistral',
+    requiresApiKey: true,
+    apiKeyLink: 'https://console.mistral.ai/api-keys/',
+    models: [
+      { id: 'mistral-large-latest', name: 'Mistral Large' },
+      { id: 'mistral-small-latest', name: 'Mistral Small' },
+      { id: 'codestral-latest', name: 'Codestral' },
+    ],
+  },
 ];
 
 export default function SettingsPage() {
@@ -113,6 +135,7 @@ export default function SettingsPage() {
   const [llmTesting, setLlmTesting] = useState(false);
   const [llmTestError, setLlmTestError] = useState<string | null>(null);
   const [ollamaDiscoveredModels, setOllamaDiscoveredModels] = useState<string[]>([]);
+  const [cloudDiscoveredModels, setCloudDiscoveredModels] = useState<Array<{ id: string; name: string }>>([]);
   const [ollamaCorsOpen, setOllamaCorsOpen] = useState(false);
 
   // Populate form from loaded config
@@ -153,6 +176,26 @@ export default function SettingsPage() {
       .then((r) => setOllamaDiscoveredModels(r.models.map((m) => m.name)))
       .catch(() => {});
   }, [llmProvider, llmBaseUrl]);
+
+  // Discover cloud models when configured
+  useEffect(() => {
+    if (!llmConfigured || llmProvider === 'ollama') return;
+    
+    // Clear previous if provider changed
+    setCloudDiscoveredModels([]);
+    
+    fetchLlmModels({ 
+      provider: llmProvider, 
+      apiKey: llmApiKey || undefined, 
+      baseUrl: llmBaseUrl || undefined 
+    })
+      .then((r) => {
+        if (r.models && r.models.length > 0) {
+          setCloudDiscoveredModels(r.models);
+        }
+      })
+      .catch(() => {});
+  }, [llmConfigured, llmProvider, llmApiKey, llmBaseUrl]);
 
   const handleProviderChange = (provider: LLMProvider) => {
     setLlmProvider(provider);
@@ -433,13 +476,16 @@ export default function SettingsPage() {
                     <SelectValue placeholder="Select model" />
                   </SelectTrigger>
                   <SelectContent>
-                    {PROVIDERS.find((p) => p.id === llmProvider)?.models.map((model) => (
+                    {(cloudDiscoveredModels.length > 0
+                      ? cloudDiscoveredModels
+                      : PROVIDERS.find((p) => p.id === llmProvider)?.models || []
+                    ).map((model) => (
                       <SelectItem key={model.id} value={model.id}>
                         <div className="flex items-center justify-between gap-2">
                           <span>{model.name}</span>
-                          {model.description && (
+                          {'description' in model && (model as any).description && (
                             <span className="text-xs text-muted-foreground">
-                              {model.description}
+                              {(model as any).description}
                             </span>
                           )}
                         </div>

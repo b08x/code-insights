@@ -3,10 +3,11 @@ import { loadConfig, saveConfig } from '@code-insights/cli/utils/config';
 import type { ClaudeInsightConfig, LLMProviderConfig } from '@code-insights/cli/types';
 import { loadLLMConfig, testLLMConfig } from '../llm/client.js';
 import { discoverOllamaModels } from '../llm/providers/ollama.js';
+import { discoverModels } from '../llm/discover.js';
 
 const app = new Hono();
 
-const VALID_PROVIDERS = ['openai', 'anthropic', 'gemini', 'ollama'] as const;
+const VALID_PROVIDERS = ['openai', 'anthropic', 'gemini', 'ollama', 'openrouter', 'mistral'] as const;
 
 function maskApiKey(key: string | undefined): string | undefined {
   if (!key || key.length < 8) return key ? '***' : undefined;
@@ -131,6 +132,31 @@ app.get('/llm/ollama-models', async (c) => {
   const baseUrl = c.req.query('baseUrl');
   const models = await discoverOllamaModels(baseUrl);
   return c.json({ models });
+});
+
+// POST /api/config/llm/models — discover models for a provider using an API key
+app.post('/llm/models', async (c) => {
+  const body = await c.req.json<{ provider: string, apiKey?: string, baseUrl?: string }>();
+  
+  if (!body.provider) {
+    return c.json({ error: 'provider is required' }, 400);
+  }
+
+  // If apiKey is not provided, try to use the saved config
+  let apiKey = body.apiKey;
+  if (!apiKey) {
+    const savedConfig = loadLLMConfig();
+    if (savedConfig?.provider === body.provider) {
+      apiKey = savedConfig.apiKey;
+    }
+  }
+  
+  try {
+    const models = await discoverModels(body.provider as any, apiKey, body.baseUrl);
+    return c.json({ models });
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : 'Failed to fetch models' }, 500);
+  }
 });
 
 export default app;

@@ -328,7 +328,7 @@ export interface WorkingStyleResult {
 
 export type ReflectResult = FrictionWinsResult | RulesSkillsResult | WorkingStyleResult;
 
-export type LLMProvider = 'openai' | 'anthropic' | 'gemini' | 'ollama';
+export type LLMProvider = 'openai' | 'anthropic' | 'gemini' | 'ollama' | 'openrouter' | 'mistral';
 
 export interface LLMProviderConfig {
   provider: LLMProvider;

@@ -9,6 +9,8 @@ import { createOpenAIClient } from './providers/openai.js';
 import { createAnthropicClient } from './providers/anthropic.js';
 import { createGeminiClient } from './providers/gemini.js';
 import { createOllamaClient } from './providers/ollama.js';
+import { createOpenRouterClient } from './providers/openrouter.js';
+import { createMistralClient } from './providers/mistral.js';
 
 /**
  * Load LLM config from the CLI config file.
@@ -53,6 +55,10 @@ export function createClientFromConfig(config: LLMProviderConfig): LLMClient {
       return createGeminiClient(config.apiKey ?? '', config.model);
     case 'ollama':
       return createOllamaClient(config.model, config.baseUrl);
+    case 'openrouter':
+      return createOpenRouterClient(config.apiKey ?? '', config.model);
+    case 'mistral':
+      return createMistralClient(config.apiKey ?? '', config.model);
     default:
       throw new Error(`Unknown LLM provider: ${config.provider}`);
   }

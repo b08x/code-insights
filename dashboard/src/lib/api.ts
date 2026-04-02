@@ -188,6 +188,13 @@ export function fetchOllamaModels(baseUrl?: string) {
   );
 }
 
+export function fetchLlmModels(body: { provider: string; apiKey?: string; baseUrl?: string }) {
+  return request<{ models: Array<{ id: string; name: string }> }>('/config/llm/models', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
 export function analyzePromptQuality(sessionId: string) {
   return request<AnalysisApiResult>('/analysis/prompt-quality', {
     method: 'POST',
