@@ -87,6 +87,20 @@ export function getClaudeDir(): string {
 }
 
 /**
+ * Get Gemini CLI home directory
+ */
+export function getGeminiHomeDir(): string {
+  return path.join(os.homedir(), '.gemini');
+}
+
+/**
+ * Get Gemini CLI temporary directory (where sessions are stored)
+ */
+export function getGeminiTmpDir(): string {
+  return path.join(getGeminiHomeDir(), 'tmp');
+}
+
+/**
  * Check if config exists
  */
 export function isConfigured(): boolean {

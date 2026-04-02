@@ -4,6 +4,7 @@ import { CursorProvider } from './cursor.js';
 import { CodexProvider } from './codex.js';
 import { CopilotCliProvider } from './copilot-cli.js';
 import { CopilotProvider } from './copilot.js';
+import { GeminiCliProvider } from './gemini-cli.js';
 
 const providers = new Map<string, SessionProvider>();
 
@@ -22,6 +23,9 @@ providers.set(copilotCli.getProviderName(), copilotCli);
 
 const copilot = new CopilotProvider();
 providers.set(copilot.getProviderName(), copilot);
+
+const geminiCli = new GeminiCliProvider();
+providers.set(geminiCli.getProviderName(), geminiCli);
 
 /**
  * Get a provider by name

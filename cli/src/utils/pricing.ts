@@ -40,6 +40,14 @@ const MODEL_PRICING: Record<string, ModelPricing> = {
   'claude-3-opus-20240229':    { input: 15,  output: 75 },
   'claude-3-sonnet-20240229':  { input: 3,   output: 15 },
   'claude-3-haiku-20240307':   { input: 0.25, output: 1.25 },
+
+  // Gemini family
+  'gemini-2.0-pro':            { input: 3.5,  output: 10.5 },
+  'gemini-2.0-flash':          { input: 0.1,  output: 0.4 },
+  'gemini-1.5-pro':            { input: 3.5,  output: 10.5 },
+  'gemini-1.5-flash':          { input: 0.075, output: 0.3 },
+  'gemini-3.1-pro':            { input: 3.5,  output: 10.5 },
+  'gemini-3.1-flash':          { input: 0.1,  output: 0.4 },
 };
 
 // Default fallback pricing (sonnet-level)
