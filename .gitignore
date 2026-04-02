@@ -51,3 +51,5 @@ docs/plans/
 
 # Git worktrees
 .worktrees/
+
+.playwright-mcp/

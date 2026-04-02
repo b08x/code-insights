@@ -2,6 +2,9 @@
 // Extracted from prompts.ts — handles JSON extraction, repair, and validation.
 
 import { jsonrepair } from 'jsonrepair';
+import { writeFileSync, mkdirSync } from 'fs';
+import { join } from 'path';
+import { homedir } from 'os';
 import type { AnalysisResponse, ParseError, ParseResult, PromptQualityResponse, PromptQualityDimensionScores } from './prompt-types.js';
 
 function buildResponsePreview(text: string, head = 200, tail = 200): string {
@@ -15,73 +18,155 @@ export function extractJsonPayload(response: string): string | null {
   if (tagged?.[1]) return tagged[1].trim();
 
   // 2. Look for the largest balanced { ... } block.
-  // This is more robust than a greedy regex which might pick up extra text with a trailing brace.
   let bestBlock: string | null = null;
-  let maxDepth = -1;
   let firstBrace = response.indexOf('{');
 
   while (firstBrace !== -1) {
     let depth = 0;
     let inQuote = false;
     let escaped = false;
-    let foundEnd = false;
 
     for (let i = firstBrace; i < response.length; i++) {
       const char = response[i];
-
-      if (escaped) {
-        escaped = false;
-        continue;
-      }
-
-      if (char === '\\') {
-        escaped = true;
-        continue;
-      }
-
-      if (char === '"') {
-        inQuote = !inQuote;
-        continue;
-      }
+      if (escaped) { escaped = false; continue; }
+      if (char === '\\') { escaped = true; continue; }
+      if (char === '"') { inQuote = !inQuote; continue; }
 
       if (!inQuote) {
         if (char === '{') {
           depth++;
-          maxDepth = Math.max(maxDepth, depth);
         } else if (char === '}') {
           depth--;
           if (depth === 0) {
             const block = response.slice(firstBrace, i + 1);
-            // If this is the first block we found, or it's longer than what we have, keep it.
-            // (We prefer the largest block if multiple exist)
             if (!bestBlock || block.length > bestBlock.length) {
               bestBlock = block;
             }
-            foundEnd = true;
             break;
           }
         }
       }
     }
-    // If we didn't find a matching end, move to the next starting brace
     firstBrace = response.indexOf('{', firstBrace + 1);
   }
 
   if (bestBlock) return bestBlock;
 
-  // 3. Fallback to greedy regex for extremely broken but possibly repairable cases
-  const jsonMatch = response.match(/\{[\s\S]*\}/);
-  return jsonMatch ? jsonMatch[0] : null;
+  // 3. Truncated fallback: find the first { and return everything from there.
+  // jsonrepair is very good at closing dangling structures if we give it the whole string.
+  const startIdx = response.indexOf('{');
+  if (startIdx !== -1) {
+    return response.slice(startIdx);
+  }
+
+  return null;
 }
 
 /**
  * Attempt to fix common LLM JSON mistakes that jsonrepair might struggle with,
- * specifically unescaped quotes in property values that contain colons.
+ * specifically unescaped quotes in property values that can be confused with keys
+ * (especially when they contain colons).
  */
 function preProcessJson(json: string): string {
-  // Common issue: "key": "value with "quoted" text"
-  // jsonrepair handles many of these, but can be confused by colons inside.
-  return json;
+  let result = '';
+  let inString = false;
+  let escaped = false;
+  let lastSignificantChar = '';
+
+  for (let i = 0; i < json.length; i++) {
+    const char = json[i];
+    if (escaped) {
+      result += char;
+      escaped = false;
+      continue;
+    }
+    if (char === '\\') {
+      result += char;
+      escaped = true;
+      continue;
+    }
+    if (char === '"') {
+      if (inString) {
+        // We are in a string. Is this the end of the string?
+        let nextNonWhitespace = -1;
+        for (let j = i + 1; j < json.length; j++) {
+          if (!/\s/.test(json[j])) {
+            nextNonWhitespace = j;
+            break;
+          }
+        }
+
+        const nextChar = nextNonWhitespace !== -1 ? json[nextNonWhitespace] : '';
+
+        // A quote is likely an end of a string if it's followed by , } ] or :
+        // BUT if it's followed by a colon, it's only an end quote if we are NOT already in a value
+        // (i.e. we are defining a key).
+        let isLikelyEnd = false;
+        if ([',', '}', ']'].includes(nextChar) || nextNonWhitespace === -1) {
+          isLikelyEnd = true;
+        } else if (nextChar === ':') {
+          // If we see a colon, this is an end quote ONLY if we are currently defining a key.
+          // We are defining a key if the last significant char before this string was { or , or [ (array start)
+          if (['{', ',', '['].includes(lastSignificantChar)) {
+            isLikelyEnd = true;
+          }
+        }
+
+        if (isLikelyEnd) {
+          inString = false;
+          result += char;
+          lastSignificantChar = '"';
+        } else {
+          // Nested quote! Escape it.
+          result += '\\"';
+        }
+      } else {
+        inString = true;
+        result += char;
+      }
+    } else {
+      result += char;
+      if (!/\s/.test(char)) {
+        if (!inString) {
+          lastSignificantChar = char;
+        }
+      }
+    }
+  }
+  return result;
+}
+
+/**
+ * Log context around an error position and save full failed payload to a debug folder.
+ */
+function logParseErrorWithContext(json: string, err: unknown, contextName: string, rawResponse: string): void {
+  const msg = err instanceof Error ? err.message : String(err);
+  const position = (err as any)?.position;
+
+  // Save to debug folder
+  try {
+    const debugDir = join(homedir(), '.code-insights', 'debug');
+    mkdirSync(debugDir, { recursive: true });
+    const filename = `failed-${contextName}-${Date.now()}.json.txt`;
+    const fullPath = join(debugDir, filename);
+    writeFileSync(fullPath, `--- ERROR ---\n${msg}\n\n--- PRE-PROCESSED JSON ---\n${json}\n\n--- RAW RESPONSE ---\n${rawResponse}`);
+    console.error(`[debug] Full failed payload saved to ${fullPath}`);
+  } catch (saveErr) {
+    console.warn('[debug] Failed to save debug payload:', saveErr);
+  }
+
+  if (typeof position === 'number') {
+    const start = Math.max(0, position - 50);
+    const end = Math.min(json.length, position + 50);
+    const context = json.slice(start, end);
+    const pointer = ' '.repeat(Math.min(position, 50)) + '^';
+    console.error(`Failed to parse ${contextName} response (after jsonrepair): ${msg}`);
+    console.error(`Context around position ${position}:`);
+    console.error(context);
+    console.error(pointer);
+  } else {
+    console.error(`Failed to parse ${contextName} response (after jsonrepair):`, err);
+  }
 }
 
 /**
@@ -100,20 +185,19 @@ export function parseAnalysisResponse(response: string): ParseResult<AnalysisRes
     };
   }
 
+  const preProcessed = preProcessJson(jsonPayload);
+
   let parsed: AnalysisResponse;
   try {
-    parsed = JSON.parse(jsonPayload) as AnalysisResponse;
+    parsed = JSON.parse(preProcessed) as AnalysisResponse;
   } catch {
     // Attempt repair — handles trailing commas, unclosed braces, truncated output
     try {
-      const repaired = jsonrepair(jsonPayload);
+      const repaired = jsonrepair(preProcessed);
       parsed = JSON.parse(repaired) as AnalysisResponse;
     } catch (err) {
-      // If jsonrepair failed, it might be due to a very specific pattern.
-      // We don't have a reliable pre-processor yet, but we can at least
-      // log more info if it's a known error.
+      logParseErrorWithContext(preProcessed, err, 'analysis', response);
       const msg = err instanceof Error ? err.message : String(err);
-      console.error('Failed to parse analysis response (after jsonrepair):', err);
 
       return {
         success: false,
@@ -213,16 +297,18 @@ export function parsePromptQualityResponse(response: string): ParseResult<Prompt
     };
   }
 
+  const preProcessed = preProcessJson(jsonPayload);
+
   let parsed: PromptQualityResponse;
   try {
-    parsed = JSON.parse(jsonPayload) as PromptQualityResponse;
+    parsed = JSON.parse(preProcessed) as PromptQualityResponse;
   } catch {
     try {
-      const repaired = jsonrepair(jsonPayload);
+      const repaired = jsonrepair(preProcessed);
       parsed = JSON.parse(repaired) as PromptQualityResponse;
     } catch (err) {
+      logParseErrorWithContext(preProcessed, err, 'prompt quality', response);
       const msg = err instanceof Error ? err.message : String(err);
-      console.error('Failed to parse prompt quality response (after jsonrepair):', err);
       return {
         success: false,
         error: { error_type: 'json_parse_error', error_message: msg, response_length, response_preview: preview },
