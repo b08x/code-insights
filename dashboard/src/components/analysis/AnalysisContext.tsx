@@ -125,7 +125,7 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const startAnalysis = useCallback(
-    async (session: Session, type: AnalysisType) => {
+    async (session: Session, type: AnalysisType): Promise<void> => {
       const key = makeKey(session.id, type);
       const toastId = makeToastId(session.id, type);
       const sessionTitle = getSessionTitle(session);
@@ -156,142 +156,152 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
           ? `/api/analysis/session/stream?sessionId=${encodeURIComponent(session.id)}`
           : `/api/analysis/prompt-quality/stream?sessionId=${encodeURIComponent(session.id)}`;
 
-      try {
-        const response = await fetch(endpoint, {
-          signal: controller.signal,
-        });
+      return new Promise<void>(async (resolve) => {
+        try {
+          const response = await fetch(endpoint, {
+            signal: controller.signal,
+          });
 
-        if (!response.ok) {
-          const text = await response.text().catch(() => response.statusText);
-          throw new Error(`API ${response.status}: ${text}`);
-        }
-
-        if (!response.body) {
-          throw new Error('No response body for SSE stream');
-        }
-
-        for await (const sseEvent of parseSSEStream(response.body)) {
-          if (controller.signal.aborted) return;
-
-          try {
-            if (sseEvent.event === 'progress') {
-              const progress = JSON.parse(sseEvent.data) as {
-                phase: 'loading_messages' | 'analyzing' | 'saving';
-                currentChunk?: number;
-                totalChunks?: number;
-                message: string;
-              };
-              const toastMsg = buildToastMessage(
-                sessionTitle,
-                progress.phase,
-                progress.currentChunk,
-                progress.totalChunks
-              );
-              setAnalyses((prev) => {
-                const next = new Map(prev);
-                const entry = next.get(key);
-                if (entry) next.set(key, { ...entry, progress });
-                return next;
-              });
-              toast.loading(toastMsg, { id: toastId });
-            } else if (sseEvent.event === 'complete') {
-              const result = JSON.parse(sseEvent.data) as {
-                success: boolean;
-                insightCount: number;
-                tokenUsage?: { inputTokens: number; outputTokens: number };
-                costUsd?: number;
-                provider?: string;
-                model?: string;
-              };
-
-              queryClient.invalidateQueries({ queryKey: ['insights'] });
-              queryClient.invalidateQueries({ queryKey: ['session', session.id] });
-              queryClient.invalidateQueries({ queryKey: ['sessions'] });
-              queryClient.invalidateQueries({ queryKey: ['analysis-cost', session.id] });
-
-              const successMsg = `${result.insightCount} insight${result.insightCount !== 1 ? 's' : ''} saved for "${sessionTitle}"`;
-
-              setAnalyses((prev) => {
-                const next = new Map(prev);
-                next.set(key, {
-                  status: 'complete',
-                  sessionId: session.id,
-                  sessionTitle,
-                  type,
-                  progress: null,
-                  result: {
-                    success: true,
-                    insightCount: result.insightCount,
-                    tokenUsage: result.tokenUsage,
-                    costUsd: result.costUsd,
-                    provider: result.provider,
-                    model: result.model,
-                  },
-                });
-                return next;
-              });
-              toast.success(successMsg, { id: toastId });
-            } else if (sseEvent.event === 'error') {
-              const errorData = JSON.parse(sseEvent.data) as { error: string };
-              setAnalyses((prev) => {
-                const next = new Map(prev);
-                next.set(key, {
-                  status: 'error',
-                  sessionId: session.id,
-                  sessionTitle,
-                  type,
-                  progress: null,
-                  result: { success: false, error: errorData.error },
-                });
-                return next;
-              });
-              toast.error(`Analysis failed: ${errorData.error}`, { id: toastId });
-            }
-          } catch {
-            // Malformed SSE event data — skip and continue
-            continue;
+          if (!response.ok) {
+            const text = await response.text().catch(() => response.statusText);
+            throw new Error(`API ${response.status}: ${text}`);
           }
-        }
 
-        // Stream ended — if no terminal event was received, treat as unexpected close
-        if (!controller.signal.aborted) {
-          setAnalyses((prev) => {
-            const entry = prev.get(key);
-            if (entry?.status === 'analyzing') {
-              toast.error('Analysis connection closed unexpectedly', { id: toastId });
-              const next = new Map(prev);
-              next.set(key, {
-                ...entry,
-                status: 'error',
-                progress: null,
-                result: { success: false, error: 'Connection closed unexpectedly' },
-              });
-              return next;
+          if (!response.body) {
+            throw new Error('No response body for SSE stream');
+          }
+
+          for await (const sseEvent of parseSSEStream(response.body)) {
+            if (controller.signal.aborted) {
+              resolve();
+              return;
             }
-            return prev;
+
+            try {
+              if (sseEvent.event === 'progress') {
+                const progress = JSON.parse(sseEvent.data) as {
+                  phase: 'loading_messages' | 'analyzing' | 'saving';
+                  currentChunk?: number;
+                  totalChunks?: number;
+                  message: string;
+                };
+                const toastMsg = buildToastMessage(
+                  sessionTitle,
+                  progress.phase,
+                  progress.currentChunk,
+                  progress.totalChunks
+                );
+                setAnalyses((prev) => {
+                  const next = new Map(prev);
+                  const entry = next.get(key);
+                  if (entry) next.set(key, { ...entry, progress });
+                  return next;
+                });
+                toast.loading(toastMsg, { id: toastId });
+              } else if (sseEvent.event === 'complete') {
+                const result = JSON.parse(sseEvent.data) as {
+                  success: boolean;
+                  insightCount: number;
+                  tokenUsage?: { inputTokens: number; outputTokens: number };
+                  costUsd?: number;
+                  provider?: string;
+                  model?: string;
+                };
+
+                queryClient.invalidateQueries({ queryKey: ['insights'] });
+                queryClient.invalidateQueries({ queryKey: ['session', session.id] });
+                queryClient.invalidateQueries({ queryKey: ['sessions'] });
+                queryClient.invalidateQueries({ queryKey: ['analysis-cost', session.id] });
+
+                const successMsg = `${result.insightCount} insight${result.insightCount !== 1 ? 's' : ''} saved for "${sessionTitle}"`;
+
+                setAnalyses((prev) => {
+                  const next = new Map(prev);
+                  next.set(key, {
+                    status: 'complete',
+                    sessionId: session.id,
+                    sessionTitle,
+                    type,
+                    progress: null,
+                    result: {
+                      success: true,
+                      insightCount: result.insightCount,
+                      tokenUsage: result.tokenUsage,
+                      costUsd: result.costUsd,
+                      provider: result.provider,
+                      model: result.model,
+                    },
+                  });
+                  return next;
+                });
+                toast.success(successMsg, { id: toastId });
+                resolve();
+              } else if (sseEvent.event === 'error') {
+                const errorData = JSON.parse(sseEvent.data) as { error: string };
+                setAnalyses((prev) => {
+                  const next = new Map(prev);
+                  next.set(key, {
+                    status: 'error',
+                    sessionId: session.id,
+                    sessionTitle,
+                    type,
+                    progress: null,
+                    result: { success: false, error: errorData.error },
+                  });
+                  return next;
+                });
+                toast.error(`Analysis failed: ${errorData.error}`, { id: toastId });
+                resolve();
+              }
+            } catch {
+              // Malformed SSE event data — skip and continue
+              continue;
+            }
+          }
+
+          // Stream ended — if no terminal event was received, treat as unexpected close
+          if (!controller.signal.aborted) {
+            setAnalyses((prev) => {
+              const entry = prev.get(key);
+              if (entry?.status === 'analyzing') {
+                toast.error('Analysis connection closed unexpectedly', { id: toastId });
+                const next = new Map(prev);
+                next.set(key, {
+                  ...entry,
+                  status: 'error',
+                  progress: null,
+                  result: { success: false, error: 'Connection closed unexpectedly' },
+                });
+                return next;
+              }
+              return prev;
+            });
+            resolve();
+          }
+        } catch (error) {
+          if (controller.signal.aborted) {
+            resolve();
+            return;
+          }
+          const errorMsg = error instanceof Error ? error.message : 'Analysis failed';
+          setAnalyses((prev) => {
+            const next = new Map(prev);
+            next.set(key, {
+              status: 'error',
+              sessionId: session.id,
+              sessionTitle,
+              type,
+              progress: null,
+              result: { success: false, error: errorMsg },
+            });
+            return next;
           });
+          toast.error(`Analysis failed: ${errorMsg}`, { id: toastId });
+          resolve();
+        } finally {
+          abortControllersRef.current.delete(key);
         }
-      } catch (error) {
-        if (controller.signal.aborted) {
-          return;
-        }
-        const errorMsg = error instanceof Error ? error.message : 'Analysis failed';
-        setAnalyses((prev) => {
-          const next = new Map(prev);
-          next.set(key, {
-            status: 'error',
-            sessionId: session.id,
-            sessionTitle,
-            type,
-            progress: null,
-            result: { success: false, error: errorMsg },
-          });
-          return next;
-        });
-        toast.error(`Analysis failed: ${errorMsg}`, { id: toastId });
-      } finally {
-        abortControllersRef.current.delete(key);
-      }
+      });
     },
     [queryClient]
   );
