@@ -108,6 +108,17 @@ export function getHermesHomeDir(): string {
 }
 
 /**
+ * Get OpenCode storage directory
+ */
+export function getOpenCodeDir(): string {
+  const home = os.homedir();
+  if (process.platform === 'win32') {
+    return path.join(home, '.local', 'share', 'opencode'); // Default fallback for Windows if not in AppData
+  }
+  return path.join(home, '.local', 'share', 'opencode');
+}
+
+/**
  * Check if config exists
  */
 export function isConfigured(): boolean {
