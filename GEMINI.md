@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-**Code Insights** is a local-first analytics platform designed to turn AI coding sessions into actionable knowledge. It extracts structured insights, decisions, learnings, and prompt quality scores from tools like Claude Code, Cursor, Codex CLI, and Copilot.
+**Code Insights** is a local-first analytics platform designed to turn AI coding sessions into actionable knowledge. It extracts structured insights, decisions, learnings, and prompt quality scores from tools like **Claude Code, Cursor, Codex CLI, Copilot CLI, Gemini CLI, Hermes Agent, OpenCode, and Crush**.
 
 - **Purpose:** Help developers understand their AI coding patterns, track costs, and improve their AI fluency.
 - **Architecture:**
@@ -56,7 +56,7 @@ The project uses `pnpm` workspaces for dependency management.
 
 Code Insights supports multiple LLM providers for session analysis and insight generation.
 
-- **Supported Providers:** OpenAI, Anthropic, Google Gemini, OpenRouter, Mistral, and Ollama (Local).
+- **Supported Providers:** OpenAI (GPT-4o), Anthropic (Claude 3.5), Google Gemini (2.0 Flash), OpenRouter, Mistral (Codestral), and Ollama (Local).
 - **Dynamic Model Discovery:** The platform supports fetching the latest available models from cloud providers once an API key is validated. This is handled by the `POST /api/config/llm/models` endpoint in the server.
 
 ### Reference SDKs (Context7)
@@ -67,6 +67,7 @@ Documentation and API patterns for these providers are referenced via the follow
 - **Mistral:** `/mistralai/client-ts`
 - **Anthropic:** `/anthropics/anthropic-sdk-typescript`
 - **OpenAI:** `/openai/openai-node`
+- **Google Gemini:** `/google/generative-ai`
 
 ## Key Files & Directories
 
