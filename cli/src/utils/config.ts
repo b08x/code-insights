@@ -101,6 +101,13 @@ export function getGeminiTmpDir(): string {
 }
 
 /**
+ * Get Hermes Agent home directory
+ */
+export function getHermesHomeDir(): string {
+  return path.join(os.homedir(), '.hermes');
+}
+
+/**
  * Check if config exists
  */
 export function isConfigured(): boolean {
