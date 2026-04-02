@@ -7,6 +7,7 @@ import { CopilotProvider } from './copilot.js';
 import { GeminiCliProvider } from './gemini-cli.js';
 import { HermesAgentProvider } from './hermes-agent.js';
 import { OpenCodeProvider } from './opencode.js';
+import { CrushProvider } from './crush.js';
 
 const providers = new Map<string, SessionProvider>();
 
@@ -34,6 +35,9 @@ providers.set(hermesAgent.getProviderName(), hermesAgent);
 
 const opencode = new OpenCodeProvider();
 providers.set(opencode.getProviderName(), opencode);
+
+const crush = new CrushProvider();
+providers.set(crush.getProviderName(), crush);
 
 /**
  * Get a provider by name
