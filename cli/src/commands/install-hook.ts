@@ -24,7 +24,7 @@ interface ClaudeSettings {
 
 interface HookConfig {
   matcher?: string;
-  hooks: Array<string | { type: string; command: string; timeout?: number }>;
+  hooks: Array<string | { type: string; command?: string; url?: string; timeout?: number }>;
 }
 
 export interface InstallHookOptions {
@@ -33,8 +33,10 @@ export interface InstallHookOptions {
 }
 
 /** Extract command string from both old (string) and new ({type, command}) hook formats */
-function getHookCommand(hook: string | { type: string; command: string }): string {
-  return typeof hook === 'string' ? hook : hook.command;
+function getHookCommand(hook: string | { type: string; command?: string; url?: string } | null | undefined): string {
+  if (!hook) return '';
+  if (typeof hook === 'string') return hook;
+  return hook.command || '';
 }
 
 /** Check if a hook array already contains a code-insights hook */
