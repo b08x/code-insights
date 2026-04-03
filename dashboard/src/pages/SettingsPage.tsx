@@ -81,6 +81,7 @@ const PROVIDERS: ProviderInfo[] = [
     requiresApiKey: true,
     apiKeyLink: 'https://openrouter.ai/settings/keys',
     models: [
+      { id: 'openrouter/auto', name: 'OpenRouter Auto (Default)' },
       { id: 'anthropic/claude-3.5-sonnet', name: 'Claude 3.5 Sonnet' },
       { id: 'openai/gpt-4o', name: 'GPT-4o' },
       { id: 'meta-llama/llama-3.3-70b-instruct', name: 'Llama 3.3 70B' },

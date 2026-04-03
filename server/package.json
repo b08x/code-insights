@@ -21,6 +21,7 @@
   "dependencies": {
     "@code-insights/cli": "workspace:*",
     "@hono/node-server": "^1.13.7",
+    "@openrouter/sdk": "^0.11.2",
     "hono": "^4.7.4",
     "jsonrepair": "^3.13.2"
   },

@@ -26,10 +26,37 @@ export function createOpenRouterClient(apiKey: string, model: string): LLMClient
       });
 
       if (!response.ok) {
-        const error = await response.json().catch(() => ({})) as { error?: { message?: string } };
-        const detail = error.error?.message;
+        let detail = '';
+        const errorData = await response.json().catch(() => ({})) as any;
+        
+        if (errorData?.error) {
+          detail = errorData.error.message || '';
+          
+          // OpenRouter nests upstream provider errors inside metadata.raw
+          if (errorData.error.metadata?.raw) {
+            try {
+              const rawObj = JSON.parse(errorData.error.metadata.raw);
+              if (rawObj.error?.message) {
+                detail = rawObj.error.message;
+              } else if (typeof rawObj.error === 'string') {
+                detail = rawObj.error;
+              } else {
+                detail = errorData.error.metadata.raw;
+              }
+            } catch {
+              detail = errorData.error.metadata.raw;
+            }
+          }
+        }
+
         if (response.status === 401 || response.status === 403) {
           throw new Error(`Invalid API key for OpenRouter.${detail ? ` (${detail})` : ''}`);
+        }
+        if (response.status === 402) {
+          throw new Error(`Insufficient OpenRouter credits.${detail ? ` (${detail})` : ''}`);
+        }
+        if (detail === 'Provider returned error') {
+            throw new Error(`Upstream provider error. Ensure you have access to the selected model and sufficient credits.`);
         }
         throw new Error(detail || `OpenRouter API error (HTTP ${response.status})`);
       }
