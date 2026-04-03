@@ -7,7 +7,7 @@ import { join } from 'path';
 import { homedir } from 'os';
 import type { AnalysisResponse, ParseError, ParseResult, PromptQualityResponse, PromptQualityDimensionScores } from './prompt-types.js';
 
-function buildResponsePreview(text: string, head = 200, tail = 200): string {
+function buildResponsePreview(text: string, head = 500, tail = 500): string {
   if (text.length <= head + tail + 20) return text;
   return `${text.slice(0, head)}\n...[${text.length - head - tail} chars omitted]...\n${text.slice(-tail)}`;
 }
@@ -17,7 +17,11 @@ export function extractJsonPayload(response: string): string | null {
   const tagged = response.match(/<json>\s*([\s\S]*?)\s*<\/json>/i);
   if (tagged?.[1]) return tagged[1].trim();
 
-  // 2. Look for the largest balanced { ... } block.
+  // 2. Markdown code blocks (common LLM output)
+  const codeBlock = response.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (codeBlock?.[1]) return codeBlock[1].trim();
+
+  // 3. Look for the largest balanced { ... } block.
   let bestBlock: string | null = null;
   let firstBrace = response.indexOf('{');
 
@@ -52,8 +56,7 @@ export function extractJsonPayload(response: string): string | null {
 
   if (bestBlock) return bestBlock;
 
-  // 3. Truncated fallback: find the first { and return everything from there.
-  // jsonrepair is very good at closing dangling structures if we give it the whole string.
+  // 4. Truncated fallback: find the first { and return everything from there.
   const startIdx = response.indexOf('{');
   if (startIdx !== -1) {
     return response.slice(startIdx);
@@ -64,10 +67,10 @@ export function extractJsonPayload(response: string): string | null {
 
 /**
  * Attempt to fix common LLM JSON mistakes that jsonrepair might struggle with,
- * specifically unescaped quotes in property values that can be confused with keys
- * (especially when they contain colons).
+ * specifically unescaped quotes in property values that can be confused with keys,
+ * and literal newlines in strings.
  */
-function preProcessJson(json: string): string {
+export function preProcessJson(json: string): string {
   let result = '';
   let inString = false;
   let escaped = false;
@@ -75,6 +78,7 @@ function preProcessJson(json: string): string {
 
   for (let i = 0; i < json.length; i++) {
     const char = json[i];
+
     if (escaped) {
       result += char;
       escaped = false;
@@ -85,28 +89,55 @@ function preProcessJson(json: string): string {
       escaped = true;
       continue;
     }
+
+    // Handle literal newlines in strings
+    if ((char === '\n' || char === '\r') && inString) {
+      result += '\\n';
+      // If it's \r\n, skip the \n
+      if (char === '\r' && json[i + 1] === '\n') {
+        i++;
+      }
+      continue;
+    }
+
     if (char === '"') {
       if (inString) {
         // We are in a string. Is this the end of the string?
-        let nextNonWhitespace = -1;
+        let nextNonWhitespaceIdx = -1;
+        let nextChar = '';
         for (let j = i + 1; j < json.length; j++) {
           if (!/\s/.test(json[j])) {
-            nextNonWhitespace = j;
+            nextNonWhitespaceIdx = j;
+            nextChar = json[j];
             break;
           }
         }
 
-        const nextChar = nextNonWhitespace !== -1 ? json[nextNonWhitespace] : '';
-
         // A quote is likely an end of a string if it's followed by , } ] or :
-        // BUT if it's followed by a colon, it's only an end quote if we are NOT already in a value
-        // (i.e. we are defining a key).
+        // OR if it's the end of the input.
         let isLikelyEnd = false;
-        if ([',', '}', ']'].includes(nextChar) || nextNonWhitespace === -1) {
+
+        if (nextNonWhitespaceIdx === -1 || ['}', ']'].includes(nextChar)) {
           isLikelyEnd = true;
+        } else if (nextChar === ',') {
+          // If followed by a comma, it's only an end quote if the NEXT non-whitespace
+          // after the comma looks like the start of a new key or value.
+          let nextNextChar = '';
+          for (let j = nextNonWhitespaceIdx + 1; j < json.length; j++) {
+            if (!/\s/.test(json[j])) {
+              nextNextChar = json[j];
+              break;
+            }
+          }
+          // Valid starts for the next element in JSON:
+          // " (key/string), { (object), [ (array), t/f/n (literals), -/digit (numbers)
+          const validStarts = ['"', '{', '[', '}', ']', 't', 'f', 'n', '-', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
+          if (validStarts.includes(nextNextChar) || nextNextChar === '') {
+            isLikelyEnd = true;
+          }
         } else if (nextChar === ':') {
           // If we see a colon, this is an end quote ONLY if we are currently defining a key.
-          // We are defining a key if the last significant char before this string was { or , or [ (array start)
+          // We are defining a key if the last significant char before this string was { or , or [
           if (['{', ',', '['].includes(lastSignificantChar)) {
             isLikelyEnd = true;
           }
