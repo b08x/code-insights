@@ -159,6 +159,32 @@ describe('config utilities', () => {
       expect(parsed.telemetry).toBe(false);
     });
 
+    it('strips apiKey from dashboard.llm before writing to disk', () => {
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+
+      const config = {
+        sync: { claudeDir: '/test/.claude/projects', excludeProjects: [] },
+        dashboard: {
+          llm: {
+            provider: 'openai',
+            model: 'gpt-4o',
+            apiKey: 'sk-super-secret-key',
+          },
+        },
+      };
+
+      saveConfig(config);
+
+      const [, writtenContent] = vi.mocked(fs.writeFileSync).mock.calls[0];
+      const parsed = JSON.parse(writtenContent as string);
+      // apiKey must not appear in the persisted file
+      expect(parsed.dashboard?.llm).not.toHaveProperty('apiKey');
+      expect(parsed.dashboard?.llm).toEqual({
+        provider: 'openai',
+        model: 'gpt-4o',
+      });
+    });
+
     it('creates config directory when it does not exist', () => {
       // First call: existsSync for the dir check in ensureConfigDir -> false
       vi.mocked(fs.existsSync).mockReturnValue(false);

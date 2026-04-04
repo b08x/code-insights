@@ -25,6 +25,11 @@ function makeConfig(overrides: Partial<LLMProviderConfig> = {}): LLMProviderConf
   } as LLMProviderConfig;
 }
 
+// Helper — build a ProviderRunner with an explicit resolved API key
+function makeRunner(config: LLMProviderConfig, resolvedApiKey?: string): ProviderRunner {
+  return new ProviderRunner(config, resolvedApiKey);
+}
+
 // Helper — build a fetch Response mock
 function makeFetchResponse(body: unknown, status = 200): Response {
   return {
@@ -36,18 +41,35 @@ function makeFetchResponse(body: unknown, status = 200): Response {
 }
 
 describe('ProviderRunner.fromConfig()', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Ensure no API key env vars leak between tests
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.GEMINI_API_KEY;
+    delete process.env.OPENROUTER_API_KEY;
+    delete process.env.MISTRAL_API_KEY;
+  });
 
   it('throws when LLM is not configured', () => {
     mockLoadConfig.mockReturnValue(null);
     expect(() => ProviderRunner.fromConfig()).toThrow(/LLM not configured/);
   });
 
-  it('throws when apiKey is missing for non-ollama providers', () => {
+  it('throws when apiKey is missing for non-ollama providers and no env var set', () => {
     mockLoadConfig.mockReturnValue({
       dashboard: { llm: makeConfig({ apiKey: undefined }) },
     } as ReturnType<typeof loadConfig>);
     expect(() => ProviderRunner.fromConfig()).toThrow(/requires an API key/);
+  });
+
+  it('uses OPENAI_API_KEY env var when config has no stored key', () => {
+    process.env.OPENAI_API_KEY = 'env-key';
+    mockLoadConfig.mockReturnValue({
+      dashboard: { llm: makeConfig({ apiKey: undefined }) },
+    } as ReturnType<typeof loadConfig>);
+    const runner = ProviderRunner.fromConfig();
+    expect(runner).toBeInstanceOf(ProviderRunner);
   });
 
   it('creates a runner from valid config', () => {
@@ -77,7 +99,7 @@ describe('ProviderRunner.runAnalysis() — OpenAI', () => {
       usage: { prompt_tokens: 100, completion_tokens: 50 },
     }));
 
-    const runner = new ProviderRunner(makeConfig());
+    const runner = makeRunner(makeConfig(), 'sk-test');
     const result = await runner.runAnalysis({ systemPrompt: 'sys', userPrompt: 'user' });
 
     expect(mockFetch).toHaveBeenCalledWith(
@@ -103,7 +125,7 @@ describe('ProviderRunner.runAnalysis() — OpenAI', () => {
       usage: { prompt_tokens: 200, completion_tokens: 80 },
     }));
 
-    const runner = new ProviderRunner(makeConfig());
+    const runner = makeRunner(makeConfig(), 'sk-test');
     const result = await runner.runAnalysis({ systemPrompt: 's', userPrompt: 'u' });
 
     expect(result.rawJson).toBe(rawJson);
@@ -120,7 +142,7 @@ describe('ProviderRunner.runAnalysis() — OpenAI', () => {
       401
     ));
 
-    const runner = new ProviderRunner(makeConfig());
+    const runner = makeRunner(makeConfig(), 'sk-test');
     await expect(runner.runAnalysis({ systemPrompt: 's', userPrompt: 'u' }))
       .rejects.toThrow('Invalid API key.');
   });
@@ -135,7 +157,7 @@ describe('ProviderRunner.runAnalysis() — Anthropic', () => {
       usage: { input_tokens: 300, output_tokens: 60, cache_creation_input_tokens: 50, cache_read_input_tokens: 100 },
     }));
 
-    const runner = new ProviderRunner(makeConfig({ provider: 'anthropic', model: 'claude-opus-4-5', apiKey: 'ak-test' }));
+    const runner = makeRunner(makeConfig({ provider: 'anthropic', model: 'claude-opus-4-5' }), 'ak-test');
     const result = await runner.runAnalysis({ systemPrompt: 's', userPrompt: 'u' });
 
     expect(mockFetch).toHaveBeenCalledWith(
@@ -164,7 +186,7 @@ describe('ProviderRunner.runAnalysis() — Anthropic message shaping', () => {
       usage: { input_tokens: 10, output_tokens: 5 },
     }));
 
-    const runner = new ProviderRunner(makeConfig({ provider: 'anthropic', model: 'claude-sonnet-4-20250514', apiKey: 'ak' }));
+    const runner = makeRunner(makeConfig({ provider: 'anthropic', model: 'claude-sonnet-4-20250514' }), 'ak');
     await runner.runAnalysis({ systemPrompt: 'BE HELPFUL', userPrompt: 'analyze' });
 
     const body = JSON.parse((mockFetch.mock.calls[0][1] as RequestInit).body as string);
@@ -182,7 +204,7 @@ describe('ProviderRunner.runAnalysis() — missing usage', () => {
       // no usage field
     }));
 
-    const runner = new ProviderRunner(makeConfig());
+    const runner = makeRunner(makeConfig(), 'sk-test');
     const result = await runner.runAnalysis({ systemPrompt: 's', userPrompt: 'u' });
 
     expect(result.inputTokens).toBe(0);
@@ -192,7 +214,7 @@ describe('ProviderRunner.runAnalysis() — missing usage', () => {
 
 describe('ProviderRunner — constructor', () => {
   it('throws on unknown provider', () => {
-    expect(() => new ProviderRunner({ provider: 'unknown' as never, model: 'x', apiKey: 'k' }))
+    expect(() => new ProviderRunner({ provider: 'unknown' as never, model: 'x', apiKey: 'k' }, 'k'))
       .toThrow(/Unknown LLM provider/);
   });
 });
@@ -207,7 +229,7 @@ describe('ProviderRunner.runAnalysis() — Gemini', () => {
       usageMetadata: { promptTokenCount: 150, candidatesTokenCount: 40 },
     }));
 
-    const runner = new ProviderRunner(makeConfig({ provider: 'gemini', model: 'gemini-1.5-flash', apiKey: 'gk-test' }));
+    const runner = makeRunner(makeConfig({ provider: 'gemini', model: 'gemini-1.5-flash' }), 'gk-test');
     const result = await runner.runAnalysis({ systemPrompt: 'sys', userPrompt: 'user' });
 
     const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit];
@@ -232,7 +254,7 @@ describe('ProviderRunner.runAnalysis() — Gemini', () => {
       400
     ));
 
-    const runner = new ProviderRunner(makeConfig({ provider: 'gemini', model: 'gemini-1.5-flash', apiKey: 'bad' }));
+    const runner = makeRunner(makeConfig({ provider: 'gemini', model: 'gemini-1.5-flash' }), 'bad');
     await expect(runner.runAnalysis({ systemPrompt: 's', userPrompt: 'u' }))
       .rejects.toThrow('API key not valid.');
   });
@@ -249,7 +271,7 @@ describe('ProviderRunner.runAnalysis() — Ollama', () => {
       eval_count: 30,
     }));
 
-    const runner = new ProviderRunner(makeConfig({ provider: 'ollama', model: 'llama3', apiKey: undefined }));
+    const runner = makeRunner(makeConfig({ provider: 'ollama', apiKey: undefined, model: 'llama3' }), undefined);
     const result = await runner.runAnalysis({ systemPrompt: 'sys', userPrompt: 'user' });
 
     const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit];
@@ -270,12 +292,12 @@ describe('ProviderRunner.runAnalysis() — Ollama', () => {
       message: { content: '{}' },
     }));
 
-    const runner = new ProviderRunner(makeConfig({
+    const runner = makeRunner(makeConfig({
       provider: 'ollama',
       model: 'mistral',
       apiKey: undefined,
       baseUrl: 'http://my-ollama:11434',
-    }));
+    }), undefined);
     await runner.runAnalysis({ systemPrompt: 's', userPrompt: 'u' });
 
     const [url] = mockFetch.mock.calls[0] as [string];
@@ -292,7 +314,7 @@ describe('ProviderRunner — jsonSchema param', () => {
       choices: [{ message: { content: '{}' } }],
     }));
 
-    const runner = new ProviderRunner(makeConfig());
+    const runner = makeRunner(makeConfig(), 'sk-test');
     await runner.runAnalysis({
       systemPrompt: 's',
       userPrompt: 'u',

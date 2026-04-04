@@ -9,9 +9,27 @@ const app = new Hono();
 
 const VALID_PROVIDERS = ['openai', 'anthropic', 'gemini', 'ollama', 'openrouter', 'mistral'] as const;
 
+const PROVIDER_API_KEY_ENV: Record<string, string> = {
+  openai:     'OPENAI_API_KEY',
+  anthropic:  'ANTHROPIC_API_KEY',
+  gemini:     'GEMINI_API_KEY',
+  openrouter: 'OPENROUTER_API_KEY',
+  mistral:    'MISTRAL_API_KEY',
+};
+
 function maskApiKey(key: string | undefined): string | undefined {
   if (!key || key.length < 8) return key ? '***' : undefined;
   return key.slice(0, 4) + '...' + key.slice(-4);
+}
+
+/**
+ * Describe the API key source for a provider.
+ */
+function describeApiKeySource(provider: string, storedKey?: string): 'env' | 'stored' | 'none' {
+  const envVar = PROVIDER_API_KEY_ENV[provider];
+  if (envVar && process.env[envVar]) return 'env';
+  if (storedKey) return 'stored';
+  return 'none';
 }
 
 // GET /api/config/llm — return full config (API key masked)
@@ -24,6 +42,7 @@ app.get('/llm', (c) => {
     provider: llm?.provider,
     model: llm?.model,
     apiKey: maskApiKey(llm?.apiKey),
+    apiKeySource: llm ? describeApiKeySource(llm.provider, llm.apiKey) : 'none',
     baseUrl: llm?.baseUrl,
   });
 });
@@ -137,20 +156,27 @@ app.get('/llm/ollama-models', async (c) => {
 // POST /api/config/llm/models — discover models for a provider using an API key
 app.post('/llm/models', async (c) => {
   const body = await c.req.json<{ provider: string, apiKey?: string, baseUrl?: string }>();
-  
+
   if (!body.provider) {
     return c.json({ error: 'provider is required' }, 400);
   }
 
-  // If apiKey is not provided, try to use the saved config
-  let apiKey = body.apiKey;
-  if (!apiKey) {
-    const savedConfig = loadLLMConfig();
-    if (savedConfig?.provider === body.provider) {
-      apiKey = savedConfig.apiKey;
+  // Resolve API key: body.apiKey > env var > saved config (for this provider only)
+  let apiKey: string | undefined;
+  if (body.apiKey) {
+    apiKey = body.apiKey;
+  } else {
+    const envVar = PROVIDER_API_KEY_ENV[body.provider];
+    if (envVar && process.env[envVar]) {
+      apiKey = process.env[envVar];
+    } else {
+      const savedConfig = loadLLMConfig();
+      if (savedConfig?.provider === body.provider) {
+        apiKey = savedConfig?.apiKey;
+      }
     }
   }
-  
+
   try {
     const models = await discoverModels(body.provider as any, apiKey, body.baseUrl);
     return c.json({ models });
