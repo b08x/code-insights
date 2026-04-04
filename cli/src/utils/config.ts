@@ -47,8 +47,13 @@ export function saveConfig(config: ClaudeInsightConfig): void {
   if (config.dashboard !== undefined) {
     clean.dashboard = {
       ...(config.dashboard.port !== undefined ? { port: config.dashboard.port } : {}),
-      ...(config.dashboard.llm !== undefined ? { llm: config.dashboard.llm } : {}),
     };
+    // Strip apiKey from LLM config — keys are resolved from environment variables
+    // at runtime and are never persisted to disk.
+    if (config.dashboard.llm !== undefined) {
+      const { apiKey: _omitted, ...llmWithoutKey } = config.dashboard.llm;
+      clean.dashboard.llm = llmWithoutKey;
+    }
   }
   if (config.telemetry !== undefined) {
     clean.telemetry = config.telemetry;

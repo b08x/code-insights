@@ -4,7 +4,30 @@ import inquirer from 'inquirer';
 import { loadConfig, saveConfig, isConfigured } from '../utils/config.js';
 import { trackEvent } from '../utils/telemetry.js';
 import { PROVIDERS, getDefaultModel } from '../constants/llm-providers.js';
-import type { ClaudeInsightConfig, LLMProviderConfig } from '../types.js';
+import type { ClaudeInsightConfig, LLMProviderConfig, LLMProvider } from '../types.js';
+
+// Map provider -> env var name for display
+const PROVIDER_API_KEY_ENV: Record<string, string> = {
+  openai:     'OPENAI_API_KEY',
+  anthropic:  'ANTHROPIC_API_KEY',
+  gemini:     'GEMINI_API_KEY',
+  openrouter: 'OPENROUTER_API_KEY',
+  mistral:    'MISTRAL_API_KEY',
+};
+
+/**
+ * Describe how the API key is being sourced for display purposes.
+ */
+function describeApiKeySource(provider: LLMProvider, hasStoredKey: boolean): string {
+  const envVar = PROVIDER_API_KEY_ENV[provider];
+  if (envVar && process.env[envVar]) {
+    return '(from env var ' + envVar + ')';
+  }
+  if (hasStoredKey) {
+    return '(session only — not persisted to disk)';
+  }
+  return '(not set — set ' + (envVar ?? 'the API key') + ' env var)';
+}
 
 /**
  * Show current configuration summary.
@@ -39,15 +62,12 @@ function showConfigAction(): void {
   // LLM config
   if (config.dashboard?.llm) {
     const llm = config.dashboard.llm;
-    const maskedKey = llm.apiKey && llm.apiKey.length >= 8
-      ? llm.apiKey.slice(0, 4) + '...' + llm.apiKey.slice(-4)
-      : llm.apiKey ? '***' : '(none)';
 
     console.log(chalk.white('\n  LLM:'));
     console.log(chalk.gray(`    Provider: ${llm.provider}`));
     console.log(chalk.gray(`    Model:    ${llm.model}`));
     if (llm.provider !== 'ollama') {
-      console.log(chalk.gray(`    API Key:  ${maskedKey}`));
+      console.log(chalk.gray(`    API Key:  ${describeApiKeySource(llm.provider, !!llm.apiKey)}`));
     }
     if (llm.baseUrl) {
       console.log(chalk.gray(`    Base URL: ${llm.baseUrl}`));
@@ -127,15 +147,11 @@ const llmCommand = configCommand
         return;
       }
 
-      const maskedKey = llm.apiKey && llm.apiKey.length >= 8
-        ? llm.apiKey.slice(0, 4) + '...' + llm.apiKey.slice(-4)
-        : llm.apiKey ? '***' : '(none)';
-
       console.log(chalk.cyan('\n  LLM Configuration\n'));
       console.log(chalk.gray(`    Provider: ${llm.provider}`));
       console.log(chalk.gray(`    Model:    ${llm.model}`));
       if (llm.provider !== 'ollama') {
-        console.log(chalk.gray(`    API Key:  ${maskedKey}`));
+        console.log(chalk.gray(`    API Key:  ${describeApiKeySource(llm.provider, !!llm.apiKey)}`));
       }
       if (llm.baseUrl) {
         console.log(chalk.gray(`    Base URL: ${llm.baseUrl}`));
@@ -221,31 +237,42 @@ async function runInteractiveLLMConfig(): Promise<void> {
 
   // Step 3: API key (if required)
   if (providerInfo.requiresApiKey) {
-    const maskedExisting = existing?.apiKey && existing.apiKey.length >= 8
-      ? `${existing.apiKey.slice(0, 4)}...${existing.apiKey.slice(-4)}`
-      : undefined;
+    const envVar = PROVIDER_API_KEY_ENV[provider];
+    const hasEnvKey = envVar ? !!process.env[envVar] : false;
+    const hasStoredKey = !!existing?.apiKey;
+
+    let message = `API key for ${providerInfo.name}`;
+    if (hasEnvKey) {
+      message += ` (${envVar} is set — will be used instead)`;
+    } else if (hasStoredKey) {
+      message += ' (stored session-only, press Enter to keep)';
+    } else if (envVar) {
+      message += ` (or set ${envVar} env var)`;
+    }
+    message += ':';
 
     const { apiKey } = await inquirer.prompt<{ apiKey: string }>([
       {
         type: 'password',
         name: 'apiKey',
-        message: `API key${maskedExisting ? ` (current: ${maskedExisting}, leave blank to keep)` : ''}:`,
+        message,
         mask: '*',
         validate: (val: string) => {
-          if (!val && !existing?.apiKey) {
-            return `API key required for ${providerInfo.name}`;
+          if (!val && !hasEnvKey && !hasStoredKey) {
+            return `API key required for ${providerInfo.name} — set ${envVar ?? 'the API key'} env var to avoid prompts`;
           }
           return true;
         },
       },
     ]);
 
-    // Preserve existing key if blank input
+    // Only store in session (llmConfig.apiKey) — saveConfig strips it before writing to disk.
+    // The stored key persists in memory for this session only.
     if (apiKey) {
       llmConfig.apiKey = apiKey;
-    } else if (existing?.apiKey) {
-      llmConfig.apiKey = existing.apiKey;
     }
+    // Note: we no longer auto-preserve existing?.apiKey since the session may have
+    // started with a key from env var, and explicit blank means "don't use a stored key".
   }
 
   // Step 4: Base URL (Ollama or custom)
@@ -267,9 +294,16 @@ async function runInteractiveLLMConfig(): Promise<void> {
   saveLLMConfig(llmConfig);
 
   console.log(chalk.green(`\nLLM configured: ${providerInfo.name} / ${model}\n`));
-
-  if (providerInfo.apiKeyLink && !llmConfig.apiKey) {
-    console.log(chalk.dim(`  Get an API key: ${providerInfo.apiKeyLink}\n`));
+  if (providerInfo.requiresApiKey) {
+    const envVar = PROVIDER_API_KEY_ENV[provider];
+    if (envVar && process.env[envVar]) {
+      console.log(chalk.dim(`  Using API key from ${envVar}\n`));
+    } else if (llmConfig.apiKey) {
+      console.log(chalk.dim('  API key stored for this session only — not written to disk.\n'));
+      console.log(chalk.dim(`  For persistent use, set the ${envVar} environment variable.\n`));
+    } else {
+      console.log(chalk.dim(`  Get an API key: ${providerInfo.apiKeyLink}\n`));
+    }
   }
 }
 

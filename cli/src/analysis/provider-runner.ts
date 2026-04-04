@@ -11,8 +11,40 @@
  */
 
 import { loadConfig } from '../utils/config.js';
-import type { LLMProviderConfig } from '../types.js';
+import type { LLMProviderConfig, LLMProvider } from '../types.js';
 import type { AnalysisRunner, RunAnalysisParams, RunAnalysisResult } from './runner-types.js';
+
+/**
+ * Mapping from provider ID to its standard API key environment variable.
+ */
+const PROVIDER_API_KEY_ENV: Record<string, string> = {
+  openai:    'OPENAI_API_KEY',
+  anthropic: 'ANTHROPIC_API_KEY',
+  gemini:    'GEMINI_API_KEY',
+  openrouter: 'OPENROUTER_API_KEY',
+  mistral:   'MISTRAL_API_KEY',
+};
+
+/**
+ * Resolve the API key for a provider.
+ *
+ * Priority:
+ *  1. Environment variable (e.g. OPENAI_API_KEY) — always checked first
+ *  2. Previously-stored session key (passed as `storedKey`) — kept in memory only,
+ *     never written to disk by saveConfig
+ *  3. undefined — ollama does not use API keys
+ *
+ * @param provider   Provider identifier
+ * @param storedKey  Key previously entered in this session (not persisted to disk)
+ */
+function resolveApiKey(provider: LLMProvider, storedKey?: string): string | undefined {
+  if (provider === 'ollama') return undefined;
+  const envVar = PROVIDER_API_KEY_ENV[provider];
+  if (envVar && process.env[envVar]) {
+    return process.env[envVar];
+  }
+  return storedKey;
+}
 
 // ── Minimal LLM types (mirrors server/src/llm/types.ts) ──────────────────────
 
@@ -173,13 +205,83 @@ function makeOllamaChat(model: string, baseUrl?: string): LLMChatFn {
   };
 }
 
-function makeChatFn(config: LLMProviderConfig): LLMChatFn {
+function makeOpenRouterChat(apiKey: string, model: string): LLMChatFn {
+  return async (messages) => {
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+        'HTTP-Referer': 'http://localhost:7890',
+        'X-Title': 'Code Insights',
+      },
+      body: JSON.stringify({ model, messages, temperature: 0.7 }),
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({})) as { error?: { message?: string; metadata?: { raw?: string } } };
+      let detail = err.error?.message || `OpenRouter API error (HTTP ${response.status})`;
+      // OpenRouter nests upstream provider errors inside metadata.raw
+      if (err.error?.metadata?.raw) {
+        try {
+          const rawObj = JSON.parse(err.error.metadata.raw);
+          if (rawObj.error?.message) {
+            detail = rawObj.error.message;
+          }
+        } catch {
+          // falls through to the raw string as-is
+        }
+      }
+      throw new Error(detail);
+    }
+    const data = await response.json() as {
+      choices: Array<{ message: { content: string } }>;
+      usage?: { prompt_tokens: number; completion_tokens: number };
+    };
+    return {
+      content: data.choices[0]?.message?.content || '',
+      usage: data.usage
+        ? { inputTokens: data.usage.prompt_tokens, outputTokens: data.usage.completion_tokens }
+        : undefined,
+    };
+  };
+}
+
+function makeMistralChat(apiKey: string, model: string): LLMChatFn {
+  return async (messages) => {
+    const response = await fetch('https://api.mistral.ai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({ model, messages, temperature: 0.7 }),
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({})) as { message?: string };
+      throw new Error(err.message || `Mistral API error (HTTP ${response.status})`);
+    }
+    const data = await response.json() as {
+      choices: Array<{ message: { content: string } }>;
+      usage?: { prompt_tokens: number; completion_tokens: number };
+    };
+    return {
+      content: data.choices[0]?.message?.content || '',
+      usage: data.usage
+        ? { inputTokens: data.usage.prompt_tokens, outputTokens: data.usage.completion_tokens }
+        : undefined,
+    };
+  };
+}
+
+function makeChatFn(config: LLMProviderConfig, resolvedApiKey: string | undefined): LLMChatFn {
   switch (config.provider) {
-    case 'openai':    return makeOpenAIChat(config.apiKey ?? '', config.model);
-    case 'anthropic': return makeAnthropicChat(config.apiKey ?? '', config.model);
-    case 'gemini':    return makeGeminiChat(config.apiKey ?? '', config.model);
-    case 'ollama':    return makeOllamaChat(config.model, config.baseUrl);
-    default:          throw new Error(`Unknown LLM provider: ${(config as LLMProviderConfig).provider}`);
+    case 'openai':    return makeOpenAIChat(resolvedApiKey ?? '', config.model);
+    case 'anthropic': return makeAnthropicChat(resolvedApiKey ?? '', config.model);
+    case 'gemini':    return makeGeminiChat(resolvedApiKey ?? '', config.model);
+    case 'ollama':     return makeOllamaChat(config.model, config.baseUrl);
+    case 'openrouter': return makeOpenRouterChat(resolvedApiKey ?? '', config.model);
+    case 'mistral':    return makeMistralChat(resolvedApiKey ?? '', config.model);
+    default:           throw new Error(`Unknown LLM provider: ${(config as LLMProviderConfig).provider}`);
   }
 }
 
@@ -191,16 +293,18 @@ export class ProviderRunner implements AnalysisRunner {
   private readonly _model: string;
   private readonly _provider: string;
 
-  constructor(config: LLMProviderConfig) {
+  constructor(config: LLMProviderConfig, resolvedApiKey: string | undefined) {
     this.name = config.provider;
     this._model = config.model;
     this._provider = config.provider;
-    this.chat = makeChatFn(config);
+    this.chat = makeChatFn(config, resolvedApiKey);
   }
 
   /**
    * Create a ProviderRunner from the current CLI config.
-   * Throws if LLM is not configured.
+   * API key is resolved from environment variables first, then falls back to
+   * a session-only key stored in config (never persisted to disk).
+   * Throws if LLM is not configured or no API key is available.
    */
   static fromConfig(): ProviderRunner {
     const config = loadConfig();
@@ -208,12 +312,16 @@ export class ProviderRunner implements AnalysisRunner {
     if (!llm) {
       throw new Error('LLM not configured. Run `code-insights config llm` to configure a provider.');
     }
-    if (llm.provider !== 'ollama' && !llm.apiKey) {
+    const apiKey = resolveApiKey(llm.provider, llm.apiKey);
+    if (llm.provider !== 'ollama' && !apiKey) {
+      const envVar = PROVIDER_API_KEY_ENV[llm.provider];
       throw new Error(
-        `LLM provider '${llm.provider}' requires an API key. Run \`code-insights config llm\` to set it.`
+        `LLM provider '${llm.provider}' requires an API key. ` +
+        (envVar ? `Set the ${envVar} environment variable. ` : '') +
+        `Run \`code-insights config llm\` to enter a session-only key.`
       );
     }
-    return new ProviderRunner(llm);
+    return new ProviderRunner(llm, apiKey);
   }
 
   async runAnalysis(params: RunAnalysisParams): Promise<RunAnalysisResult> {
