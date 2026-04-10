@@ -39,7 +39,7 @@ ATTRIBUTION — 3-step decision tree (follow IN ORDER):
 Step 1: Is the cause external to the user-AI interaction? (missing docs, broken tooling, infra outage) → "environmental"
 Step 2: Could the USER have prevented this with better input? Evidence: vague prompt, missing context, no constraints, late requirements, ambiguous correction → "user-actionable"
 Step 3: User input was clear and the AI still failed → "ai-capability"
-When genuinely mixed between user-actionable and ai-capability, lean "user-actionable" — this tool helps users improve.
+When causality is ambiguous between user-actionable and ai-capability, classify as "user-actionable" to maintain analytical focus on prompt constraints.
 
 DESCRIPTION RULES:
 - One neutral sentence describing the GAP, not the actor
@@ -146,10 +146,10 @@ DIMENSION SCORING (0-100):
   Score 75 if no corrections were needed (absence of corrections in a successful session = good prompting).
 
 EDGE CASES:
-- Short sessions (<5 user messages): Score conservatively. Do not penalize for missing elements unnecessary in quick tasks.
-- Exploration sessions: Do not penalize for missing acceptance criteria or scope drift.
-- Sessions where AI performed well despite vague prompts: Still classify deficits. Impact should be "low" since no visible cost.
-- Agentic/delegation sessions: If the user gave a clear high-level directive and the AI autonomously planned and executed successfully, do not penalize for low message count or lack of micro-level specificity. Effective delegation IS good prompting. Focus on the quality of the initial delegation prompt.`;
+- Short sessions (<5 user messages): Structure evaluations proportionally. Do not classify lack of detail as a deficit if unnecessary for the task.
+- Exploration sessions: Exclude missing acceptance criteria or scope drift as deficits.
+- Sessions where AI performed well despite vague prompts: Classify deficits regardless of outcome; assign "low" impact.
+- Agentic/delegation sessions: Explicit high-level directives followed by autonomous AI execution constitute precise prompting. Evaluate the structure of the initial delegation prompt rather than penalizing for low interaction volume.`;
 
 export const EFFECTIVE_PATTERN_CLASSIFICATION_GUIDANCE = `
 EFFECTIVE PATTERN CLASSIFICATION GUIDANCE:
