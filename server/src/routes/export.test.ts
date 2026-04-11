@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto';
 import Database from 'better-sqlite3';
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { runMigrations } from '@code-insights/cli/db/schema';
+import { runMigrations } from '../../../cli/src/db/migrate.js';
 
 // ──────────────────────────────────────────────────────
 // Module-scoped mutable DB reference for mocking.
@@ -63,11 +63,13 @@ function seedInsight(
   title: string,
   content: string,
   metadata: Record<string, unknown> = {},
+  timestamp?: string,
 ) {
+  const ts = timestamp || new Date().toISOString();
   testDb.prepare(`
     INSERT INTO insights (id, session_id, project_id, project_name, type, title, content, summary, confidence, source, metadata, timestamp)
-    VALUES (?, ?, ?, 'test', ?, ?, ?, ?, 0.9, 'llm', ?, datetime('now'))
-  `).run(randomUUID(), sessionId, projectId, type, title, content, content, JSON.stringify(metadata));
+    VALUES (?, ?, ?, 'test', ?, ?, ?, ?, 0.9, 'llm', ?, ?)
+  `).run(randomUUID(), sessionId, projectId, type, title, content, content, JSON.stringify(metadata), ts);
 }
 
 function parseSSEEvents(text: string): Array<{ event: string; data: string }> {
@@ -505,6 +507,361 @@ describe('Export routes', () => {
       expect(completeData.content).toBe('# Streamed Export');
       expect(completeData.metadata).toBeDefined();
       expect(completeData.metadata.scope).toBe('all');
+    });
+  });
+
+  describe('POST /api/export/generate with date range filtering', () => {
+    it('filters insights by date range (from only)', async () => {
+      seedProjectAndSession('proj-1', 'sess-1');
+      // Insight from 2024-01-01 (excluded)
+      seedInsight('sess-1', 'proj-1', 'decision', 'Old Decision', 'Old content', {}, '2024-01-01T10:00:00Z');
+      // Insight from 2024-06-01 (included)
+      seedInsight('sess-1', 'proj-1', 'decision', 'New Decision', 'New content', {}, '2024-06-01T10:00:00Z');
+
+      mockIsLLMConfigured.mockReturnValue(true);
+      mockChat.mockResolvedValue({ content: '# Filtered Export' });
+
+      const app = createApp();
+      const res = await app.request('/api/export/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scope: 'all',
+          format: 'knowledge-brief',
+          dateFrom: '2024-06-01'
+        }),
+      });
+
+      expect(res.status).toBe(200);
+      expect(mockChat).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({
+            role: 'user',
+            content: expect.stringContaining('New Decision')
+          })
+        ]),
+        expect.any(Object)
+      );
+      expect(mockChat).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({
+            role: 'user',
+            content: expect.not.stringContaining('Old Decision')
+          })
+        ]),
+        expect.any(Object)
+      );
+    });
+
+    it('filters insights by date range (to only)', async () => {
+      seedProjectAndSession('proj-1', 'sess-1');
+      // Insight from 2024-01-01 (included)
+      seedInsight('sess-1', 'proj-1', 'decision', 'Early Decision', 'Early content', {}, '2024-01-01T10:00:00Z');
+      // Insight from 2024-06-01 (excluded - after to date)
+      seedInsight('sess-1', 'proj-1', 'decision', 'Late Decision', 'Late content', {}, '2024-06-01T10:00:00Z');
+
+      mockIsLLMConfigured.mockReturnValue(true);
+      mockChat.mockResolvedValue({ content: '# Filtered Export' });
+
+      const app = createApp();
+      const res = await app.request('/api/export/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scope: 'all',
+          format: 'knowledge-brief',
+          dateTo: '2024-05-31'
+        }),
+      });
+
+      expect(res.status).toBe(200);
+      expect(mockChat).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({
+            role: 'user',
+            content: expect.stringContaining('Early Decision')
+          })
+        ]),
+        expect.any(Object)
+      );
+      expect(mockChat).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({
+            role: 'user',
+            content: expect.not.stringContaining('Late Decision')
+          })
+        ]),
+        expect.any(Object)
+      );
+    });
+
+    it('filters insights by date range (both from and to)', async () => {
+      seedProjectAndSession('proj-1', 'sess-1');
+      // Before range
+      seedInsight('sess-1', 'proj-1', 'decision', 'Before Range', 'Before content', {}, '2024-01-01T10:00:00Z');
+      // In range
+      seedInsight('sess-1', 'proj-1', 'decision', 'In Range', 'In range content', {}, '2024-03-15T10:00:00Z');
+      // After range
+      seedInsight('sess-1', 'proj-1', 'decision', 'After Range', 'After content', {}, '2024-07-01T10:00:00Z');
+
+      mockIsLLMConfigured.mockReturnValue(true);
+      mockChat.mockResolvedValue({ content: '# Range Filtered Export' });
+
+      const app = createApp();
+      const res = await app.request('/api/export/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scope: 'all',
+          format: 'knowledge-brief',
+          dateFrom: '2024-03-01',
+          dateTo: '2024-06-30'
+        }),
+      });
+
+      expect(res.status).toBe(200);
+      expect(mockChat).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({
+            role: 'user',
+            content: expect.stringContaining('In Range')
+          })
+        ]),
+        expect.any(Object)
+      );
+      expect(mockChat).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({
+            role: 'user',
+            content: expect.not.stringContaining('Before Range')
+          })
+        ]),
+        expect.any(Object)
+      );
+      expect(mockChat).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({
+            role: 'user',
+            content: expect.not.stringContaining('After Range')
+          })
+        ]),
+        expect.any(Object)
+      );
+    });
+
+    it('returns 400 for invalid dateFrom format', async () => {
+      mockIsLLMConfigured.mockReturnValue(true);
+
+      const app = createApp();
+      const res = await app.request('/api/export/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scope: 'all',
+          format: 'knowledge-brief',
+          dateFrom: 'invalid-date'
+        }),
+      });
+
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toContain('dateFrom must be a valid YYYY-MM-DD date');
+    });
+
+    it('returns 400 for invalid dateTo format', async () => {
+      mockIsLLMConfigured.mockReturnValue(true);
+
+      const app = createApp();
+      const res = await app.request('/api/export/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scope: 'all',
+          format: 'knowledge-brief',
+          dateTo: '2024/06/01'
+        }),
+      });
+
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toContain('dateTo must be a valid YYYY-MM-DD date');
+    });
+
+    it('returns 400 when dateFrom is after dateTo', async () => {
+      mockIsLLMConfigured.mockReturnValue(true);
+
+      const app = createApp();
+      const res = await app.request('/api/export/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scope: 'all',
+          format: 'knowledge-brief',
+          dateFrom: '2024-06-01',
+          dateTo: '2024-05-01'
+        }),
+      });
+
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toContain('dateFrom must be before or equal to dateTo');
+    });
+
+    it('includes date range in prompt context when user selected', async () => {
+      seedProjectAndSession('proj-1', 'sess-1');
+      seedInsight('sess-1', 'proj-1', 'decision', 'Test Decision', 'Test content', {}, '2024-03-15T10:00:00Z');
+
+      mockIsLLMConfigured.mockReturnValue(true);
+      mockChat.mockResolvedValue({ content: '# Export with Date Range Context' });
+
+      const app = createApp();
+      const res = await app.request('/api/export/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scope: 'all',
+          format: 'knowledge-brief',
+          dateFrom: '2024-03-01',
+          dateTo: '2024-06-30'
+        }),
+      });
+
+      expect(res.status).toBe(200);
+      expect(mockChat).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({
+            role: 'user',
+            content: expect.stringContaining('Date range: 2024-03-01 to 2024-06-30 (user selected)')
+          })
+        ]),
+        expect.any(Object)
+      );
+    });
+
+    it('works with project scope and date filtering', async () => {
+      seedProjectAndSession('proj-1', 'sess-1');
+      seedProjectAndSession('proj-2', 'sess-2');
+      // Project 1 insight in range
+      seedInsight('sess-1', 'proj-1', 'decision', 'Project 1 Decision', 'Project 1 content', {}, '2024-03-15T10:00:00Z');
+      // Project 2 insight in range (should be excluded by project scope)
+      seedInsight('sess-2', 'proj-2', 'decision', 'Project 2 Decision', 'Project 2 content', {}, '2024-03-15T10:00:00Z');
+
+      mockIsLLMConfigured.mockReturnValue(true);
+      mockChat.mockResolvedValue({ content: '# Project Filtered Export' });
+
+      const app = createApp();
+      const res = await app.request('/api/export/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scope: 'project',
+          projectId: 'proj-1',
+          format: 'knowledge-brief',
+          dateFrom: '2024-03-01',
+          dateTo: '2024-06-30'
+        }),
+      });
+
+      expect(res.status).toBe(200);
+      expect(mockChat).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({
+            role: 'user',
+            content: expect.stringContaining('Project 1 Decision')
+          })
+        ]),
+        expect.any(Object)
+      );
+      expect(mockChat).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({
+            role: 'user',
+            content: expect.not.stringContaining('Project 2 Decision')
+          })
+        ]),
+        expect.any(Object)
+      );
+    });
+
+    it('handles edge case: exact boundary dates', async () => {
+      seedProjectAndSession('proj-1', 'sess-1');
+      // Exactly on from date boundary (included)
+      seedInsight('sess-1', 'proj-1', 'decision', 'From Boundary', 'From boundary content', {}, '2024-03-01T00:00:00Z');
+      // Exactly on to date boundary (included via half-open interval)
+      seedInsight('sess-1', 'proj-1', 'decision', 'To Boundary', 'To boundary content', {}, '2024-06-30T23:59:59Z');
+      // Just after to date boundary (excluded)
+      seedInsight('sess-1', 'proj-1', 'decision', 'After Boundary', 'After boundary content', {}, '2024-07-01T00:00:00Z');
+
+      mockIsLLMConfigured.mockReturnValue(true);
+      mockChat.mockResolvedValue({ content: '# Boundary Test Export' });
+
+      const app = createApp();
+      const res = await app.request('/api/export/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scope: 'all',
+          format: 'knowledge-brief',
+          dateFrom: '2024-03-01',
+          dateTo: '2024-06-30'
+        }),
+      });
+
+      expect(res.status).toBe(200);
+      expect(mockChat).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({
+            role: 'user',
+            content: expect.stringMatching(/(From Boundary|To Boundary).*(From Boundary|To Boundary)/s)
+          })
+        ]),
+        expect.any(Object)
+      );
+      expect(mockChat).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({
+            role: 'user',
+            content: expect.not.stringContaining('After Boundary')
+          })
+        ]),
+        expect.any(Object)
+      );
+    });
+  });
+
+  describe('GET /api/export/generate/stream with date range filtering', () => {
+    it('filters insights by date range in stream mode', async () => {
+      seedProjectAndSession('proj-1', 'sess-1');
+      // Old insight (excluded)
+      seedInsight('sess-1', 'proj-1', 'decision', 'Old Decision', 'Old content', {}, '2024-01-01T10:00:00Z');
+      // New insight (included)
+      seedInsight('sess-1', 'proj-1', 'decision', 'New Decision', 'New content', {}, '2024-06-01T10:00:00Z');
+
+      mockIsLLMConfigured.mockReturnValue(true);
+      mockChat.mockResolvedValue({ content: '# Streamed Filtered Export' });
+
+      const app = createApp();
+      const res = await app.request('/api/export/generate/stream?scope=all&format=knowledge-brief&dateFrom=2024-06-01');
+      expect(res.status).toBe(200);
+
+      const text = await res.text();
+      const events = parseSSEEvents(text);
+
+      const completeEvent = events.find(e => e.event === 'complete');
+      expect(completeEvent).toBeDefined();
+      const completeData = JSON.parse(completeEvent!.data);
+      expect(completeData.content).toBe('# Streamed Filtered Export');
+
+      // Verify LLM was called with filtered content
+      expect(mockChat).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({
+            role: 'user',
+            content: expect.stringContaining('New Decision')
+          })
+        ]),
+        expect.any(Object)
+      );
     });
   });
 });

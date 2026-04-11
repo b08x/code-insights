@@ -10,6 +10,7 @@
     "./db/read": "./dist/db/read.js",
     "./db/write": "./dist/db/write.js",
     "./db/schema": "./dist/db/schema.js",
+    "./db/queue": "./dist/db/queue.js",
     "./types": "./dist/types.js",
     "./utils/config": "./dist/utils/config.js",
     "./utils/browser": "./dist/utils/browser.js",
