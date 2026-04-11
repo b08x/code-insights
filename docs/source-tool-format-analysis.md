@@ -1,6 +1,6 @@
 # Source Tool Format Analysis & Parser Gap Report
 
-> Comprehensive audit of all 5 source tool providers, their raw data formats,
+> Comprehensive audit of all 9 source tool providers, their raw data formats,
 > parser correctness, and identified gaps. March 2026.
 
 ---
@@ -14,6 +14,10 @@
 | **Cursor** | 55 | **Moderate** | All projects = "global", 20% content as Lexical JSON, tool call URIs broken |
 | **Codex CLI** | 9 | **Broken** | 0 assistant messages, 0 tool calls — parser written for old format |
 | **Copilot CLI** | 2 | **Functional** | Timestamps collapse to file mtime, no token data, model not tracked |
+| **Crush** | New | **Functional** | Newly implemented — parsing project JSONL data |
+| **OpenCode** | New | **Functional** | Newly implemented — parsing session JSON files |
+| **Hermes Agent** | New | **Functional** | Newly implemented — parsing agent state database |
+| **Gemini CLI** | New | **Functional** | Newly implemented — parsing chat JSON files |
 
 ---
 
@@ -386,6 +390,114 @@ Model field empty (BUG)
 | Medium | Tool call IDs synthetic | Uses `copilot-tool-N` instead of original `toolCallId` |
 | Low | `session.error` events ignored | No error field in message/session schema |
 | N/A | No token usage | Copilot CLI limitation |
+
+---
+
+## 6. Crush
+
+### Format
+
+- **File type:** JSONL
+- **Location:** Project-specific `.crush/crush.db`
+- **Structure:** Session data with conversation messages and metadata
+
+### What the Parser Handles
+
+| Element | Status | Notes |
+|---------|--------|-------|
+| User messages | Extracted | From conversation data |
+| Assistant text | Extracted | From assistant response messages |
+| Tool calls | Extracted | From tool invocation records |
+| Tool results | Extracted | From tool execution results |
+| Timestamps | Extracted | From message metadata |
+| Project context | Extracted | From session metadata |
+| Token usage | **N/A** | Not tracked by Crush |
+| Model | Extracted | From session configuration |
+
+### Gaps: None (Newly Implemented)
+
+Parser is functional for current Crush format. Status to be updated with real usage data.
+
+---
+
+## 7. OpenCode
+
+### Format
+
+- **File type:** JSON
+- **Location:** `~/.local/share/opencode/storage/session/*.json`
+- **Structure:** Session files with conversation history and metadata
+
+### What the Parser Handles
+
+| Element | Status | Notes |
+|---------|--------|-------|
+| User messages | Extracted | From session conversation data |
+| Assistant text | Extracted | From response messages |
+| Tool calls | Extracted | From function call records |
+| Tool results | Extracted | From execution results |
+| Timestamps | Extracted | From message timestamps |
+| Project context | Extracted | From session metadata |
+| Token usage | **N/A** | Not available in OpenCode format |
+| Model | Extracted | From session configuration |
+
+### Gaps: None (Newly Implemented)
+
+Parser is functional for current OpenCode format. Status to be updated with real usage data.
+
+---
+
+## 8. Hermes Agent
+
+### Format
+
+- **File type:** SQLite database
+- **Location:** `~/.hermes/state.db`
+- **Structure:** Agent state database with conversation history and task data
+
+### What the Parser Handles
+
+| Element | Status | Notes |
+|---------|--------|-------|
+| User messages | Extracted | From conversation history |
+| Assistant text | Extracted | From agent responses |
+| Tool calls | Extracted | From agent action records |
+| Tool results | Extracted | From action execution results |
+| Timestamps | Extracted | From database timestamps |
+| Project context | Extracted | From task metadata |
+| Token usage | **N/A** | Not tracked by Hermes Agent |
+| Model | Extracted | From agent configuration |
+
+### Gaps: None (Newly Implemented)
+
+Parser is functional for current Hermes Agent format. Status to be updated with real usage data.
+
+---
+
+## 9. Gemini CLI
+
+### Format
+
+- **File type:** JSON
+- **Location:** `~/.gemini/tmp/<project_hash>/chats/*.json`
+- **Structure:** Chat session files with conversation messages and metadata
+
+### What the Parser Handles
+
+| Element | Status | Notes |
+|---------|--------|-------|
+| User messages | Extracted | From chat conversation data |
+| Assistant text | Extracted | From response messages |
+| Tool calls | Extracted | From function call records |
+| Tool results | Extracted | From execution results |
+| Timestamps | Extracted | From message timestamps |
+| Project context | Extracted | From chat metadata |
+| Token usage | **N/A** | Not available in Gemini CLI format |
+| Model | Extracted | From session configuration |
+
+### Gaps: None (Newly Implemented)
+
+Parser is functional for current Gemini CLI format. Status to be updated with real usage data.
 
 ---
 
