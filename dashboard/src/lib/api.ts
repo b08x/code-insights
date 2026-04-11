@@ -31,6 +31,13 @@ export function fetchProject(id: string) {
   return request<{ project: Project }>(`/projects/${id}`);
 }
 
+export function patchProject(id: string, body: { name?: string, gitRemoteUrl?: string }) {
+  return request<{ ok: boolean }>(`/projects/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
+}
+
 // ── Sessions ──────────────────────────────────────────────────────────────────
 
 export function fetchSessions(params?: {

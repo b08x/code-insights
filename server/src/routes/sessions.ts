@@ -108,14 +108,37 @@ app.get('/:id', (c) => {
 
 app.patch('/:id', async (c) => {
   const db = getDb();
-  const body = await c.req.json<{ customTitle?: string }>();
-  const { customTitle } = body;
-  if (customTitle === undefined) {
-    return c.json({ error: 'customTitle is required' }, 400);
+  const body = await c.req.json<{ customTitle?: string, projectName?: string, gitRemoteUrl?: string }>();
+  const { customTitle, projectName, gitRemoteUrl } = body;
+  
+  if (customTitle === undefined && projectName === undefined && gitRemoteUrl === undefined) {
+    return c.json({ error: 'No fields to update' }, 400);
   }
-  const result = db.prepare(
-    'UPDATE sessions SET custom_title = ? WHERE id = ? AND deleted_at IS NULL'
-  ).run(customTitle || null, c.req.param('id'));
+
+  const updates: string[] = [];
+  const params: any[] = [];
+
+  if (customTitle !== undefined) {
+    updates.push('custom_title = ?');
+    params.push(customTitle || null);
+  }
+  if (projectName !== undefined) {
+    updates.push('project_name = ?');
+    params.push(projectName);
+  }
+  if (gitRemoteUrl !== undefined) {
+    updates.push('git_remote_url = ?');
+    params.push(gitRemoteUrl || null);
+  }
+
+  params.push(c.req.param('id'));
+
+  const result = db.prepare(`
+    UPDATE sessions 
+    SET ${updates.join(', ')} 
+    WHERE id = ? AND deleted_at IS NULL
+  `).run(...params);
+
   if (result.changes === 0) return c.json({ error: 'Not found' }, 404);
   return c.json({ ok: true });
 });
