@@ -94,8 +94,9 @@ export function preProcessJson(json: string): string {
 
     // Handle literal newlines in strings
     if ((char === '\n' || char === '\r') && inString) {
+      // If we see a backslash just before the newline, it might be a shell line continuation
+      // in a code block. We should preserve the backslash but escape the newline.
       result += '\\n';
-      // If it's \r\n, skip the \n
       if (char === '\r' && json[i + 1] === '\n') {
         i++;
       }
@@ -148,7 +149,8 @@ export function preProcessJson(json: string): string {
         } else if (nextChar === ':') {
           // If we see a colon, this is an end quote ONLY if we are currently defining a key.
           // We are defining a key if the last significant char before this string was { or , or [
-          if (['{', ',', '['].includes(lastSignificantChar)) {
+          // AND we are not deep in a nested structure within the string.
+          if (stringBraceDepth <= 0 && stringBracketDepth <= 0 && ['{', ',', '['].includes(lastSignificantChar)) {
             isLikelyEnd = true;
           }
         }
