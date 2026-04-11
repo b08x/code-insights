@@ -69,7 +69,7 @@ This principle applies to planning, designing, AND implementation:
 | VS Code Copilot Chat | `copilot` | `CopilotProvider` | JSON | Platform-specific Copilot Chat storage |
 | Crush | `crush` | `CrushProvider` | JSONL | Platform-specific |
 | OpenCode | `opencode` | `OpenCodeProvider` | JSONL | Platform-specific |
-| Hermes Agent | `hermes-agent` | `HermesAgentProvider` | JSONL | Platform-specific |
+| Hermes Agent | `hermes-agent` | `HermesAgentProvider` | SQLite database | `~/.hermes/state.db` and `~/.hermes/profiles/<profile_name>/state.db` |
 
 ---
 
