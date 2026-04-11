@@ -55,3 +55,5 @@ docs/plans/
 .playwright-mcp/
 
 *.code-workspace
+
+.codemap/
