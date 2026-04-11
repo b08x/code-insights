@@ -35,7 +35,7 @@ export interface ExportContext {
   projectName?: string;    // set when scope === 'project'
   sessionCount: number;
   projectCount: number;
-  dateRange: { from: string; to: string };
+  dateRange: { from: string; to: string; userSelected?: boolean };
   exportDate: string;      // ISO 8601 date for Obsidian frontmatter
 }
 
@@ -273,10 +273,14 @@ export function buildExportUserPrompt(ctx: ExportContext, insightContext: string
     ? `Project: ${ctx.projectName}`
     : `All projects (${ctx.projectCount} project${ctx.projectCount !== 1 ? 's' : ''})`;
 
+  const dateRangeDescription = ctx.dateRange.userSelected
+    ? `Date range: ${ctx.dateRange.from} to ${ctx.dateRange.to} (user selected)`
+    : `Date range: ${ctx.dateRange.from} to ${ctx.dateRange.to}`;
+
   const header = [
     `Source: ${scopeDescription}`,
     `Sessions analyzed: ${ctx.sessionCount}`,
-    `Date range: ${ctx.dateRange.from} to ${ctx.dateRange.to}`,
+    dateRangeDescription,
   ].join('\n');
 
   return `${header}\n\n${insightContext}`;

@@ -7,6 +7,13 @@ import { HermesAgentProvider } from '../hermes-agent.js';
 // Mock better-sqlite3
 vi.mock('better-sqlite3', () => {
   class MockDatabase {
+    constructor(dbPath: string, options?: any) {
+      // Check if the database file exists for non-existent file test
+      if (!fs.existsSync(dbPath)) {
+        throw new Error(`ENOENT: no such file or directory, open '${dbPath}'`);
+      }
+    }
+
     prepare = vi.fn().mockImplementation((query) => {
       return {
         all: vi.fn().mockImplementation((arg) => {
@@ -62,13 +69,24 @@ import { getHermesHomeDir } from '../../utils/config.js';
 
 describe('HermesAgentProvider', () => {
   let tempHomeDir: string;
-  let dbPath: string;
+  let centralDbPath: string;
+  let profileDbPath: string;
   const provider = new HermesAgentProvider();
 
   beforeEach(() => {
     tempHomeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-home-'));
-    dbPath = path.join(tempHomeDir, 'state.db');
-    fs.writeFileSync(dbPath, ''); // Create dummy file
+
+    // Setup central database
+    centralDbPath = path.join(tempHomeDir, 'state.db');
+    fs.writeFileSync(centralDbPath, ''); // Create dummy file
+
+    // Setup profile directory structure
+    const profilesDir = path.join(tempHomeDir, 'profiles');
+    const profileDir = path.join(profilesDir, 'testuser');
+    fs.mkdirSync(profileDir, { recursive: true });
+
+    profileDbPath = path.join(profileDir, 'state.db');
+    fs.writeFileSync(profileDbPath, ''); // Create dummy file
 
     vi.mocked(getHermesHomeDir).mockReturnValue(tempHomeDir);
   });
@@ -82,34 +100,79 @@ describe('HermesAgentProvider', () => {
   });
 
   describe('discover', () => {
-    it('discovers session virtual paths from the database', async () => {
+    it('discovers sessions from central database', async () => {
       const discovered = await provider.discover();
-      expect(discovered).toContain(`${dbPath}#session-1`);
+      expect(discovered).toContain(`central:${centralDbPath}#session-1`);
     });
 
-    it('filters sessions by title', async () => {
+    it('discovers sessions from profile databases', async () => {
+      const discovered = await provider.discover();
+      expect(discovered).toContain(`testuser:${profileDbPath}#session-1`);
+    });
+
+    it('discovers sessions from both central and profile databases', async () => {
+      const discovered = await provider.discover();
+
+      expect(discovered).toHaveLength(2); // One from central, one from profile
+      expect(discovered).toContain(`central:${centralDbPath}#session-1`);
+      expect(discovered).toContain(`testuser:${profileDbPath}#session-1`);
+    });
+
+    it('filters sessions by title in central database', async () => {
       const discovered = await provider.discover({ projectFilter: 'Test' });
-      expect(discovered).toContain(`${dbPath}#session-1`);
+      expect(discovered).toContain(`central:${centralDbPath}#session-1`);
 
       const filtered = await provider.discover({ projectFilter: 'None' });
-      expect(filtered).not.toContain(`${dbPath}#session-1`);
+      expect(filtered).not.toContain(`central:${centralDbPath}#session-1`);
+    });
+
+    it('handles missing central database gracefully', async () => {
+      fs.unlinkSync(centralDbPath); // Remove central database
+
+      const discovered = await provider.discover();
+
+      // Should still find profile database
+      expect(discovered).toContain(`testuser:${profileDbPath}#session-1`);
+      expect(discovered).not.toContain(`central:${centralDbPath}#session-1`);
+    });
+
+    it('handles missing profiles directory gracefully', async () => {
+      fs.rmSync(path.join(tempHomeDir, 'profiles'), { recursive: true, force: true });
+
+      const discovered = await provider.discover();
+
+      // Should still find central database
+      expect(discovered).toContain(`central:${centralDbPath}#session-1`);
+      expect(discovered).toHaveLength(1);
+    });
+
+    it('handles profiles without state.db files', async () => {
+      // Create a profile without state.db
+      const emptyProfileDir = path.join(tempHomeDir, 'profiles', 'emptyprofile');
+      fs.mkdirSync(emptyProfileDir, { recursive: true });
+
+      const discovered = await provider.discover();
+
+      // Should find central + testuser profile (not empty profile)
+      expect(discovered).toHaveLength(2);
+      expect(discovered).not.toContain(`emptyprofile:`);
     });
   });
 
   describe('parse', () => {
-    it('parses a valid Hermes Agent session from the database', async () => {
-      const virtualPath = `${dbPath}#session-1`;
+    it('parses a valid session from central database', async () => {
+      const virtualPath = `central:${centralDbPath}#session-1`;
       const session = await provider.parse(virtualPath);
 
       expect(session).not.toBeNull();
-      expect(session!.id).toBe('hermes-agent:session-1');
+      expect(session!.id).toBe('hermes-agent-central:session-1');
       expect(session!.projectName).toBe('Test Session');
       expect(session!.sourceTool).toBe('hermes-agent');
       expect(session!.messageCount).toBe(3); // user, assistant (with tool result), assistant
       expect(session!.userMessageCount).toBe(1);
       expect(session!.assistantMessageCount).toBe(2);
       expect(session!.toolCallCount).toBe(1);
-      
+
       const firstAssistant = session!.messages[1];
       expect(firstAssistant.type).toBe('assistant');
       expect(firstAssistant.toolCalls).toHaveLength(1);
@@ -122,8 +185,52 @@ describe('HermesAgentProvider', () => {
       expect(session!.usage!.estimatedCostUsd).toBe(0.01);
     });
 
-    it('returns null for non-existent session', async () => {
-      const virtualPath = `${dbPath}#non-existent`;
+    it('parses a valid session from profile database', async () => {
+      const virtualPath = `testuser:${profileDbPath}#session-1`;
+      const session = await provider.parse(virtualPath);
+
+      expect(session).not.toBeNull();
+      expect(session!.id).toBe('hermes-agent-testuser:session-1');
+      expect(session!.projectName).toBe('hermes-profile-testuser');
+      expect(session!.sourceTool).toBe('hermes-agent');
+      expect(session!.messageCount).toBe(3);
+      expect(session!.userMessageCount).toBe(1);
+      expect(session!.assistantMessageCount).toBe(2);
+      expect(session!.toolCallCount).toBe(1);
+
+      // Message IDs should include the source
+      expect(session!.messages[0].id).toBe('hermes-testuser-1');
+      expect(session!.messages[0].sessionId).toBe('hermes-agent-testuser:session-1');
+    });
+
+    it('supports backward compatibility for database sessions without source prefix', async () => {
+      const virtualPath = `${centralDbPath}#session-1`;
+      const session = await provider.parse(virtualPath);
+
+      expect(session).not.toBeNull();
+      expect(session!.id).toBe('hermes-agent-central:session-1');
+    });
+
+    it('returns null for non-existent session in central database', async () => {
+      const virtualPath = `central:${centralDbPath}#non-existent`;
+      const session = await provider.parse(virtualPath);
+      expect(session).toBeNull();
+    });
+
+    it('returns null for non-existent session in profile database', async () => {
+      const virtualPath = `testuser:${profileDbPath}#non-existent`;
+      const session = await provider.parse(virtualPath);
+      expect(session).toBeNull();
+    });
+
+    it('returns null for malformed virtual path', async () => {
+      const session = await provider.parse('invalid-path');
+      expect(session).toBeNull();
+    });
+
+    it('returns null for non-existent database file', async () => {
+      const nonExistentPath = '/tmp/non-existent.db';
+      const virtualPath = `central:${nonExistentPath}#session-1`;
       const session = await provider.parse(virtualPath);
       expect(session).toBeNull();
     });

@@ -39,10 +39,10 @@ import { AnalyzeDropdown } from '@/components/analysis/AnalyzeDropdown';
 import { AnalyzeButton } from '@/components/analysis/AnalyzeButton';
 import { useAnalysis } from '@/components/analysis/AnalysisContext';
 import { useMissingFacets, useBackfillFacets } from '@/hooks/useFacets';
-import { exportSession } from '@/lib/export-session';
+import { ExportGenerateRequest, exportGenerateStream } from '@/lib/api';
 import { CollapsibleInsightItem } from '@/components/sessions/CollapsibleInsightItem';
 import { PromptQualityAnalyzeButton } from '@/components/sessions/PromptQualityAnalyzeButton';
-import { RenameSessionDialog } from '@/components/sessions/RenameSessionDialog';
+import { EditSessionDialog } from '@/components/sessions/EditSessionDialog';
 import { VitalsStrip } from '@/components/sessions/VitalsStrip';
 import { AnalysisCostLine } from '@/components/sessions/AnalysisCostLine';
 import { ChatConversation } from '@/components/chat/conversation/ChatConversation';
@@ -609,12 +609,13 @@ export function SessionDetailPanel({ sessionId, onDelete }: SessionDetailPanelPr
         </TabsContent>
       </Tabs>
 
-      {/* Rename dialog */}
-      <RenameSessionDialog
+      <EditSessionDialog
         open={renameOpen}
         onOpenChange={setRenameOpen}
         sessionId={session.id}
         currentTitle={getSessionTitle(session)}
+        currentProjectName={session.project_name}
+        currentUrl={session.git_remote_url}
       />
     </div>
   );

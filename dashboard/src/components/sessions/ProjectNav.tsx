@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
-import { Folder, FolderOpen } from 'lucide-react';
+import { Folder, FolderOpen, MoreVertical, Pencil } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 import {
   Select,
   SelectContent,
@@ -8,9 +9,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
 import type { Project } from '@/lib/types';
+import { EditProjectDialog } from '@/components/projects/EditProjectDialog';
 
 interface ProjectNavProps {
   projects: Project[];
@@ -28,6 +36,7 @@ export function ProjectNav({
   onSelectSource,
 }: ProjectNavProps) {
   const [search, setSearch] = useState('');
+  const [editingProject, setEditingProject] = useState<Project | null>(null);
   const showSearch = projects.length > 8;
 
   const totalSessions = useMemo(
@@ -77,23 +86,49 @@ export function ProjectNav({
           const isActive = selectedProject === project.id;
           const Icon = isActive ? FolderOpen : Folder;
           return (
-            <button
+            <div
               key={project.id}
-              onClick={() => onSelectProject(project.id)}
-              aria-current={isActive ? 'true' : undefined}
               className={cn(
-                'w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-sm transition-colors',
+                'group w-full flex items-center gap-1 rounded-md transition-colors',
                 isActive
-                  ? 'bg-accent text-accent-foreground font-medium'
+                  ? 'bg-accent text-accent-foreground'
                   : 'text-foreground hover:bg-accent/50'
               )}
             >
-              <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-              <span className="truncate text-left flex-1">{project.name}</span>
-              <span className="text-xs text-muted-foreground tabular-nums shrink-0">
-                {project.session_count}
-              </span>
-            </button>
+              <button
+                onClick={() => onSelectProject(project.id)}
+                aria-current={isActive ? 'true' : undefined}
+                className={cn(
+                  'flex-1 flex items-center gap-2 px-2.5 py-1.5 text-sm min-w-0',
+                  isActive ? 'font-medium' : ''
+                )}
+              >
+                <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                <span className="truncate text-left flex-1">{project.name}</span>
+                <span className="text-xs text-muted-foreground tabular-nums shrink-0 mr-1">
+                  {project.session_count}
+                </span>
+              </button>
+              
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="h-6 w-6 shrink-0 mr-1 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100 transition-opacity"
+                  >
+                    <MoreVertical className="h-3.5 w-3.5" />
+                    <span className="sr-only">Project options</span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => setEditingProject(project)}>
+                    <Pencil className="h-3.5 w-3.5 mr-2" />
+                    Edit Project
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           );
         })}
       </div>
@@ -114,6 +149,16 @@ export function ProjectNav({
           </SelectContent>
         </Select>
       </div>
+
+      {editingProject && (
+        <EditProjectDialog
+          open={!!editingProject}
+          onOpenChange={(open) => !open && setEditingProject(null)}
+          projectId={editingProject.id}
+          currentName={editingProject.name}
+          currentUrl={editingProject.git_remote_url}
+        />
+      )}
     </div>
   );
 }

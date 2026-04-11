@@ -31,4 +31,77 @@ app.get('/:id', (c) => {
   return c.json({ project });
 });
 
+app.patch('/:id', async (c) => {
+  const db = getDb();
+  const projectId = c.req.param('id');
+  const body = await c.req.json<{ name?: string, gitRemoteUrl?: string }>();
+  const { name, gitRemoteUrl } = body;
+  
+  if (name === undefined && gitRemoteUrl === undefined) {
+    return c.json({ error: 'No fields to update' }, 400);
+  }
+
+  const updates: string[] = [];
+  const params: any[] = [];
+  const sessionUpdates: string[] = [];
+  const sessionParams: any[] = [];
+  const insightUpdates: string[] = [];
+  const insightParams: any[] = [];
+
+  if (name !== undefined) {
+    updates.push('name = ?');
+    params.push(name);
+    
+    sessionUpdates.push('project_name = ?');
+    sessionParams.push(name);
+
+    insightUpdates.push('project_name = ?');
+    insightParams.push(name);
+  }
+  if (gitRemoteUrl !== undefined) {
+    updates.push('git_remote_url = ?');
+    params.push(gitRemoteUrl || null);
+
+    sessionUpdates.push('git_remote_url = ?');
+    sessionParams.push(gitRemoteUrl || null);
+  }
+
+  params.push(projectId);
+  sessionParams.push(projectId);
+  insightParams.push(projectId);
+
+  const tx = db.transaction(() => {
+    const result = db.prepare(`
+      UPDATE projects 
+      SET ${updates.join(', ')}, updated_at = datetime('now')
+      WHERE id = ?
+    `).run(...params);
+
+    if (result.changes === 0) return false;
+
+    if (sessionUpdates.length > 0) {
+      db.prepare(`
+        UPDATE sessions
+        SET ${sessionUpdates.join(', ')}
+        WHERE project_id = ?
+      `).run(...sessionParams);
+    }
+
+    if (insightUpdates.length > 0) {
+      db.prepare(`
+        UPDATE insights
+        SET ${insightUpdates.join(', ')}
+        WHERE project_id = ?
+      `).run(...insightParams);
+    }
+
+    return true;
+  });
+
+  const updated = tx();
+  
+  if (!updated) return c.json({ error: 'Not found' }, 404);
+  return c.json({ ok: true });
+});
+
 export default app;

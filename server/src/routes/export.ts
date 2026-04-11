@@ -21,6 +21,14 @@ import {
 
 const app = new Hono();
 
+// Date validation helper for YYYY-MM-DD format
+function validateDateString(dateStr: string): boolean {
+  const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+  if (!dateRegex.test(dateStr)) return false;
+  const date = new Date(dateStr + 'T00:00:00Z');
+  return date.toISOString().slice(0, 10) === dateStr;
+}
+
 // SQLite SQLITE_LIMIT_VARIABLE_NUMBER is 999 by default.
 // Batch insights queries to avoid hitting this limit for large session sets.
 const INSIGHTS_BATCH_SIZE = 500;
@@ -118,6 +126,8 @@ interface ExportGenerateBody {
   projectId?: string;
   format: ExportFormat;
   depth?: ExportDepth;
+  dateFrom?: string; // YYYY-MM-DD format
+  dateTo?: string; // YYYY-MM-DD format
 }
 
 interface ExportGenerateMetadata {
@@ -131,67 +141,121 @@ interface ExportGenerateMetadata {
 
 // Fetch scoped insights ordered by confidence DESC, timestamp DESC.
 // Excludes 'summary' type — per-session summaries aren't cross-session knowledge.
+// Supports optional date range filtering on insights.timestamp.
 function fetchScopedInsights(
   db: ReturnType<typeof getDb>,
   scope: ExportScope,
-  projectId: string | undefined
+  projectId: string | undefined,
+  dateFrom?: string,
+  dateTo?: string
 ): ExportInsightRow[] {
-  if (scope === 'project') {
-    if (!projectId) return [];
-    return db.prepare(`
-      SELECT i.id, i.type, i.title, i.content, i.summary, i.confidence, i.project_name, i.timestamp
-      FROM insights i
-      JOIN sessions s ON i.session_id = s.id AND s.deleted_at IS NULL
-      WHERE i.project_id = ? AND i.type != 'summary'
-      ORDER BY i.confidence DESC, i.timestamp DESC
-    `).all(projectId) as ExportInsightRow[];
-  }
-
-  return db.prepare(`
+  let query = `
     SELECT i.id, i.type, i.title, i.content, i.summary, i.confidence, i.project_name, i.timestamp
     FROM insights i
     JOIN sessions s ON i.session_id = s.id AND s.deleted_at IS NULL
     WHERE i.type != 'summary'
-    ORDER BY i.confidence DESC, i.timestamp DESC
-  `).all() as ExportInsightRow[];
+  `;
+
+  const params: (string | number)[] = [];
+
+  if (scope === 'project') {
+    if (!projectId) return [];
+    query += ` AND i.project_id = ?`;
+    params.push(projectId);
+  }
+
+  if (dateFrom) {
+    query += ` AND i.timestamp >= ?`;
+    params.push(dateFrom + 'T00:00:00Z');
+  }
+
+  if (dateTo) {
+    query += ` AND i.timestamp < date(?, '+1 day')`;
+    params.push(dateTo + 'T00:00:00Z');
+  }
+
+  query += ` ORDER BY i.confidence DESC, i.timestamp DESC`;
+
+  return db.prepare(query).all(...params) as ExportInsightRow[];
 }
 
 function fetchSessionContext(
   db: ReturnType<typeof getDb>,
   scope: ExportScope,
-  projectId: string | undefined
+  projectId: string | undefined,
+  dateFrom?: string,
+  dateTo?: string
 ): { sessionCount: number; projectCount: number; projectName: string | undefined; dateFrom: string; dateTo: string } {
   const today = new Date().toISOString().slice(0, 10);
 
   if (scope === 'project' && projectId) {
-    const row = db.prepare(`
+    let query = `
       SELECT COUNT(*) as cnt, MIN(started_at) as min_date, MAX(ended_at) as max_date, project_name
-      FROM sessions WHERE project_id = ? AND deleted_at IS NULL
-    `).get(projectId) as { cnt: number; min_date: string; max_date: string; project_name: string } | undefined;
+      FROM sessions s
+      WHERE s.project_id = ? AND s.deleted_at IS NULL
+    `;
+    const params: (string | number)[] = [projectId];
+
+    if (dateFrom || dateTo) {
+      query += ` AND EXISTS (
+        SELECT 1 FROM insights i
+        WHERE i.session_id = s.id
+      `;
+      if (dateFrom) {
+        query += ` AND i.timestamp >= ?`;
+        params.push(dateFrom + 'T00:00:00Z');
+      }
+      if (dateTo) {
+        query += ` AND i.timestamp < date(?, '+1 day')`;
+        params.push(dateTo + 'T00:00:00Z');
+      }
+      query += `)`;
+    }
+
+    const row = db.prepare(query).get(...params) as { cnt: number; min_date: string; max_date: string; project_name: string } | undefined;
     return {
       sessionCount: row?.cnt ?? 0,
       projectCount: 1,
       projectName: row?.project_name,
-      dateFrom: row?.min_date?.slice(0, 10) ?? today,
-      dateTo: row?.max_date?.slice(0, 10) ?? today,
+      dateFrom: dateFrom || row?.min_date?.slice(0, 10) || today,
+      dateTo: dateTo || row?.max_date?.slice(0, 10) || today,
     };
   }
 
-  const row = db.prepare(`
+  let query = `
     SELECT COUNT(*) as session_cnt,
            COUNT(DISTINCT project_id) as project_cnt,
            MIN(started_at) as min_date,
            MAX(ended_at) as max_date
-    FROM sessions
-    WHERE deleted_at IS NULL
-  `).get() as { session_cnt: number; project_cnt: number; min_date: string; max_date: string } | undefined;
+    FROM sessions s
+    WHERE s.deleted_at IS NULL
+  `;
+  const params: (string | number)[] = [];
+
+  if (dateFrom || dateTo) {
+    query += ` AND EXISTS (
+      SELECT 1 FROM insights i
+      WHERE i.session_id = s.id
+    `;
+    if (dateFrom) {
+      query += ` AND i.timestamp >= ?`;
+      params.push(dateFrom + 'T00:00:00Z');
+    }
+    if (dateTo) {
+      query += ` AND i.timestamp < date(?, '+1 day')`;
+      params.push(dateTo + 'T00:00:00Z');
+    }
+    query += `)`;
+  }
+
+  const row = db.prepare(query).get(...params) as { session_cnt: number; project_cnt: number; min_date: string; max_date: string } | undefined;
 
   return {
     sessionCount: row?.session_cnt ?? 0,
     projectCount: row?.project_cnt ?? 0,
     projectName: undefined,
-    dateFrom: row?.min_date?.slice(0, 10) ?? today,
-    dateTo: row?.max_date?.slice(0, 10) ?? today,
+    dateFrom: dateFrom || row?.min_date?.slice(0, 10) || today,
+    dateTo: dateTo || row?.max_date?.slice(0, 10) || today,
   };
 }
 
@@ -200,7 +264,7 @@ function fetchSessionContext(
 app.post('/generate', requireLLM(), async (c) => {
 
   const body = await c.req.json<ExportGenerateBody>();
-  const { scope, projectId, format, depth = 'standard' } = body;
+  const { scope, projectId, format, depth = 'standard', dateFrom, dateTo } = body;
 
   if (scope !== 'project' && scope !== 'all') {
     return c.json({ error: 'scope must be "project" or "all"' }, 400);
@@ -214,15 +278,24 @@ app.post('/generate', requireLLM(), async (c) => {
   if (!['essential', 'standard', 'comprehensive'].includes(depth)) {
     return c.json({ error: 'depth must be one of: essential, standard, comprehensive' }, 400);
   }
+  if (dateFrom && !validateDateString(dateFrom)) {
+    return c.json({ error: 'dateFrom must be a valid YYYY-MM-DD date' }, 400);
+  }
+  if (dateTo && !validateDateString(dateTo)) {
+    return c.json({ error: 'dateTo must be a valid YYYY-MM-DD date' }, 400);
+  }
+  if (dateFrom && dateTo && dateFrom > dateTo) {
+    return c.json({ error: 'dateFrom must be before or equal to dateTo' }, 400);
+  }
 
   const db = getDb();
   const llmConfig = loadLLMConfig();
   const startTime = Date.now();
 
   try {
-    const rawInsights = fetchScopedInsights(db, scope, projectId);
+    const rawInsights = fetchScopedInsights(db, scope, projectId, dateFrom, dateTo);
     const { capped, totalInsights } = applyDepthCap(rawInsights, depth);
-    const sessionCtx = fetchSessionContext(db, scope, projectId);
+    const sessionCtx = fetchSessionContext(db, scope, projectId, dateFrom, dateTo);
 
     const ctx = {
       scope,
@@ -231,7 +304,11 @@ app.post('/generate', requireLLM(), async (c) => {
       projectName: sessionCtx.projectName,
       sessionCount: sessionCtx.sessionCount,
       projectCount: sessionCtx.projectCount,
-      dateRange: { from: sessionCtx.dateFrom, to: sessionCtx.dateTo },
+      dateRange: {
+        from: sessionCtx.dateFrom,
+        to: sessionCtx.dateTo,
+        userSelected: !!(dateFrom || dateTo)
+      },
       exportDate: new Date().toISOString().slice(0, 10),
     };
 
@@ -298,6 +375,8 @@ app.get('/generate/stream', requireLLM(), async (c) => {
   const projectId = c.req.query('projectId');
   const format = c.req.query('format') as ExportFormat | undefined;
   const depth = (c.req.query('depth') ?? 'standard') as ExportDepth;
+  const dateFrom = c.req.query('dateFrom');
+  const dateTo = c.req.query('dateTo');
 
   if (scope !== 'project' && scope !== 'all') {
     return c.json({ error: 'scope must be "project" or "all"' }, 400);
@@ -311,6 +390,15 @@ app.get('/generate/stream', requireLLM(), async (c) => {
   if (!['essential', 'standard', 'comprehensive'].includes(depth)) {
     return c.json({ error: 'depth must be one of: essential, standard, comprehensive' }, 400);
   }
+  if (dateFrom && !validateDateString(dateFrom)) {
+    return c.json({ error: 'dateFrom must be a valid YYYY-MM-DD date' }, 400);
+  }
+  if (dateTo && !validateDateString(dateTo)) {
+    return c.json({ error: 'dateTo must be a valid YYYY-MM-DD date' }, 400);
+  }
+  if (dateFrom && dateTo && dateFrom > dateTo) {
+    return c.json({ error: 'dateFrom must be before or equal to dateTo' }, 400);
+  }
 
   const db = getDb();
   const llmConfig = loadLLMConfig();
@@ -321,7 +409,7 @@ app.get('/generate/stream', requireLLM(), async (c) => {
       const abortSignal = c.req.raw.signal;
 
       // Phase 1: load and count insights, emit counts before LLM call
-      const rawInsights = fetchScopedInsights(db, scope, projectId);
+      const rawInsights = fetchScopedInsights(db, scope, projectId, dateFrom, dateTo);
       const { capped, totalInsights } = applyDepthCap(rawInsights, depth);
 
       await stream.writeSSE({
@@ -347,7 +435,7 @@ app.get('/generate/stream', requireLLM(), async (c) => {
         data: JSON.stringify({ phase: 'synthesizing', progress: 'Sending to LLM...' }),
       }).catch(() => {});
 
-      const sessionCtx = fetchSessionContext(db, scope, projectId);
+      const sessionCtx = fetchSessionContext(db, scope, projectId, dateFrom, dateTo);
       const ctx = {
         scope,
         format,
@@ -355,7 +443,11 @@ app.get('/generate/stream', requireLLM(), async (c) => {
         projectName: sessionCtx.projectName,
         sessionCount: sessionCtx.sessionCount,
         projectCount: sessionCtx.projectCount,
-        dateRange: { from: sessionCtx.dateFrom, to: sessionCtx.dateTo },
+        dateRange: {
+          from: sessionCtx.dateFrom,
+          to: sessionCtx.dateTo,
+          userSelected: !!(dateFrom || dateTo)
+        },
         exportDate: new Date().toISOString().slice(0, 10),
       };
 

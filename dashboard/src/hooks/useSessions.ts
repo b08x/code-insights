@@ -27,8 +27,8 @@ export function useSession(id: string | undefined) {
 export function useSessionMutation() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, customTitle }: { id: string; customTitle: string }) =>
-      patchSession(id, { customTitle }),
+    mutationFn: ({ id, customTitle, projectName, gitRemoteUrl }: { id: string; customTitle?: string; projectName?: string; gitRemoteUrl?: string }) =>
+      patchSession(id, { customTitle, projectName, gitRemoteUrl }),
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['session', variables.id] });
       queryClient.invalidateQueries({ queryKey: ['sessions'] });

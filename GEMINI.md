@@ -4,7 +4,7 @@
 
 **Code Insights** is a local-first analytics platform designed to turn AI coding sessions into actionable knowledge. It extracts structured insights, decisions, learnings, and prompt quality scores from tools like **Claude Code, Cursor, Codex CLI, Copilot CLI, Gemini CLI, Hermes Agent, OpenCode, and Crush**.
 
-- **Purpose:** Help developers understand their AI coding patterns, track costs, and improve their AI fluency.
+- **Purpose:** Help developers understand their AI coding patterns, track costs, and improve their AI fluency through automated session analysis and background processing.
 - **Architecture:**
   - **`cli/`**: Node.js CLI (TypeScript) responsible for session discovery, parsing, and SQLite persistence.
   - **`server/`**: Hono-based API server (TypeScript) that proxies LLM requests and serves the dashboard.
@@ -50,13 +50,15 @@ The project uses `pnpm` workspaces for dependency management.
 - **CLI Framework:** Uses `commander` for command definitions and `inquirer` for interactive prompts.
 - **Server Framework:** Uses `Hono` for its lightweight footprint and excellent TypeScript support.
 - **Privacy:** Follow the "local-first" principle. Ensure no session data is sent to the cloud except to the user-configured LLM provider for analysis.
-- **Hooks:** The project supports installing hooks into Claude Code to automate sync and analysis (`code-insights install-hook`).
+- **Parsing:** Employs `jsonrepair` and robust structural lookahead for preprocessing malformed or deeply nested JSON responses from LLM providers.
+- **Hooks:** The project supports installing hooks into Claude Code to automate sync and background analysis (`code-insights install-hook`).
 
 ## LLM Providers
 
 Code Insights supports multiple LLM providers for session analysis and insight generation.
 
 - **Supported Providers:** OpenAI (GPT-4o), Anthropic (Claude 3.5), Google Gemini (2.0 Flash), OpenRouter, Mistral (Codestral), and Ollama (Local).
+- **Environment Configuration:** API keys can be resolved via environment variables (e.g., `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`) or configured persistently via `code-insights config`.
 - **Dynamic Model Discovery:** The platform supports fetching the latest available models from cloud providers once an API key is validated. This is handled by the `POST /api/config/llm/models` endpoint in the server.
 
 ### Reference SDKs (Context7)

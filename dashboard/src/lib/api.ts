@@ -31,6 +31,13 @@ export function fetchProject(id: string) {
   return request<{ project: Project }>(`/projects/${id}`);
 }
 
+export function patchProject(id: string, body: { name?: string; gitRemoteUrl?: string }) {
+  return request<{ project: Project }>(`/projects/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
+}
+
 // ── Sessions ──────────────────────────────────────────────────────────────────
 
 export function fetchSessions(params?: {
@@ -232,6 +239,8 @@ export interface ExportGenerateRequest {
   projectId?: string;
   format: ExportGenerateFormat;
   depth?: ExportGenerateDepth;
+  dateFrom?: string; // YYYY-MM-DD format
+  dateTo?: string; // YYYY-MM-DD format
 }
 
 export interface ExportGenerateMetadata {
@@ -257,6 +266,8 @@ export async function exportGenerateStream(
   if (params.projectId) q.set('projectId', params.projectId);
   q.set('format', params.format);
   if (params.depth) q.set('depth', params.depth);
+  if (params.dateFrom) q.set('dateFrom', params.dateFrom);
+  if (params.dateTo) q.set('dateTo', params.dateTo);
 
   const res = await fetch(`${BASE}/export/generate/stream?${q.toString()}`, { signal });
   if (!res.ok) {
@@ -455,5 +466,31 @@ export async function reflectGenerateStream(
     throw new Error(`Reflect generation failed ${res.status}: ${text}`);
   }
   return res;
+}
+
+// ── Analysis Queue ────────────────────────────────────────────────────────────
+
+export interface AnalysisQueueItem {
+  session_id: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  runner_type: string;
+  enqueued_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+  error_message: string | null;
+  attempt_count: number;
+  max_attempts: number;
+}
+
+export interface AnalysisQueueStatus {
+  pending: number;
+  processing: number;
+  completed: number;
+  failed: number;
+  items: AnalysisQueueItem[];
+}
+
+export function fetchAnalysisQueue() {
+  return request<AnalysisQueueStatus>('/analysis/queue');
 }
 

@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 import {
   Download,
   ChevronRight,
@@ -52,21 +53,35 @@ export default function ExportPage() {
   const [format_, setFormat] = useState<ExportGenerateFormat>('agent-rules');
   const [depth, setDepth] = useState<ExportGenerateDepth>('standard');
   const [copied, setCopied] = useState(false);
+  const [dateFrom, setDateFrom] = useState<string>('');
+  const [dateTo, setDateTo] = useState<string>('');
 
   // Compute insight counts for the stat bar in Step 2
   const { scopedInsights, depthCappedCount } = useMemo(() => {
     // Exclude summaries — they're per-session artifacts, not cross-session knowledge
-    const nonSummary = allInsights.filter((i) => i.type !== 'summary');
+    let filtered = allInsights.filter((i) => i.type !== 'summary');
 
-    const scopedInsights = scope === 'project' && projectId
-      ? nonSummary.filter((i) => i.project_id === projectId)
-      : nonSummary;
+    // Apply scope filtering
+    if (scope === 'project' && projectId) {
+      filtered = filtered.filter((i) => i.project_id === projectId);
+    }
+
+    // Apply date range filtering to match server logic
+    if (dateFrom) {
+      const fromDate = new Date(dateFrom + 'T00:00:00Z');
+      filtered = filtered.filter((i) => new Date(i.timestamp) >= fromDate);
+    }
+    if (dateTo) {
+      const toDate = new Date(dateTo + 'T00:00:00Z');
+      const nextDay = new Date(toDate.getTime() + 24 * 60 * 60 * 1000); // Add 1 day for half-open interval
+      filtered = filtered.filter((i) => new Date(i.timestamp) < nextDay);
+    }
 
     const depthCap = DEPTH_CAPS[depth];
-    const depthCappedCount = Math.min(scopedInsights.length, depthCap);
+    const depthCappedCount = Math.min(filtered.length, depthCap);
 
-    return { scopedInsights, depthCappedCount };
-  }, [allInsights, scope, projectId, depth]);
+    return { scopedInsights: filtered, depthCappedCount };
+  }, [allInsights, scope, projectId, depth, dateFrom, dateTo]);
 
   const selectedProject = projects.find((p) => p.id === projectId);
   const hasInsights = scopedInsights.length > 0;
@@ -97,6 +112,8 @@ export default function ExportPage() {
       projectId: scope === 'project' ? projectId : undefined,
       format: format_,
       depth,
+      dateFrom: dateFrom || undefined,
+      dateTo: dateTo || undefined,
     });
   };
 
@@ -143,6 +160,8 @@ export default function ExportPage() {
     setFormat('agent-rules');
     setDepth('standard');
     setCopied(false);
+    setDateFrom('');
+    setDateTo('');
   };
 
   const handleCancelGeneration = () => {
@@ -298,6 +317,45 @@ export default function ExportPage() {
                 onSelect={() => setDepth('comprehensive')}
               />
             </div>
+          </div>
+
+          {/* Date Range */}
+          <div>
+            <p className="text-sm font-medium mb-3">Date Range (optional)</p>
+            <p className="text-xs text-muted-foreground mb-3">
+              Filter insights by their timestamp. Leave blank to include all insights.
+            </p>
+            <div className="grid gap-4 md:grid-cols-2 max-w-md">
+              <div className="space-y-1.5">
+                <label htmlFor="dateFrom" className="text-xs font-medium">From Date</label>
+                <Input
+                  id="dateFrom"
+                  type="date"
+                  value={dateFrom}
+                  onChange={(e) => setDateFrom(e.target.value)}
+                  max={dateTo || undefined}
+                  className="text-sm"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label htmlFor="dateTo" className="text-xs font-medium">To Date</label>
+                <Input
+                  id="dateTo"
+                  type="date"
+                  value={dateTo}
+                  onChange={(e) => setDateTo(e.target.value)}
+                  min={dateFrom || undefined}
+                  className="text-sm"
+                />
+              </div>
+            </div>
+            {(dateFrom || dateTo) && (
+              <p className="text-xs text-muted-foreground mt-2">
+                {dateFrom && dateTo && `Filtering insights from ${dateFrom} to ${dateTo}`}
+                {dateFrom && !dateTo && `Filtering insights from ${dateFrom} onwards`}
+                {!dateFrom && dateTo && `Filtering insights up to ${dateTo}`}
+              </p>
+            )}
           </div>
 
           {/* Stat bar */}

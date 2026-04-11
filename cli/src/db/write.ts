@@ -51,9 +51,7 @@ function getStmts() {
       INSERT INTO projects (id, name, path, git_remote_url, project_id_source, last_activity)
       VALUES (?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
-        name = excluded.name,
         path = excluded.path,
-        git_remote_url = excluded.git_remote_url,
         last_activity = MAX(last_activity, excluded.last_activity),
         updated_at = datetime('now')
     `);

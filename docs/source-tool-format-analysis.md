@@ -452,7 +452,7 @@ Parser is functional for current OpenCode format. Status to be updated with real
 ### Format
 
 - **File type:** SQLite database
-- **Location:** `~/.hermes/state.db`
+- **Location:** `~/.hermes/state.db` (central database) and `~/.hermes/profiles/<profile_name>/state.db` (profile-specific databases)
 - **Structure:** Agent state database with conversation history and task data
 
 ### What the Parser Handles
@@ -465,6 +465,8 @@ Parser is functional for current OpenCode format. Status to be updated with real
 | Tool results | Extracted | From action execution results |
 | Timestamps | Extracted | From database timestamps |
 | Project context | Extracted | From task metadata |
+| Profile databases | Extracted | From both central and profile-specific databases |
+| Concurrent access | Handled | WAL mode compatibility with busy timeout (5 seconds) |
 | Token usage | **N/A** | Not tracked by Hermes Agent |
 | Model | Extracted | From agent configuration |
 

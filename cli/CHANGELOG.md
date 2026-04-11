@@ -2,6 +2,12 @@
 
 All notable changes to `@code-insights/cli` will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+
+- **Hermes Agent profile session discovery** — Corrected Hermes Agent provider to properly discover sessions from both the centralized SQLite database (`~/.hermes/state.db`) and profile-specific SQLite databases (`~/.hermes/profiles/<profile_name>/state.db`). Previously only the central database was scanned, missing all profile-based sessions. Unified SQLite handling across all databases with proper error handling and comprehensive test coverage.
+
 ## [4.7.0] - 2026-03-25
 
 ### Added

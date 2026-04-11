@@ -34,7 +34,7 @@ Code Insights is a local-first analytics platform designed to extract structured
 | Copilot CLI | `~/.copilot/session-state/{id}/events.jsonl` |
 | VS Code Copilot Chat | Platform-specific Copilot Chat storage |
 | Gemini CLI | `~/.gemini/tmp/<project_hash>/chats/*.json` |
-| Hermes Agent | `~/.hermes/state.db` |
+| Hermes Agent | `~/.hermes/state.db` and `~/.hermes/profiles/<profile_name>/state.db` |
 | OpenCode | `~/.local/share/opencode/storage/session/*.json` |
 | Crush | Project-specific `.crush/crush.db` |
 

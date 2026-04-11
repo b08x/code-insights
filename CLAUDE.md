@@ -69,7 +69,7 @@ This principle applies to planning, designing, AND implementation:
 | VS Code Copilot Chat | `copilot` | `CopilotProvider` | JSON | Platform-specific Copilot Chat storage |
 | Crush | `crush` | `CrushProvider` | JSONL | Platform-specific |
 | OpenCode | `opencode` | `OpenCodeProvider` | JSONL | Platform-specific |
-| Hermes Agent | `hermes-agent` | `HermesAgentProvider` | JSONL | Platform-specific |
+| Hermes Agent | `hermes-agent` | `HermesAgentProvider` | SQLite database | `~/.hermes/state.db` and `~/.hermes/profiles/<profile_name>/state.db` |
 
 ---
 
@@ -96,7 +96,7 @@ code-insights status                   # Show sync statistics
 code-insights open                     # Open dashboard in browser (no server start)
 code-insights dashboard                # Start server + open dashboard (auto-syncs first)
 code-insights dashboard --no-sync      # Start server + open dashboard without syncing
-code-insights install-hook             # Auto-sync + auto-analysis on session end
+code-insights install-hook             # Install unified session-end hook (auto-sync + background analysis)
 code-insights install-hook --sync-only # Install sync hook only (no analysis)
 code-insights uninstall-hook           # Remove all Code Insights hooks
 code-insights config                   # Show current configuration
@@ -113,8 +113,16 @@ code-insights telemetry enable         # Opt back in
 # Insights — session analysis
 code-insights insights <session_id>              # Analyze using configured LLM
 code-insights insights <session_id> --native     # Analyze using claude -p (no API key needed)
-code-insights insights --hook --native -q        # Hook mode (reads stdin, used by SessionEnd hook)
 code-insights insights check                     # Check for unanalyzed sessions (last 7 days)
+
+# Queue — background analysis management
+code-insights queue status                       # Show queue status with pending/processing counts
+code-insights queue process                      # Process all queued items (manual trigger)
+code-insights queue retry <session_id>           # Retry failed analysis for specific session
+code-insights queue prune                        # Remove completed queue items (cleanup)
+
+# Session-end — hook integration
+code-insights session-end                        # Process session end with background analysis (replaces SessionEnd hook)
 
 # Stats — terminal analytics
 code-insights stats                    # Dashboard overview (last 7 days)
@@ -137,7 +145,7 @@ code-insights stats patterns           # Cross-session patterns summary
 
 - **Runtime**: Node.js (ES2022, ES Modules)
 - **CLI Framework**: Commander.js
-- **Database**: SQLite (better-sqlite3) — WAL mode, local at `~/.code-insights/data.db`, Schema V7
+- **Database**: SQLite (better-sqlite3) — WAL mode, local at `~/.code-insights/data.db`, Schema V8
 - **Dashboard**: Vite + React 19 SPA
 - **Server**: Hono
 - **UI**: Tailwind CSS 4 + shadcn/ui (New York), Lucide icons
@@ -196,6 +204,7 @@ The CLI and dashboard support sessions from multiple AI coding tools via the `so
 
 ### Analysis & Processing Features
 
+- **Background Analysis Queue**: Async session processing with retry logic and dashboard polling for real-time status
 - **Sequential Bulk Analysis**: Process multiple sessions with real-time progress tracking and stop support
 - **Enhanced JSON Parsing**: Robust JSON extraction with `jsonrepair` for handling malformed LLM responses
 - **Prompt Quality Evaluation**: Neutral analytical persona for evaluating prompt effectiveness

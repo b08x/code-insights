@@ -57,3 +57,5 @@ docs/plans/
 *.code-workspace
 
 .codemap/
+
+node-compile-cache/
