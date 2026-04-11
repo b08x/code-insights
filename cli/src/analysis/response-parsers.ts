@@ -66,26 +66,144 @@ export function extractJsonPayload(response: string): string | null {
 }
 
 /**
- * Attempt to fix common LLM JSON mistakes that jsonrepair might struggle with,
- * specifically unescaped quotes in property values that can be confused with keys,
- * and literal newlines in strings.
+ * Pre-process JSON string from LLM before parsing.
+ * Handles common LLM errors:
+ * 1. Unescaped double quotes inside string values (especially in code blocks).
+ * 2. Literal newlines in strings (invalid in JSON).
+ * 3. Escaped backslashes misidentifying following characters.
  */
 export function preProcessJson(json: string): string {
   let result = '';
   let inString = false;
   let escaped = false;
   let lastSignificantChar = '';
-  let stringBraceDepth = 0;
-  let stringBracketDepth = 0;
+
+  // Helper to check if a quote at a given position is likely an end-delimiter
+  // based on what follows it in the JSON structure.
+  const isLikelyEndQuote = (pos: number): boolean => {
+    let nextIdx = -1;
+    let nextChar = '';
+    for (let j = pos + 1; j < json.length; j++) {
+      if (!/\s/.test(json[j])) {
+        nextIdx = j;
+        nextChar = json[j];
+        break;
+      }
+    }
+
+    if (nextIdx === -1) return true; // End of input
+
+    if (nextChar === ':') {
+      // If followed by a colon, this is an end quote ONLY if we are defining a key.
+      // We are defining a key if the last significant char was { or ,
+      return ['{', ','].includes(lastSignificantChar);
+    }
+
+    if (nextChar === '}') {
+      // If we see a }, it's only an end quote if we were finishing an object value.
+      if (lastSignificantChar !== ':') return false;
+
+      // Verify by checking what follows the }.
+      let afterBraceIdx = -1;
+      let afterBraceChar = '';
+      for (let m = nextIdx + 1; m < json.length; m++) {
+        if (!/\s/.test(json[m])) {
+          afterBraceIdx = m;
+          afterBraceChar = json[m];
+          break;
+        }
+      }
+      // Valid structural chars after a closing object brace: , } ] or end of input
+      return afterBraceIdx === -1 || [',', '}', ']'].includes(afterBraceChar);
+    }
+
+    if (nextChar === ']') {
+      // If we see a ], it's only an end quote if we were in an array.
+      if (!['[', ','].includes(lastSignificantChar)) return false;
+
+      // Verify by checking what follows the ].
+      let afterBracketIdx = -1;
+      let afterBracketChar = '';
+      for (let m = nextIdx + 1; m < json.length; m++) {
+        if (!/\s/.test(json[m])) {
+          afterBracketIdx = m;
+          afterBracketChar = json[m];
+          break;
+        }
+      }
+      return afterBracketIdx === -1 || [',', '}', ']'].includes(afterBracketChar);
+    }
+
+    if (nextChar === ',') {
+      // If followed by a comma, it's only an end quote if the NEXT non-whitespace
+      // thing after the comma looks like the start of a new key or structural element.
+      let afterCommaIdx = -1;
+      let afterCommaChar = '';
+      for (let m = nextIdx + 1; m < json.length; m++) {
+        if (!/\s/.test(json[m])) {
+          afterCommaIdx = m;
+          afterCommaChar = json[m];
+          break;
+        }
+      }
+
+      if (afterCommaIdx === -1) return true; // Trailing comma
+
+      if (lastSignificantChar === ':') {
+        // We are currently in a property value. A comma here MUST be followed by a new key.
+        if (afterCommaChar === '"') {
+          // Find the end of this next string and see if a colon follows it.
+          let k = afterCommaIdx + 1;
+          let subEscaped = false;
+          while (k < json.length) {
+            const c = json[k];
+            if (subEscaped) {
+              subEscaped = false;
+            } else if (c === '\\') {
+              subEscaped = true;
+            } else if (c === '"') {
+              break;
+            }
+            k++;
+          }
+          if (k >= json.length) return true; // Truncated but likely a key
+          // Check for colon after the string
+          let afterKeyIdx = -1;
+          for (let n = k + 1; n < json.length; n++) {
+            if (!/\s/.test(json[n])) {
+              afterKeyIdx = n;
+              break;
+            }
+          }
+          // If it's a key, it MUST be followed by a colon.
+          return afterKeyIdx !== -1 && json[afterKeyIdx] === ':';
+        }
+        // Other valid starts after a property value: } or ] (though usually preceded by comma is invalid JSON, we allow it)
+        return ['}', ']'].includes(afterCommaChar);
+      }
+
+      // We are in an array. Comma is always a valid delimiter between elements.
+      if (['[', ','].includes(lastSignificantChar)) return true;
+
+      return false;
+    }
+
+    return false;
+  };
 
   for (let i = 0; i < json.length; i++) {
     const char = json[i];
 
     if (escaped) {
-      result += char;
+      if ((char === '\n' || char === '\r') && inString) {
+        result += '\\n';
+      } else {
+        result += char;
+      }
       escaped = false;
       continue;
     }
+
     if (char === '\\') {
       result += char;
       escaped = true;
@@ -94,8 +212,6 @@ export function preProcessJson(json: string): string {
 
     // Handle literal newlines in strings
     if ((char === '\n' || char === '\r') && inString) {
-      // If we see a backslash just before the newline, it might be a shell line continuation
-      // in a code block. We should preserve the backslash but escape the newline.
       result += '\\n';
       if (char === '\r' && json[i + 1] === '\n') {
         i++;
@@ -105,57 +221,7 @@ export function preProcessJson(json: string): string {
 
     if (char === '"') {
       if (inString) {
-        // We are in a string. Is this the end of the string?
-        let nextNonWhitespaceIdx = -1;
-        let nextChar = '';
-        for (let j = i + 1; j < json.length; j++) {
-          if (!/\s/.test(json[j])) {
-            nextNonWhitespaceIdx = j;
-            nextChar = json[j];
-            break;
-          }
-        }
-
-        // A quote is likely an end of a string if it's followed by , } ] or :
-        // OR if it's the end of the input.
-        let isLikelyEnd = false;
-
-        if (nextNonWhitespaceIdx === -1) {
-          isLikelyEnd = true;
-        } else if (['}', ']'].includes(nextChar)) {
-          // If followed by } or ], it's an end-quote ONLY if we're not inside
-          // a nested structure that we haven't closed yet.
-          if (nextChar === '}' && stringBraceDepth <= 0) isLikelyEnd = true;
-          if (nextChar === ']' && stringBracketDepth <= 0) isLikelyEnd = true;
-        } else if (nextChar === ',') {
-          // If followed by a comma, it's only an end quote if the NEXT non-whitespace
-          // after the comma looks like the start of a new key or value.
-          // ALSO check that we're not deep in a nested structure within the string.
-          if (stringBraceDepth <= 0 && stringBracketDepth <= 0) {
-            let nextNextChar = '';
-            for (let j = nextNonWhitespaceIdx + 1; j < json.length; j++) {
-              if (!/\s/.test(json[j])) {
-                nextNextChar = json[j];
-                break;
-              }
-            }
-            // Valid starts for the next element in JSON:
-            // " (key/string), { (object), [ (array), t/f/n (literals), -/digit (numbers)
-            const validStarts = ['"', '{', '[', '}', ']', 't', 'f', 'n', '-', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
-            if (validStarts.includes(nextNextChar) || nextNextChar === '') {
-              isLikelyEnd = true;
-            }
-          }
-        } else if (nextChar === ':') {
-          // If we see a colon, this is an end quote ONLY if we are currently defining a key.
-          // We are defining a key if the last significant char before this string was { or , or [
-          // AND we are not deep in a nested structure within the string.
-          if (stringBraceDepth <= 0 && stringBracketDepth <= 0 && ['{', ',', '['].includes(lastSignificantChar)) {
-            isLikelyEnd = true;
-          }
-        }
-
-        if (isLikelyEnd) {
+        if (isLikelyEndQuote(i)) {
           inString = false;
           result += char;
           lastSignificantChar = '"';
@@ -165,25 +231,16 @@ export function preProcessJson(json: string): string {
         }
       } else {
         inString = true;
-        stringBraceDepth = 0;
-        stringBracketDepth = 0;
         result += char;
       }
     } else {
       result += char;
-      if (!/\s/.test(char)) {
-        if (!inString) {
-          lastSignificantChar = char;
-        } else {
-          // Track depth of braces/brackets WITHIN the string content
-          if (char === '{') stringBraceDepth++;
-          if (char === '}') stringBraceDepth--;
-          if (char === '[') stringBracketDepth++;
-          if (char === ']') stringBracketDepth--;
-        }
+      if (!inString && !/\s/.test(char)) {
+        lastSignificantChar = char;
       }
     }
   }
+
   return result;
 }
 
