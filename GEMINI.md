@@ -4,7 +4,7 @@
 
 **Code Insights** is a local-first analytics platform designed to turn AI coding sessions into actionable knowledge. It extracts structured insights, decisions, learnings, and prompt quality scores from tools like **Claude Code, Cursor, Codex CLI, Copilot CLI, Gemini CLI, Hermes Agent, OpenCode, and Crush**.
 
-- **Purpose:** Help developers understand their AI coding patterns, track costs, and improve their AI fluency.
+- **Purpose:** Help developers understand their AI coding patterns, track costs, and improve their AI fluency through automated session analysis and background processing.
 - **Architecture:**
   - **`cli/`**: Node.js CLI (TypeScript) responsible for session discovery, parsing, and SQLite persistence.
   - **`server/`**: Hono-based API server (TypeScript) that proxies LLM requests and serves the dashboard.
@@ -51,7 +51,7 @@ The project uses `pnpm` workspaces for dependency management.
 - **Server Framework:** Uses `Hono` for its lightweight footprint and excellent TypeScript support.
 - **Privacy:** Follow the "local-first" principle. Ensure no session data is sent to the cloud except to the user-configured LLM provider for analysis.
 - **Parsing:** Employs `jsonrepair` and robust structural lookahead for preprocessing malformed or deeply nested JSON responses from LLM providers.
-- **Hooks:** The project supports installing hooks into Claude Code to automate sync and analysis (`code-insights install-hook`).
+- **Hooks:** The project supports installing hooks into Claude Code to automate sync and background analysis (`code-insights install-hook`).
 
 ## LLM Providers
 

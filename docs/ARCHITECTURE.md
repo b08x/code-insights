@@ -9,6 +9,7 @@
 ```
 Source tool session files -> Provider (discover + parse) -> SQLite -> Dashboard (localhost:7890)
                                                          -> CLI stats commands
+                                                         -> Analysis Queue -> Background Worker -> LLM Analysis
 ```
 
 ---
@@ -32,8 +33,9 @@ code-insights/
 │   └── src/
 │       ├── components/     # React components (shadcn/ui)
 │       │   ├── empty-states/  # Guided empty states (EmptyDashboard, EmptySessions, EmptyInsights)
-│       │   └── patterns/      # Patterns page components (WeekAtAGlanceStrip, WeekSelector)
-│       ├── hooks/          # React Query hooks
+│       │   ├── patterns/      # Patterns page components (WeekAtAGlanceStrip, WeekSelector)
+│       │   └── sessions/      # Session management components (RenameSessionDialog)
+│       ├── hooks/          # React Query hooks (useAnalysisQueue, useQueuedSessionIds)
 │       ├── lib/            # LLM providers, utilities, telemetry
 │       │   ├── share-card-utils.ts   # Canvas 2D share card rendering (drawShareCard, downloadShareCard)
 │       │   ├── share-card-icons.ts   # Lucide icon + tool logo rendering for Canvas 2D
@@ -72,6 +74,8 @@ code-insights/
 - `parser/jsonl.ts` — JSONL file parsing (used by ClaudeCodeProvider)
 - `parser/titles.ts` — Smart session title generation (5-tier fallback strategy)
 - `db/` — SQLite schema, migrations, query functions
+- `db/queue.ts` — Analysis queue operations (enqueue, claim, mark completed/failed, status)
+- `analysis/queue-worker.ts` — Background worker for processing analysis queue items
 - `utils/config.ts` — Configuration management (~/.code-insights/config.json)
 - `utils/device.ts` — Device ID generation, git remote detection, stable project IDs
 - `utils/paths.ts` — Virtual path handling (shared by sync and stats)
@@ -123,6 +127,7 @@ Providers are registered in `providers/registry.ts`. To add a new source tool:
 | `session_facets` | Cross-session facet data (friction, patterns, workflow) | V3 |
 | `reflect_snapshots` | Cached synthesis results, composite PK `(period, project_id, source_tool)` | V4 |
 | `analysis_usage` | Per-session LLM analysis cost data, composite PK `(session_id, analysis_type)` | V7 |
+| `analysis_queue` | Analysis job queue for background processing, PK `session_id`, status lifecycle: pending → processing → completed/failed with retry logic | V7 |
 | `schema_version` | Migration tracking | V1 |
 
 ---
@@ -208,14 +213,17 @@ Both friction points and effective patterns use canonical category taxonomies wi
 | `/api/analysis/prompt-quality` | POST | Trigger prompt quality analysis |
 | `/api/analysis/prompt-quality/stream` | GET | SSE streaming for PQ analysis |
 | `/api/analysis/recurring` | POST | Find recurring insight patterns |
+| `/api/analysis/queue` | GET | Analysis queue status for dashboard polling |
 
 ### Export
 
 | Route | Method | Purpose |
 |-------|--------|---------|
 | `/api/export/markdown` | POST | Session-level markdown export (Knowledge Base / Agent Rules templates) |
-| `/api/export/generate` | POST | LLM-powered cross-session export synthesis |
+| `/api/export/generate` | POST | LLM-powered cross-session export synthesis (supports `dateFrom`/`dateTo` parameters for datetime range filtering) |
 | `/api/export/generate/stream` | GET | SSE streaming for export generation |
+
+**Export Filtering:** The export system supports datetime range filtering via optional `dateFrom`/`dateTo` parameters. Filtering is applied server-side on `insights.timestamp` using half-open interval semantics. See [ADR-export-datetime-range-filter.md](./architecture/decisions/ADR-export-datetime-range-filter.md) for implementation details.
 
 ### Facets
 
@@ -256,14 +264,46 @@ Both friction points and effective patterns use canonical category taxonomies wi
 | Page | Route | Purpose |
 |------|-------|---------|
 | Dashboard | `/dashboard` | Overview with charts (`/` redirects here) |
-| Sessions | `/sessions` | Session list with filters |
-| Session Detail | `/sessions/:id` | Full session with analyze button |
+| Sessions | `/sessions` | Session list with filters, inline session renaming via `RenameSessionDialog` |
+| Session Detail | `/sessions/:id` | Full session with analyze button and session renaming capability |
 | Insights | `/insights` | Browse generated insights |
 | Analytics | `/analytics` | Charts: cost, models, projects |
 | Patterns | `/patterns` | Cross-session synthesis (Friction & Wins, Rules & Skills, Working Style) |
-| Export | `/export` | LLM-powered export wizard (4 formats, 3 depths) |
+| Export | `/export` | Enhanced 4-step wizard with datetime range filtering and format selection |
 | Journal | `/journal` | Chronological timeline of learnings and decisions by ISO week |
 | Settings | `/settings` | Configuration UI |
+
+### Dashboard Architecture Enhancements
+
+**Analysis Queue Integration:** All pages use the `useAnalysisQueue` hook for real-time polling of background analysis jobs. The hook polls `/api/analysis/queue` every 5 seconds when items are pending/processing, automatically invalidating `sessions` and `insights` queries when the queue drains.
+
+**Session Management:** The `RenameSessionDialog` component provides inline session title editing across sessions list and detail pages. Uses the `PATCH /api/sessions/:id` endpoint with `customTitle` field. Empty titles revert to auto-generated titles.
+
+**Enhanced Export Wizard:** The export page now features a 4-step wizard:
+1. **Scope Selection:** All sessions vs. specific project
+2. **Configure:** Format selection (markdown/json/notion/obsidian), depth (essential/standard/comprehensive), and datetime range filtering
+3. **Generate:** Real-time streaming generation with progress tracking
+4. **Review:** Download and copy capabilities with filename preview
+
+**Queue Status Polling:** Multiple dashboard pages integrate queue polling for real-time "Analyzing..." badges and status updates. The `useQueuedSessionIds` hook provides session IDs currently in analysis queue for UI feedback.
+
+### Key Dashboard Components & Hooks
+
+**Analysis Queue Integration:**
+- `useAnalysisQueue()` — Core polling hook with 5s intervals, smart cache invalidation
+- `useQueuedSessionIds()` — Returns set of session IDs currently being analyzed
+- Automatic query invalidation when queue drains to refresh sessions/insights
+
+**Session Management:**
+- `RenameSessionDialog` — Modal dialog for inline session title editing
+- Supports custom titles with fallback to auto-generated titles
+- Integrates with `PATCH /api/sessions/:id` endpoint
+
+**Export Components:**
+- Enhanced 4-step wizard with datetime range filtering
+- Real-time progress tracking during LLM generation
+- Format selection: markdown, JSON, Notion, Obsidian
+- Depth controls with insight count previews
 
 ---
 
@@ -292,6 +332,50 @@ PatternsPage → useFacetAggregation(period) → WeekAtAGlanceStrip → "Share" 
 - `dashboard/src/lib/share-card-icons.ts` — Lucide icon + tool logo rendering (`drawIcon()`, `drawToolIcon()`)
 - `dashboard/src/components/patterns/WeekAtAGlanceStrip.tsx` — UI component with download trigger
 - `dashboard/public/icons/` — Static tool logo assets (SVG/PNG)
+
+---
+
+## Analysis Queue Architecture
+
+The analysis queue system provides asynchronous processing of session analysis requests through a background worker pattern:
+
+```
+Session End Hook → enqueue(sessionId) → analysis_queue table → Queue Worker → LLM Analysis
+                                                             ↓
+Dashboard Polling ← /api/analysis/queue ← getQueueStatus() ← Status Updates
+```
+
+### Queue Lifecycle
+
+**Status Flow:** `pending` → `processing` → `completed` | `failed`
+- Failed jobs retry up to 3 attempts before permanent failure
+- Stale processing jobs (>10 minutes) reset to pending on worker startup
+- Queue uses session_id as PRIMARY KEY (no duplicate jobs)
+
+**Queue Operations (`cli/src/db/queue.ts`):**
+- `enqueue(sessionId, runnerType)` — Add/replace session in queue
+- `claimNext()` — Atomically claim next pending item
+- `markCompleted(sessionId)` — Mark analysis successful
+- `markFailed(sessionId, error)` — Mark failed and handle retries
+- `resetStale()` — Reset stuck processing jobs to pending
+- `getQueueStatus()` — Return counts and active items for dashboard polling
+
+### Background Worker (`cli/src/analysis/queue-worker.ts`)
+
+The queue worker processes items sequentially:
+1. Reset any stale processing items from previous crashes
+2. Claim next pending item atomically
+3. Execute analysis using native runner (claude -p) or configured LLM provider
+4. Mark completed/failed and continue until queue empty
+5. Spawned as detached subprocess to avoid blocking CLI
+
+**Hook Integration:**
+- `session-end` hook enqueues analysis and spawns worker with `CODE_INSIGHTS_HOOK_ACTIVE=1`
+- Environment variable prevents recursive hook triggering during analysis
+
+### Dashboard Integration
+
+Dashboard polls `/api/analysis/queue` at 5-second intervals when items are pending/processing. Returns queue status with counts by status and details for active items. Polling stops when queue is empty.
 
 ---
 

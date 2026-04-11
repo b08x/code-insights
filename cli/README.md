@@ -34,6 +34,8 @@ code-insights stats today              # today's sessions
 code-insights dashboard                # start dashboard server (auto-syncs first)
 code-insights dashboard --no-sync      # start dashboard without syncing
 code-insights sync                     # sync sessions only
+code-insights queue status             # check analysis queue
+code-insights insights check           # find unanalyzed sessions
 code-insights init                     # customize settings (optional)
 ```
 
@@ -220,15 +222,78 @@ code-insights open --project           # Open filtered to the current project
 code-insights reset --confirm
 ```
 
-### Auto-Sync Hook
+### Session Analysis
+
+Generate AI-powered insights for individual sessions. Requires an LLM provider to be configured.
 
 ```bash
-# Install a Claude Code hook — auto-syncs when sessions end
+# Analyze a specific session using configured LLM provider
+code-insights insights <session_id>
+
+# Analyze using Claude native (no API key needed)
+code-insights insights <session_id> --native
+
+# Check for unanalyzed sessions (last 7 days)
+code-insights insights check
+```
+
+### Queue Management
+
+The analysis queue runs session insights asynchronously to prevent blocking hooks and the UI.
+
+```bash
+# Show queue status (pending, processing, completed, failed counts)
+code-insights queue status
+
+# Machine-readable JSON output
+code-insights queue status --quiet
+
+# Process pending items in foreground
+code-insights queue process
+
+# Retry failed analysis for a specific session
+code-insights queue retry <session_id>
+
+# Retry all failed items
+code-insights queue retry --all
+
+# Remove completed/failed items older than N days (default: 7)
+code-insights queue prune
+code-insights queue prune --days 14
+```
+
+**Queue States:**
+- `pending` — waiting to be processed
+- `processing` — currently running analysis
+- `completed` — successfully analyzed
+- `failed` — analysis failed (retry available)
+
+### Hook Integration
+
+```bash
+# Install unified session-end hook (replaces old two-hook system)
 code-insights install-hook
 
-# Remove the hook
+# Install only sync hook (no analysis)
+code-insights install-hook --sync-only
+
+# Install only analysis hook (no sync)
+code-insights install-hook --analysis-only
+
+# Remove all hooks
 code-insights uninstall-hook
+
+# Session-end hook entry point (used internally by Claude Code)
+code-insights session-end
 ```
+
+The `session-end` command replaces the previous two-hook system:
+1. **Syncs** the session file to SQLite (foreground, ~50-200ms)
+2. **Enqueues** the session for async analysis (<1ms)
+3. **Spawns** a detached worker process for background analysis
+4. **Exits immediately** — hook completes quickly
+
+Worker logs are written to `~/.code-insights/hook-analysis.log`.
 
 ### Telemetry
 
@@ -264,6 +329,48 @@ code-insights config llm
 | Ollama | llama3.2, qwen2.5-coder, etc. | No (local) |
 
 API keys are stored in `~/.code-insights/config.json` (mode 0o600, readable only by you).
+
+## Troubleshooting
+
+### Queue Issues
+
+**Check queue status:**
+```bash
+code-insights queue status
+```
+
+**View worker logs:**
+```bash
+tail -f ~/.code-insights/hook-analysis.log
+```
+
+**Common solutions:**
+
+| Problem | Solution |
+|---------|----------|
+| Analysis stuck in "processing" | `code-insights queue retry --all` |
+| Multiple failed items | Check LLM provider config: `code-insights config llm --show` |
+| Hook not triggering | Reinstall: `code-insights uninstall-hook && code-insights install-hook` |
+| Worker process issues | Check logs and verify LLM provider connectivity |
+
+**Reset everything:**
+```bash
+# Clear all queue items and restart
+code-insights queue prune --days 0
+code-insights sync
+```
+
+### Session Analysis
+
+**No insights generated:**
+1. Verify LLM provider is configured: `code-insights config llm --show`
+2. Check queue status: `code-insights queue status`
+3. Try manual analysis: `code-insights insights <session_id> --native`
+
+**Analysis timeouts:**
+- Use `--native` flag for local Claude processing
+- Check network connectivity for cloud providers
+- Verify API key validity
 
 ## Development
 
