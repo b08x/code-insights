@@ -9,7 +9,7 @@
   - **`cli/`**: Node.js CLI (TypeScript) responsible for session discovery, parsing, and SQLite persistence. Includes a background **Analysis Queue** for asynchronous LLM processing.
   - **`server/`**: Hono-based API server (TypeScript) that proxies LLM requests, serves the dashboard, and manages the analysis worker.
   - **`dashboard/`**: React SPA (Vite + TypeScript) for visualizing sessions, analytics, cross-session patterns, and real-time analysis status.
-- **Database:** Local SQLite database stored at `~/.code-insights/data.db`. Uses WAL mode for concurrent access.
+- **Database:** Local SQLite database stored at `~/.code-insights/data.db`. Uses WAL mode for concurrent access. See `RULES.md` for database integrity and performance standards.
 
 ## Building and Running
 
@@ -40,8 +40,8 @@ The project uses `pnpm` workspaces for dependency management.
 
 - **Monorepo Management:** Uses `pnpm` workspaces. Always run `pnpm install` from the root.
 - **Type Safety:** Strict TypeScript usage. `cli/src/types.ts` is the **single source of truth**.
-- **Database:** Uses `better-sqlite3`. Schema is defined in `cli/src/db/schema.ts`. V7 introduces the `analysis_queue` and `analysis_usage` tables for background processing.
-- **Analysis Queue:** Asynchronous job system for LLM tasks. Managed via `cli/src/db/queue.ts` and processed by `cli/src/analysis/queue-worker.ts`.
+- **Database:** Uses `better-sqlite3`. Schema is defined in `cli/src/db/schema.ts`. V9 introduces the `analysis_queue` table for robust background processing.
+- **Analysis Queue:** Asynchronous job system for LLM tasks. Managed via `cli/src/db/queue.ts` and processed by `cli/src/analysis/queue-worker.ts`. Supports multi-level native fallbacks (Codex → Claude → Gemini).
 - **Testing:** `vitest` is the primary test runner. Tests are in `__tests__/` directories adjacent to source.
 - **Privacy:** Local-first. No session data is sent to the cloud except to user-configured LLMs for analysis.
 - **Parsing:** Robust structural lookahead and `jsonrepair` for handling malformed LLM responses.
@@ -51,6 +51,7 @@ The project uses `pnpm` workspaces for dependency management.
 
 Code Insights supports multiple providers for analysis and synthesis.
 
+- **Native Runners:** Zero-config analysis using locally installed CLIs. Supports **Codex** (default native), **Claude Code**, and **Gemini CLI**. Features automatic usage-limit fallback: `Codex` → `Claude` → `Gemini`.
 - **Supported Providers:** OpenAI (GPT-4o), Anthropic (Claude 3.5), Google Gemini (2.0 Flash), OpenRouter, Mistral (Codestral), and Ollama (Local).
 - **Dynamic Discovery:** Supports fetching latest models via `POST /api/config/llm/models`.
 - **Cost Tracking:** Per-session and per-analysis cost tracking stored in `analysis_usage`.
