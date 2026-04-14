@@ -12,6 +12,7 @@ import { createGeminiClient } from './providers/gemini.js';
 import { createOllamaClient } from './providers/ollama.js';
 import { createOpenRouterClient } from './providers/openrouter.js';
 import { createMistralClient } from './providers/mistral.js';
+import { setRateLimiter, getRateLimiter, resetRateLimiter } from './rate_limiter.js';
 
 /**
  * Mapping from provider ID to its standard API key environment variable.
@@ -61,6 +62,20 @@ export function isLLMConfigured(): boolean {
 }
 
 /**
+ * Initialize rate limiter from CLI config.
+ * Creates a rate limiter only if RPM is configured at valid levels (2-4).
+ */
+export function initRateLimiterFromConfig(): void {
+  const config = loadLLMConfig();
+  if (config?.rateLimit?.rpm) {
+    const rpm = config.rateLimit.rpm;
+    if (rpm >= 2 && rpm <= 4) {
+      setRateLimiter(rpm);
+    }
+  }
+}
+
+/**
  * Create an LLM client from the current config.
  * Throws if LLM is not configured.
  */
@@ -77,6 +92,12 @@ export function createLLMClient(): LLMClient {
  */
 export function createClientFromConfig(config: LLMProviderConfig): LLMClient {
   const apiKey = resolveApiKey(config.provider, config.apiKey);
+  
+  // Initialize rate limiter from config if not already set
+  if (config.rateLimit?.rpm) {
+    setRateLimiter(config.rateLimit.rpm);
+  }
+  
   switch (config.provider) {
     case 'openai':
       return createOpenAIClient(apiKey ?? '', config.model);
@@ -110,3 +131,6 @@ export async function testLLMConfig(config: LLMProviderConfig): Promise<{ succes
     };
   }
 }
+
+// Export rate limiter utilities for testing
+export { getRateLimiter, resetRateLimiter };
