@@ -87,7 +87,7 @@ ${sessionSummary ? `Session Summary: ${sessionSummary}\n` : ''}${formatSessionMe
 === PART 1: SESSION FACETS ===
 Extract these FIRST as a holistic session assessment:
 
-1. outcome_satisfaction: Rate the session outcome.
+1. outcome_satisfaction: (REQUIRED) Rate the session outcome. DO NOT OMIT.
    - "high": Task completed successfully, user satisfied
    - "medium": Partial completion or minor issues
    - "low": Significant problems, user frustrated

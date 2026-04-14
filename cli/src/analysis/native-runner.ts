@@ -34,33 +34,54 @@ function isResultEvent(e: ClaudeEvent): e is ClaudeResultEvent {
 
 /**
  * Extract the LLM text payload from a `claude -p --output-format json` response.
- * The output is an array of event objects; the actual content lives in the
- * `result` event's `result` field.
+ *
+ * Depending on the version and flags, Claude Code may return:
+ * 1. An array of event objects (streaming style)
+ * 2. A single result object (simple style)
  */
 function extractResultFromEnvelope(rawOutput: string): string {
-  let events: ClaudeEvent[];
+  let data: any;
   try {
-    events = JSON.parse(rawOutput) as ClaudeEvent[];
+    data = JSON.parse(rawOutput);
   } catch {
     throw new Error(
       `claude -p returned non-JSON output. Output preview: ${rawOutput.slice(0, 200)}`
     );
   }
 
-  if (!Array.isArray(events)) {
-    throw new Error('claude -p output was JSON but not an array of events as expected.');
+  let result: string | undefined;
+  let isError = false;
+
+  if (Array.isArray(data)) {
+    // Format 1: Array of events
+    const resultEvent = data.find((e: any) => e.type === 'result');
+    if (!resultEvent) {
+      throw new Error('claude -p output contained no result event.');
+    }
+    result = resultEvent.result;
+    isError = !!resultEvent.is_error;
+  } else if (data && typeof data === 'object') {
+    // Format 2: Single result object
+    if (data.type === 'result') {
+      result = data.result;
+      isError = !!data.is_error;
+    }
   }
 
-  const resultEvent = events.find(isResultEvent);
-  if (!resultEvent) {
-    throw new Error('claude -p output contained no result event. Events: ' + JSON.stringify(events.map(e => e.type)));
+  if (result === undefined) {
+    throw new Error('Could not extract result from claude -p output.');
   }
 
-  if (resultEvent.is_error) {
-    throw new Error(`claude -p reported an error: ${resultEvent.result}`);
+  if (isError) {
+    if (result.includes("You've hit your limit")) {
+      throw new Error(`Claude Code usage limit reached. ${result}`);
+    }
+    throw new Error(`claude -p reported an error: ${result}`);
   }
 
-  return resultEvent.result;
+  // Claude Code often wraps JSON results in <json>...</json> tags.
+  // We strip these to ensure the caller gets clean JSON.
+  return result.replace(/^<json>\n?/, '').replace(/\n?<\/json>$/, '').trim();
 }
 
 export class ClaudeNativeRunner implements AnalysisRunner {
@@ -103,21 +124,48 @@ export class ClaudeNativeRunner implements AnalysisRunner {
         '-p',
         '--output-format', 'json',
         '--append-system-prompt-file', promptFile,
-        '--bare',
+        '--no-session-persistence',
+        '--disable-slash-commands',
+        '--tools', '""',
       ];
       if (schemaFile) {
         args.push('--json-schema', schemaFile);
       }
 
-      const rawOutput = execFileSync('claude', args, {
-        input: params.userPrompt,
-        encoding: 'utf-8',
-        timeout: 120_000,    // 2-minute hard limit per analysis call
-        maxBuffer: 10 * 1024 * 1024,  // 10 MB
-      });
+      let rawOutput: string;
+      try {
+        rawOutput = execFileSync('claude', args, {
+          input: params.userPrompt,
+          encoding: 'utf-8',
+          timeout: 120_000,    // 2-minute hard limit per analysis call
+          maxBuffer: 10 * 1024 * 1024,  // 10 MB
+          stdio: ['pipe', 'pipe', 'pipe'], // Capture stdout/stderr separately
+        });
+      } catch (err: any) {
+        // If execFileSync fails, stdout might still contain the JSON error envelope.
+        if (err.stdout) {
+          try {
+            return {
+              rawJson: extractResultFromEnvelope(err.stdout.toString()),
+              durationMs: Date.now() - start,
+              inputTokens: 0,
+              outputTokens: 0,
+              model: 'claude-native',
+              provider: 'claude-code-native',
+            };
+          } catch (innerErr: any) {
+            throw new Error(`claude -p failed: ${innerErr.message}`);
+          }
+        }
+        
+        const stderr = err.stderr?.toString() || '';
+        if (stderr.includes('Not logged in')) {
+          throw new Error('Claude Code is not logged in. Run `claude login`.');
+        }
+        throw new Error(`claude -p command failed: ${err.message}${stderr ? `\nStderr: ${stderr}` : ''}`);
+      }
 
-      // claude -p --output-format json wraps the response in an event array.
-      // Extract the actual LLM text from the result event.
+      // Extract the actual LLM text from the result field.
       const rawJson = extractResultFromEnvelope(rawOutput);
 
       return {
