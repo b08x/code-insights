@@ -314,6 +314,10 @@ export function parseAnalysisResponse(response: string): ParseResult<AnalysisRes
     }
   }
 
+  if (parsed.summary && !parsed.summary.title && parsed.summary.outcome === 'abandoned') {
+    parsed.summary.title = 'Session abandoned (no interaction)';
+  }
+
   if (!parsed.summary || typeof parsed.summary.title !== 'string') {
     console.error('Invalid analysis response structure');
     return {

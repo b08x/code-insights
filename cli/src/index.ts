@@ -165,14 +165,15 @@ insightsCmd
   .option('--native', 'Use native runner (claude -p) for batch analysis')
   .option('--codex', 'Use codex exec for batch analysis')
   .option('--gemini', 'Use gemini -p for batch analysis')
-  .action(async (opts) => {
+  .action(async (opts, cmd) => {
+    const parentOpts = cmd.parent?.opts() || {};
     await insightsCheckCommand({
       days: opts.days ? parseInt(opts.days, 10) : 7,
-      quiet: opts.quiet,
+      quiet: opts.quiet ?? parentOpts.quiet,
       analyze: opts.analyze,
-      native: opts.native,
-      codex: opts.codex,
-      gemini: opts.gemini,
+      native: opts.native ?? parentOpts.native,
+      codex: opts.codex ?? parentOpts.codex,
+      gemini: opts.gemini ?? parentOpts.gemini,
     });
   });
 

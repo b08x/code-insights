@@ -437,7 +437,12 @@ export async function insightsCheckCommand(opts: {
             ClaudeNativeRunner.validate();
             return new ClaudeNativeRunner();
           } else {
-            return ProviderRunner.fromConfig();
+            try {
+              return ProviderRunner.fromConfig();
+            } catch (err) {
+              log(chalk.yellow(`[Code Insights] provider runner not available: ${err instanceof Error ? err.message : String(err)}`));
+              return undefined;
+            }
           }
         } catch (err) {
           log(chalk.yellow(`[Code Insights] ${type} runner not available: ${err instanceof Error ? err.message : String(err)}`));
@@ -447,21 +452,29 @@ export async function insightsCheckCommand(opts: {
 
       if (analyze) {
         // Determine initial runner type
-        let currentRunnerType: RunnerType = 'provider';
-        if (opts.gemini) currentRunnerType = 'gemini';
-        else if (opts.codex) currentRunnerType = 'codex';
-        else if (opts.native) currentRunnerType = 'claude';
+        let currentRunnerType: RunnerType;
+        if (opts.gemini) {
+          currentRunnerType = 'gemini';
+        } else if (opts.codex) {
+          currentRunnerType = 'codex';
+        } else if (opts.native) {
+          currentRunnerType = 'claude';
+        } else {
+          currentRunnerType = 'provider';
+        }
 
         runner = initializeRunner(currentRunnerType);
 
         // Fallback logic for native modes: Claude -> Codex -> Gemini
         if (!runner && (opts.native || opts.codex || opts.gemini)) {
-          if (currentRunnerType === 'claude' || currentRunnerType === 'provider') {
+          // If we started with claude or provider (as default for --native), try Codex
+          if (currentRunnerType === 'claude' || (opts.native && !opts.codex && !opts.gemini)) {
             log(chalk.yellow(`[Code Insights] Falling back to Codex...`));
             currentRunnerType = 'codex';
             runner = initializeRunner('codex');
           }
-          if (!runner && (currentRunnerType === 'codex')) {
+          // If we still have no runner and were trying codex (or just started there), try Gemini
+          if (!runner && currentRunnerType === 'codex') {
             log(chalk.yellow(`[Code Insights] Falling back to Gemini...`));
             currentRunnerType = 'gemini';
             runner = initializeRunner('gemini');
@@ -504,21 +517,24 @@ export async function insightsCheckCommand(opts: {
 
       // Auto-analyze silently when 1-2 unanalyzed sessions
       if (count <= 2) {
-        let runnerType: RunnerType = 'provider';
+        let runnerType: RunnerType;
+        if (opts.gemini) runnerType = 'gemini';
+        else if (opts.codex) runnerType = 'codex';
+        else if (opts.native) runnerType = 'claude';
+        else runnerType = 'provider';
 
-        // Try provider first, then fallbacks
-        runner = initializeRunner('provider');
-        if (!runner) {
-          runnerType = 'codex';
-          runner = initializeRunner('codex');
-        }
-        if (!runner) {
-          runnerType = 'claude';
-          runner = initializeRunner('claude');
-        }
-        if (!runner) {
-          runnerType = 'gemini';
-          runner = initializeRunner('gemini');
+        runner = initializeRunner(runnerType);
+        
+        // Fallback for auto-analyze
+        if (!runner && (opts.native || opts.codex || opts.gemini)) {
+          if (runnerType === 'claude' || (opts.native && !opts.codex && !opts.gemini)) {
+            runnerType = 'codex';
+            runner = initializeRunner('codex');
+          }
+          if (!runner && runnerType === 'codex') {
+            runnerType = 'gemini';
+            runner = initializeRunner('gemini');
+          }
         }
 
         if (runner) {

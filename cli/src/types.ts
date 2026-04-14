@@ -335,6 +335,9 @@ export interface LLMProviderConfig {
   apiKey?: string;       // not required for Ollama
   model: string;
   baseUrl?: string;      // for Ollama or custom endpoints
+  rateLimit?: {
+    rpm: number;
+  };
 }
 
 export interface ProviderModelOption {

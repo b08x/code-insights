@@ -25,21 +25,13 @@ export class GeminiNativeRunner implements AnalysisRunner {
 
   async runAnalysis(params: RunAnalysisParams): Promise<RunAnalysisResult> {
     const start = Date.now();
-    const fileId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     
     // Combine system + user prompt
     const fullPrompt = `${params.systemPrompt}\n\nUSER INSTRUCTIONS:\n${params.userPrompt}`;
     
-    // Use home-relative tmp dir, to avoid Gemini directory restrictions while remaining stable
-    const workspaceTmpDir = join(homedir(), '.code-insights', 'tmp');
-    const promptFile = join(workspaceTmpDir, `gemini-prompt-${fileId}.txt`);
-    
     try {
-      mkdirSync(workspaceTmpDir, { recursive: true });
-      writeFileSync(promptFile, fullPrompt, 'utf-8');
-
       const args = [
-        '-p', `@${promptFile}`,
+        '-p', '-',
         '-o', 'json',
         '--approval-mode', 'plan', // Read-only mode
       ];
@@ -47,6 +39,7 @@ export class GeminiNativeRunner implements AnalysisRunner {
       let rawOutput: string;
       try {
         rawOutput = execFileSync('gemini', args, {
+          input: fullPrompt,
           encoding: 'utf-8',
           timeout: 120_000,    // 2-minute hard limit
           maxBuffer: 10 * 1024 * 1024,
@@ -104,8 +97,6 @@ export class GeminiNativeRunner implements AnalysisRunner {
         throw err;
       }
       throw new Error(`Gemini analysis failed: ${err.message}`);
-    } finally {
-      try { unlinkSync(promptFile); } catch {}
     }
   }
 }
