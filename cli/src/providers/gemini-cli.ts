@@ -5,6 +5,7 @@ import type { SessionProvider } from './types.js';
 import type { ParsedSession, ParsedMessage, ToolCall, ToolResult, MessageUsage, SessionUsage } from '../types.js';
 import { getGeminiHomeDir, getGeminiTmpDir } from '../utils/config.js';
 import { calculateCost } from '../utils/pricing.js';
+import { generateTitle, detectSessionCharacter } from '../parser/titles.js';
 
 /**
  * Gemini CLI session provider.
@@ -105,7 +106,7 @@ export class GeminiCliProvider implements SessionProvider {
           toolResults: this.extractToolResults(msg),
           usage: this.extractUsage(msg),
           timestamp: new Date(msg.timestamp),
-          parentId: null, // Gemini CLI format doesn't seem to have explicit parents in the JSON
+          parentId: null,
         };
 
         if (parsedMsg.type === 'user') userMessageCount++;
@@ -119,7 +120,7 @@ export class GeminiCliProvider implements SessionProvider {
 
       const sessionUsage = this.calculateSessionUsage(messages);
 
-      return {
+      const session: ParsedSession = {
         id: data.sessionId,
         projectPath,
         projectName,
@@ -127,8 +128,8 @@ export class GeminiCliProvider implements SessionProvider {
         generatedTitle: null,
         titleSource: null,
         sessionCharacter: null,
-        startedAt: new Date(data.startTime || messages[0].timestamp),
-        endedAt: new Date(data.lastUpdated || messages[messages.length - 1].timestamp),
+        startedAt: new Date(data.startTime || (messages.length > 0 ? messages[0].timestamp : new Date())),
+        endedAt: new Date(data.lastUpdated || (messages.length > 0 ? messages[messages.length - 1].timestamp : new Date())),
         messageCount: messages.length,
         userMessageCount,
         assistantMessageCount,
@@ -142,6 +143,14 @@ export class GeminiCliProvider implements SessionProvider {
         usage: sessionUsage,
         messages,
       };
+
+      // Always generate title since Gemini CLI JSON doesn't provide one
+      const titleResult = generateTitle(session);
+      session.generatedTitle = titleResult.title;
+      session.titleSource = titleResult.source;
+      session.sessionCharacter = titleResult.character || detectSessionCharacter(session);
+
+      return session;
     } catch (err) {
       console.error(`[gemini-cli] Failed to parse ${filePath}: ${err}`);
       return null;
@@ -179,7 +188,6 @@ export class GeminiCliProvider implements SessionProvider {
       const results: ToolResult[] = [];
       for (const tc of msg.toolCalls) {
         if (tc.result) {
-          // result is often an array of functionResponse objects
           const output = Array.isArray(tc.result) 
             ? tc.result.map((r: any) => JSON.stringify(r.functionResponse?.response || r)).join('\n')
             : JSON.stringify(tc.result);

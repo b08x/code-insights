@@ -4,6 +4,7 @@ import * as os from 'os';
 import Database from 'better-sqlite3';
 import type { SessionProvider } from './types.js';
 import type { ParsedSession, ParsedMessage, ToolCall, ToolResult, SessionUsage } from '../types.js';
+import { generateTitle, detectSessionCharacter } from '../parser/titles.js';
 
 /**
  * Crush session provider.
@@ -145,7 +146,6 @@ export class CrushProvider implements SessionProvider {
                 input: part.data.arguments || {},
               });
             } else if (part.type === 'tool_result' && part.data) {
-              // Sometimes results might be in the same message or role='assistant' (less common in Crush)
               toolResults.push({
                 toolUseId: part.data.tool_call_id || `tool-${row.id}`,
                 output: typeof part.data.content === 'string' ? part.data.content : JSON.stringify(part.data),
@@ -162,6 +162,11 @@ export class CrushProvider implements SessionProvider {
         if (type === 'assistant') assistantMessageCount++;
         toolCallCount += toolCalls.length;
 
+        // Fix: Crush stores timestamps in seconds or milliseconds. 
+        // 1.7e12 is ms (2024+), 1.7e9 is seconds.
+        const rawTs = row.created_at || row.timestamp || 0;
+        const timestamp = rawTs > 1e11 ? new Date(rawTs) : new Date(rawTs * 1000);
+
         messages.push({
           id: `crush-${row.id}`,
           sessionId: `crush:${sessionId}`,
@@ -170,31 +175,31 @@ export class CrushProvider implements SessionProvider {
           thinking,
           toolCalls,
           toolResults,
-          usage: null, // Per-message usage not easily available in messages table
-          timestamp: new Date(row.created_at), // Crush stores ms
+          usage: null,
+          timestamp,
           parentId: null,
         });
       }
 
       // Infer project path from files table
       let projectPath = '';
-      const fileRow = db.prepare('SELECT path FROM files WHERE session_id = ? LIMIT 1').get(sessionId) as { path: string } | undefined;
-      if (fileRow?.path) {
-        // Find common root or just parent of the first file
-        projectPath = path.dirname(fileRow.path);
-        // If it's deep in a project, we could try to find the .crush parent
-        const crushIdx = projectPath.indexOf('/.crush');
-        if (crushIdx !== -1) {
-          projectPath = projectPath.slice(0, crushIdx);
-        } else {
-          // Check if it's a child of the DB's directory
-          const dbDir = path.dirname(path.dirname(dbPath)); // parent of .crush/
-          if (fileRow.path.startsWith(dbDir)) {
-            projectPath = dbDir;
+      try {
+        const fileRow = db.prepare('SELECT path FROM files WHERE session_id = ? LIMIT 1').get(sessionId) as { path: string } | undefined;
+        if (fileRow?.path) {
+          projectPath = path.dirname(fileRow.path);
+          const crushIdx = projectPath.indexOf('/.crush');
+          if (crushIdx !== -1) {
+            projectPath = projectPath.slice(0, crushIdx);
+          } else {
+            const dbDir = path.dirname(path.dirname(dbPath));
+            if (fileRow.path.startsWith(dbDir)) {
+              projectPath = dbDir;
+            }
           }
+        } else {
+          projectPath = path.dirname(path.dirname(dbPath));
         }
-      } else {
-        // Fallback to parent of .crush
+      } catch {
         projectPath = path.dirname(path.dirname(dbPath));
       }
 
@@ -209,16 +214,22 @@ export class CrushProvider implements SessionProvider {
         usageSource: 'session',
       };
 
-      return {
+      const rawStartedAt = sessionRow.created_at || (messages.length > 0 ? messages[0].timestamp.getTime() : 0);
+      const startedAt = rawStartedAt > 1e11 ? new Date(rawStartedAt) : new Date(rawStartedAt * 1000);
+      
+      const rawEndedAt = sessionRow.updated_at || rawStartedAt;
+      const endedAt = rawEndedAt > 1e11 ? new Date(rawEndedAt) : new Date(rawEndedAt * 1000);
+
+      const session: ParsedSession = {
         id: `crush:${sessionId}`,
         projectPath,
         projectName: sessionRow.title || 'crush-session',
         summary: null,
         generatedTitle: sessionRow.title || null,
-        titleSource: sessionRow.title && sessionRow.title !== 'Untitled Session' ? 'insight' : null,
+        titleSource: (sessionRow.title && sessionRow.title !== 'Untitled Session' && sessionRow.title !== 'New Session') ? 'insight' : null,
         sessionCharacter: null,
-        startedAt: new Date(sessionRow.created_at),
-        endedAt: new Date(sessionRow.updated_at),
+        startedAt,
+        endedAt,
         messageCount: messages.length,
         userMessageCount,
         assistantMessageCount,
@@ -232,6 +243,15 @@ export class CrushProvider implements SessionProvider {
         usage: sessionUsage,
         messages,
       };
+
+      if (!session.generatedTitle || session.titleSource === null) {
+        const titleResult = generateTitle(session);
+        session.generatedTitle = titleResult.title;
+        session.titleSource = titleResult.source;
+        session.sessionCharacter = titleResult.character || detectSessionCharacter(session);
+      }
+
+      return session;
     } catch (err) {
       console.error(`[crush] Failed to parse session ${sessionId}: ${err}`);
       return null;

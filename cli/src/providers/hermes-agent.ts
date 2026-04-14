@@ -4,12 +4,15 @@ import Database from 'better-sqlite3';
 import type { SessionProvider } from './types.js';
 import type { ParsedSession, ParsedMessage, ToolCall, SessionUsage } from '../types.js';
 import { getHermesHomeDir } from '../utils/config.js';
+import { generateTitle, detectSessionCharacter } from '../parser/titles.js';
 
 /**
  * Hermes Agent session provider.
- * Discovers and parses sessions from Hermes Agent SQLite databases:
- * 1. Central database: ~/.hermes/state.db
- * 2. Profile databases: ~/.hermes/profiles/<profile_name>/state.db
+ * Discovers and parses sessions from Hermes Agent:
+ * 1. Central SQLite database: ~/.hermes/state.db
+ * 2. Profile SQLite databases: ~/.hermes/profiles/<profile_name>/state.db
+ * 3. JSON session files: ~/.hermes/sessions/*.json
+ * 4. Profile JSON session files: ~/.hermes/profiles/<profile_name>/sessions/*.json
  */
 export class HermesAgentProvider implements SessionProvider {
   getProviderName(): string {
@@ -19,61 +22,99 @@ export class HermesAgentProvider implements SessionProvider {
   async discover(options?: { projectFilter?: string }): Promise<string[]> {
     const virtualPaths: string[] = [];
 
-    // Discover central database sessions
-    const centralSessions = await this.discoverDatabaseSessions(options);
-    virtualPaths.push(...centralSessions);
+    // 1. Discover database sessions (central and profiles)
+    const dbSessions = await this.discoverAllDatabaseSessions(options);
+    virtualPaths.push(...dbSessions);
 
-    // Discover profile database sessions
-    const profileSessions = await this.discoverProfileDatabaseSessions(options);
-    virtualPaths.push(...profileSessions);
+    // 2. Discover JSON session files (central and profiles)
+    const jsonSessions = await this.discoverAllJsonSessions(options);
+    virtualPaths.push(...jsonSessions);
 
     return virtualPaths;
   }
 
   /**
-   * Discover sessions from the central SQLite database
+   * Discover sessions from all known SQLite databases
    */
-  private async discoverDatabaseSessions(options?: { projectFilter?: string }): Promise<string[]> {
+  private async discoverAllDatabaseSessions(options?: { projectFilter?: string }): Promise<string[]> {
     const homeDir = getHermesHomeDir();
-    const dbPath = path.join(homeDir, 'state.db');
+    const virtualPaths: string[] = [];
 
-    if (!fs.existsSync(dbPath)) {
-      return [];
+    // Central database
+    const centralDbPath = path.join(homeDir, 'state.db');
+    if (fs.existsSync(centralDbPath)) {
+      const sessions = await this.discoverSessionsFromDatabase(centralDbPath, options);
+      virtualPaths.push(...sessions);
     }
 
-    return this.discoverSessionsFromDatabase(dbPath, 'central', options);
+    // Profile databases
+    const profilesDir = path.join(homeDir, 'profiles');
+    if (fs.existsSync(profilesDir)) {
+      try {
+        const profiles = fs.readdirSync(profilesDir, { withFileTypes: true })
+          .filter(dirent => dirent.isDirectory())
+          .map(dirent => dirent.name);
+
+        for (const profileName of profiles) {
+          const profileDbPath = path.join(profilesDir, profileName, 'state.db');
+          if (fs.existsSync(profileDbPath)) {
+            const sessions = await this.discoverSessionsFromDatabase(profileDbPath, options);
+            virtualPaths.push(...sessions);
+          }
+        }
+      } catch (err) {
+        console.error(`[hermes-agent] Failed to discover profile database sessions: ${err}`);
+      }
+    }
+
+    return virtualPaths;
   }
 
   /**
-   * Discover sessions from profile SQLite databases
+   * Discover sessions from all known JSON storage locations
    */
-  private async discoverProfileDatabaseSessions(options?: { projectFilter?: string }): Promise<string[]> {
+  private async discoverAllJsonSessions(options?: { projectFilter?: string }): Promise<string[]> {
     const homeDir = getHermesHomeDir();
-    const profilesDir = path.join(homeDir, 'profiles');
+    const jsonPaths: string[] = [];
 
-    if (!fs.existsSync(profilesDir)) {
-      return [];
+    // Central sessions directory
+    const centralSessionsDir = path.join(homeDir, 'sessions');
+    if (fs.existsSync(centralSessionsDir)) {
+      const files = this.discoverJsonFilesInDir(centralSessionsDir);
+      jsonPaths.push(...files);
     }
 
-    const virtualPaths: string[] = [];
+    // Profile sessions directories
+    const profilesDir = path.join(homeDir, 'profiles');
+    if (fs.existsSync(profilesDir)) {
+      try {
+        const profiles = fs.readdirSync(profilesDir, { withFileTypes: true })
+          .filter(dirent => dirent.isDirectory())
+          .map(dirent => dirent.name);
 
-    try {
-      const profiles = fs.readdirSync(profilesDir, { withFileTypes: true })
-        .filter(dirent => dirent.isDirectory())
-        .map(dirent => dirent.name);
-
-      for (const profileName of profiles) {
-        const profileDbPath = path.join(profilesDir, profileName, 'state.db');
-
-        if (fs.existsSync(profileDbPath)) {
-          const sessions = await this.discoverSessionsFromDatabase(profileDbPath, profileName, options);
-          virtualPaths.push(...sessions);
+        for (const profileName of profiles) {
+          const profileSessionsDir = path.join(profilesDir, profileName, 'sessions');
+          if (fs.existsSync(profileSessionsDir)) {
+            const files = this.discoverJsonFilesInDir(profileSessionsDir);
+            jsonPaths.push(...files);
+          }
         }
+      } catch (err) {
+        console.error(`[hermes-agent] Failed to discover profile JSON sessions: ${err}`);
       }
+    }
 
-      return virtualPaths;
-    } catch (err) {
-      console.error(`[hermes-agent] Failed to discover profile database sessions: ${err}`);
+    // Filter by project if needed (requires reading titles, but we'll defer to parse for efficiency
+    // unless a heavy filter is requested. For now, we return all JSON files.)
+    return jsonPaths;
+  }
+
+  private discoverJsonFilesInDir(dir: string): string[] {
+    try {
+      return fs.readdirSync(dir)
+        .filter(file => file.startsWith('session_') && file.endsWith('.json'))
+        .map(file => path.join(dir, file));
+    } catch {
       return [];
     }
   }
@@ -83,30 +124,26 @@ export class HermesAgentProvider implements SessionProvider {
    */
   private async discoverSessionsFromDatabase(
     dbPath: string,
-    source: string,
     options?: { projectFilter?: string }
   ): Promise<string[]> {
     let db: InstanceType<typeof Database> | null = null;
     try {
-      // Use WAL mode compatible options and timeout for active Hermes services
       db = new Database(dbPath, {
         readonly: true,
         fileMustExist: true,
-        timeout: 5000 // 5 second timeout for locks
+        timeout: 5000
       });
-
-      // Set connection to be more tolerant of concurrent access
       db.pragma('busy_timeout = 5000');
 
       const sessions = db.prepare('SELECT id, title FROM sessions').all() as { id: string, title: string | null }[];
 
       const virtualPaths: string[] = [];
       for (const session of sessions) {
-        // Apply project filter if specified (check title)
         if (options?.projectFilter && session.title && !session.title.toLowerCase().includes(options.projectFilter.toLowerCase())) {
           continue;
         }
-        virtualPaths.push(`${source}:${dbPath}#${session.id}`);
+        // Format: dbPath#sessionId (Standard format used by Cursor too)
+        virtualPaths.push(`${dbPath}#${session.id}`);
       }
 
       return virtualPaths;
@@ -119,17 +156,34 @@ export class HermesAgentProvider implements SessionProvider {
   }
 
   async parse(virtualPath: string): Promise<ParsedSession | null> {
-    // Parse virtualPath format: "source:dbPath#sessionId"
-    const sourceEndIndex = virtualPath.indexOf(':');
-    if (sourceEndIndex === -1) {
-      // Backward compatibility: treat as central database
-      return this.parseDatabaseSession('central', virtualPath);
+    // 1. Handle backward compatible virtualPath format: "source:dbPath#sessionId"
+    if (virtualPath.includes(':') && virtualPath.includes('#') && !virtualPath.startsWith('/')) {
+      const sourceEndIndex = virtualPath.indexOf(':');
+      const source = virtualPath.slice(0, sourceEndIndex);
+      const pathWithSession = virtualPath.slice(sourceEndIndex + 1);
+      return this.parseDatabaseSession(source, pathWithSession);
     }
 
-    const source = virtualPath.slice(0, sourceEndIndex);
-    const pathWithSession = virtualPath.slice(sourceEndIndex + 1);
+    // 2. Handle new standard database format: "dbPath#sessionId"
+    if (virtualPath.includes('#')) {
+      const hashIndex = virtualPath.lastIndexOf('#');
+      const dbPath = virtualPath.slice(0, hashIndex);
+      const sessionId = virtualPath.slice(hashIndex + 1);
+      const source = this.getSourceFromPath(dbPath);
+      return this.parseDatabaseSession(source, `${dbPath}#${sessionId}`);
+    }
 
-    return this.parseDatabaseSession(source, pathWithSession);
+    // 3. Handle JSON session files: "path/to/session_*.json"
+    if (virtualPath.endsWith('.json')) {
+      return this.parseJsonSession(virtualPath);
+    }
+
+    return null;
+  }
+
+  private getSourceFromPath(dbOrJsonPath: string): string {
+    const profilesMatch = dbOrJsonPath.match(/profiles\/([^/]+)/);
+    return profilesMatch ? profilesMatch[1] : 'central';
   }
 
   /**
@@ -144,14 +198,11 @@ export class HermesAgentProvider implements SessionProvider {
 
     let db: InstanceType<typeof Database> | null = null;
     try {
-      // Use WAL mode compatible options and timeout for active Hermes services
       db = new Database(dbPath, {
         readonly: true,
         fileMustExist: true,
-        timeout: 5000 // 5 second timeout for locks
+        timeout: 5000
       });
-
-      // Set connection to be more tolerant of concurrent access
       db.pragma('busy_timeout = 5000');
 
       const sessionRow = db.prepare('SELECT * FROM sessions WHERE id = ?').get(sessionId) as any;
@@ -166,9 +217,8 @@ export class HermesAgentProvider implements SessionProvider {
 
       for (const row of messageRows) {
         if (row.role === 'tool') {
-          // Attach to the last assistant message as a tool result
           const lastAssistant = messages.reverse().find(m => m.type === 'assistant');
-          messages.reverse(); // back to original order
+          messages.reverse();
 
           if (lastAssistant) {
             lastAssistant.toolResults.push({
@@ -207,12 +257,12 @@ export class HermesAgentProvider implements SessionProvider {
           toolCalls,
           toolResults: [],
           usage: row.token_count ? {
-            inputTokens: 0, // Hermes doesn't seem to store per-message input tokens in the messages table
+            inputTokens: 0,
             outputTokens: row.token_count,
             cacheCreationTokens: 0,
             cacheReadTokens: 0,
             model: sessionRow.model || 'unknown',
-            estimatedCostUsd: 0, // Will be calculated at session level
+            estimatedCostUsd: 0,
           } : null,
           timestamp: new Date(row.timestamp * 1000),
           parentId: null,
@@ -236,14 +286,13 @@ export class HermesAgentProvider implements SessionProvider {
         usageSource: 'session',
       };
 
-      // Generate appropriate project name based on source
       const projectName = source === 'central'
         ? sessionRow.title || 'hermes-agent-session'
         : `hermes-profile-${source}`;
 
-      return {
+      const session: ParsedSession = {
         id: `hermes-agent-${source}:${sessionId}`,
-        projectPath: '', // Hermes Agent sessions are global or project-unaware in the DB
+        projectPath: '',
         projectName,
         summary: null,
         generatedTitle: sessionRow.title || null,
@@ -264,11 +313,131 @@ export class HermesAgentProvider implements SessionProvider {
         usage: sessionUsage,
         messages,
       };
+
+      if (!session.generatedTitle) {
+        const titleResult = generateTitle(session);
+        session.generatedTitle = titleResult.title;
+        session.titleSource = titleResult.source;
+        session.sessionCharacter = titleResult.character || detectSessionCharacter(session);
+      }
+
+      return session;
     } catch (err) {
       console.error(`[hermes-agent] Failed to parse session ${sessionId} from ${source}: ${err}`);
       return null;
     } finally {
       db?.close();
+    }
+  }
+
+  /**
+   * Parse a session from a JSON file
+   */
+  private async parseJsonSession(filePath: string): Promise<ParsedSession | null> {
+    try {
+      const content = fs.readFileSync(filePath, 'utf-8');
+      const data = JSON.parse(content);
+      const source = this.getSourceFromPath(filePath);
+      const sessionId = data.session_id || path.basename(filePath, '.json').replace('session_', '');
+
+      const messages: ParsedMessage[] = [];
+      let userMessageCount = 0;
+      let assistantMessageCount = 0;
+      let toolCallCount = 0;
+
+      if (Array.isArray(data.messages)) {
+        for (let i = 0; i < data.messages.length; i++) {
+          const msg = data.messages[i];
+          
+          if (msg.role === 'tool') {
+            const lastAssistant = messages.reverse().find(m => m.type === 'assistant');
+            messages.reverse();
+            if (lastAssistant) {
+              lastAssistant.toolResults.push({
+                toolUseId: msg.tool_call_id || `tool-${i}`,
+                output: msg.content || '',
+              });
+              continue;
+            }
+          }
+
+          const toolCalls: ToolCall[] = [];
+          if (Array.isArray(msg.tool_calls)) {
+            for (const tc of msg.tool_calls) {
+              toolCalls.push({
+                id: tc.id,
+                name: tc.function?.name || tc.name || 'unknown',
+                input: typeof tc.function?.arguments === 'string' 
+                  ? JSON.parse(tc.function.arguments) 
+                  : (tc.args || tc.function?.arguments || {}),
+              });
+            }
+          }
+
+          const parsedMsg: ParsedMessage = {
+            id: `hermes-json-${source}-${sessionId}-${i}`,
+            sessionId: `hermes-agent-${source}:${sessionId}`,
+            type: msg.role === 'assistant' ? 'assistant' : (msg.role === 'user' ? 'user' : 'system'),
+            content: msg.content || '',
+            thinking: msg.reasoning || null,
+            toolCalls,
+            toolResults: [],
+            usage: null, // Per-message usage typically not in JSON dump
+            timestamp: new Date(data.session_start), // Fallback to session start if not in message
+            parentId: null,
+          };
+
+          if (parsedMsg.type === 'user') userMessageCount++;
+          if (parsedMsg.type === 'assistant') assistantMessageCount++;
+          toolCallCount += toolCalls.length;
+
+          messages.push(parsedMsg);
+        }
+      }
+
+      const session: ParsedSession = {
+        id: `hermes-agent-${source}:${sessionId}`,
+        projectPath: '',
+        projectName: source === 'central' ? 'hermes-agent-session' : `hermes-profile-${source}`,
+        summary: null,
+        generatedTitle: null,
+        titleSource: null,
+        sessionCharacter: null,
+        startedAt: new Date(data.session_start),
+        endedAt: new Date(data.last_updated || data.session_start),
+        messageCount: messages.length,
+        userMessageCount,
+        assistantMessageCount,
+        toolCallCount,
+        compactCount: 0,
+        autoCompactCount: 0,
+        slashCommands: [],
+        gitBranch: null,
+        claudeVersion: null,
+        sourceTool: 'hermes-agent',
+        usage: {
+          totalInputTokens: 0,
+          totalOutputTokens: 0,
+          cacheCreationTokens: 0,
+          cacheReadTokens: 0,
+          estimatedCostUsd: 0,
+          modelsUsed: data.model ? [data.model] : [],
+          primaryModel: data.model || 'unknown',
+          usageSource: 'session',
+        },
+        messages,
+      };
+
+      // Generate title since JSON doesn't have one
+      const titleResult = generateTitle(session);
+      session.generatedTitle = titleResult.title;
+      session.titleSource = titleResult.source;
+      session.sessionCharacter = titleResult.character || detectSessionCharacter(session);
+
+      return session;
+    } catch (err) {
+      console.error(`[hermes-agent] Failed to parse JSON session ${filePath}: ${err}`);
+      return null;
     }
   }
 }
