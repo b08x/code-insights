@@ -133,10 +133,12 @@ ${EFFECTIVE_PATTERN_CLASSIFICATION_GUIDANCE}
     ]
   },
   "summary": {
-    "title": "Main accomplishment (max 80 chars)",
-    "content": "2-4 sentence narrative of goal, action, outcome",
+    "title": "Methodological objective (e.g., 'Iterative test-driven refactor of state management')",
+    "content": "2-4 sentence narrative of the collaboration dynamics. Do NOT list file changes or commits. Describe HOW the user and AI interacted, the workflow strategy utilized, and the friction-resolving path.",
     "outcome": "success | partial | abandoned | blocked",
-    "bullets": ["Specific artifact and change"]
+    "bullets": [
+      "Workflow execution milestones (e.g., 'Enforced test-boundary isolation', 'Relied on AI-driven conceptual design', 'Diagnosed race condition via log analysis')"
+    ]
   },
   "decisions": [
     {
