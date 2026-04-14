@@ -17,8 +17,9 @@ Code Insights is a local-first analytics platform designed to extract structured
 ## Features
 
 - **Automated Session Discovery** — Seamlessly parses history from Claude Code, Cursor, Codex CLI, and GitHub Copilot.
-- **Structural Insight Extraction** — Distills raw session logs into clear decisions with trade-offs, root-cause learnings, and actionable takeaways.
-- **AI Fluency Scoring** — Tracks your evolution in AI collaboration through multi-dimensional prompt quality metrics.
+- **Structural Insight Extraction** — Distills raw session logs into methodological narratives, capturing collaborative dynamics and workflow milestones using SFL-compliant analysis.
+- **AI Fluency Scoring** — Tracks your evolution in AI collaboration through multi-dimensional prompt quality metrics anchored by hard systemic linguistics constraints.
+- **Structured Takeaways** — Extracts findings with Ideational, Interpersonal, and Textual breakdowns for deep architectural learning.
 - **Cross-Session Pattern Synthesis** — Identifies recurring friction points and effective patterns across weeks of work.
 - **Rule Generation** — Automatically exports high-signal patterns as custom rules for your `CLAUDE.md` or `.cursorrules`.
 - **Zero-Cost Local Analysis** — Native support for Ollama allows for full AI analysis using local models like Llama 3.

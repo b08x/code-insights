@@ -9,7 +9,7 @@
   - **`cli/`**: Node.js CLI (TypeScript) responsible for session discovery, parsing, and SQLite persistence. Includes a background **Analysis Queue** for asynchronous LLM processing.
   - **`server/`**: Hono-based API server (TypeScript) that proxies LLM requests, serves the dashboard, and manages the analysis worker.
   - **`dashboard/`**: React SPA (Vite + TypeScript) for visualizing sessions, analytics, cross-session patterns, and real-time analysis status.
-- **Database:** Local SQLite database stored at `~/.code-insights/data.db`. Uses WAL mode for concurrent access. See `RULES.md` for database integrity and performance standards.
+- **Database:** Local SQLite database stored at `~/.code-insights/data.db`. Uses **WAL mode** for concurrent access and high-performance writes. See `RULES.md` for database integrity and engineering standards.
 
 ## Building and Running
 
@@ -40,7 +40,12 @@ The project uses `pnpm` workspaces for dependency management.
 
 - **Monorepo Management:** Uses `pnpm` workspaces. Always run `pnpm install` from the root.
 - **Type Safety:** Strict TypeScript usage. `cli/src/types.ts` is the **single source of truth**.
-- **Database:** Uses `better-sqlite3`. Schema is defined in `cli/src/db/schema.ts`. V9 introduces the `analysis_queue` table for robust background processing.
+- **Database:** Uses `better-sqlite3`. Schema is defined in `cli/src/db/schema.ts`. V9 introduces the `analysis_queue` table for robust background processing. All persistence MUST use **WAL mode** (`PRAGMA journal_mode = WAL`).
+- **SFL-Compliant Analysis:** The analysis pipeline (Session & Prompt Quality) enforces **Systemic Functional Linguistics (SFL)** constraints.
+  - **Structured Prompts:** Uses explicit XML boundaries (`<task>`, `<context>`, `<rules>`, `<output_schema>`) for deterministic LLM behavior.
+  - **Methodological Narratives:** Session summaries strictly forbid mechanical file listing; they must capture analytical methodology, power dynamics, and workflow milestones.
+  - **SFL Breakdown:** Findings and takeaways include a mandatory `sfl_breakdown` (Ideational, Interpersonal, Textual) to log structural design choices.
+  - **Dimension Scoring:** Scoring (0–100) is anchored by hard SFL constraints (0=catastrophic, 50=baseline, 100=flawless).
 - **Analysis Queue:** Asynchronous job system for LLM tasks. Managed via `cli/src/db/queue.ts` and processed by `cli/src/analysis/queue-worker.ts`. Supports multi-level native fallbacks (Codex → Claude → Gemini).
 - **Testing:** `vitest` is the primary test runner. Tests are in `__tests__/` directories adjacent to source.
 - **Privacy:** Local-first. No session data is sent to the cloud except to user-configured LLMs for analysis.
