@@ -1,6 +1,6 @@
 import { Terminal } from 'lucide-react';
 import type { ToolCall, ToolResult } from '@/lib/types';
-import { parseToolInput } from '../utils';
+import { parseToolInput, stringifySafe } from '../utils';
 import { usePreviewText } from '../usePreview';
 import { CollapsibleToolPanel } from '../CollapsibleToolPanel';
 
@@ -11,11 +11,11 @@ interface TerminalToolPanelProps {
 
 export function TerminalToolPanel({ toolCall, result }: TerminalToolPanelProps) {
   const input = parseToolInput(toolCall.input);
-  const command = (input.command as string) || '';
-  const description = (input.description as string) || '';
+  const command = stringifySafe(input.command);
+  const description = stringifySafe(input.description);
 
   const PREVIEW_LINES = 10;
-  const resultText = result?.output || '';
+  const resultText = stringifySafe(result?.output);
   const { hasMore, previewText, resultLines, showFull, toggle } = usePreviewText(resultText, PREVIEW_LINES);
 
   const truncatedCommand = command.length > 60 ? command.slice(0, 60) + '...' : command;

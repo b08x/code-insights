@@ -1,6 +1,6 @@
 import { FileText, FilePen, FilePlus2 } from 'lucide-react';
 import type { ToolCall, ToolResult } from '@/lib/types';
-import { parseToolInput } from '../utils';
+import { parseToolInput, stringifySafe } from '../utils';
 import { usePreviewText } from '../usePreview';
 import { CollapsibleToolPanel } from '../CollapsibleToolPanel';
 import { Badge } from '@/components/ui/badge';
@@ -11,11 +11,13 @@ interface FileToolPanelProps {
 }
 
 function getFileName(filePath: string): string {
-  return filePath.split('/').pop() || filePath;
+  const safePath = stringifySafe(filePath);
+  return safePath.split('/').pop() || safePath;
 }
 
 function detectLanguage(filePath: string): string | null {
-  const ext = filePath.split('.').pop()?.toLowerCase();
+  const safePath = stringifySafe(filePath);
+  const ext = safePath.split('.').pop()?.toLowerCase();
   const map: Record<string, string> = {
     ts: 'TypeScript', tsx: 'TypeScript', js: 'JavaScript', jsx: 'JavaScript',
     py: 'Python', rs: 'Rust', go: 'Go', md: 'Markdown', json: 'JSON',
@@ -27,7 +29,7 @@ function detectLanguage(filePath: string): string | null {
 
 export function FileToolPanel({ toolCall, result }: FileToolPanelProps) {
   const input = parseToolInput(toolCall.input);
-  const filePath = (input.file_path as string) || '';
+  const filePath = stringifySafe(input.file_path);
   const fileName = getFileName(filePath);
   const lang = detectLanguage(filePath);
 
@@ -38,10 +40,10 @@ export function FileToolPanel({ toolCall, result }: FileToolPanelProps) {
   const Icon = isRead ? FileText : isEdit ? FilePen : FilePlus2;
   const label = isRead ? 'Read' : isEdit ? 'Edited' : 'Wrote';
 
-  const oldString = isEdit ? (input.old_string as string) || '' : '';
-  const newString = isEdit ? (input.new_string as string) || '' : '';
+  const oldString = isEdit ? stringifySafe(input.old_string) : '';
+  const newString = isEdit ? stringifySafe(input.new_string) : '';
 
-  const resultText = result?.output || '';
+  const resultText = stringifySafe(result?.output);
   const PREVIEW_LINES = 8;
   const { hasMore, previewText, resultLines, showFull, toggle } = usePreviewText(resultText, PREVIEW_LINES);
 

@@ -1,7 +1,7 @@
 import { HelpCircle, Check } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import type { ToolCall, ToolResult } from '@/lib/types';
-import { parseToolInput } from '../utils';
+import { parseToolInput, stringifySafe } from '../utils';
 import { CollapsibleToolPanel } from '../CollapsibleToolPanel';
 
 interface AskUserQuestionPanelProps {
@@ -23,18 +23,19 @@ interface Question {
 
 function parseAnswers(resultText: string): Map<string, string> {
   const answers = new Map<string, string>();
-  if (!resultText) return answers;
+  const safeResultText = stringifySafe(resultText);
+  if (!safeResultText) return answers;
 
   const startMarker = 'your questions: ';
   const endMarker = '. You can now';
-  const startIdx = resultText.indexOf(startMarker);
-  const endIdx = resultText.indexOf(endMarker);
+  const startIdx = safeResultText.indexOf(startMarker);
+  const endIdx = safeResultText.indexOf(endMarker);
 
   if (startIdx === -1) return answers;
 
   const pairsStr = endIdx !== -1
-    ? resultText.slice(startIdx + startMarker.length, endIdx)
-    : resultText.slice(startIdx + startMarker.length);
+    ? safeResultText.slice(startIdx + startMarker.length, endIdx)
+    : safeResultText.slice(startIdx + startMarker.length);
 
   // Match "question"="answer" pairs
   const matches = [...pairsStr.matchAll(/"([^"]+)"="([^"]+)"/g)];
@@ -48,12 +49,13 @@ function parseAnswers(resultText: string): Map<string, string> {
 export function AskUserQuestionPanel({ toolCall, result }: AskUserQuestionPanelProps) {
   const input = parseToolInput(toolCall.input);
   const questions = (input.questions as Question[]) || [];
-  const answers = parseAnswers(result?.output || '');
+  const resultOutput = stringifySafe(result?.output);
+  const answers = parseAnswers(resultOutput);
   const hasAnswers = answers.size > 0;
 
   if (questions.length === 0) return null;
 
-  const firstQuestion = questions[0].question;
+  const firstQuestion = stringifySafe(questions[0].question);
   const questionPreview = firstQuestion.length > 60
     ? firstQuestion.slice(0, 60) + '...'
     : firstQuestion;
@@ -79,37 +81,40 @@ export function AskUserQuestionPanel({ toolCall, result }: AskUserQuestionPanelP
     >
       <div className="divide-y divide-border">
         {questions.map((q, i) => {
-          const answer = answers.get(q.question);
+          const safeQuestion = stringifySafe(q.question);
+          const safeHeader = stringifySafe(q.header);
+          const answer = answers.get(safeQuestion);
 
           return (
             <div key={i} className="px-3 py-2 space-y-1.5">
-              {q.header && (
+              {safeHeader && (
                 <span className="text-[10px] uppercase tracking-wider text-muted-foreground/60 font-medium">
-                  {q.header}
+                  {safeHeader}
                 </span>
               )}
 
-              <p className="text-sm text-foreground">{q.question}</p>
+              <p className="text-sm text-foreground">{safeQuestion}</p>
 
               {q.options && q.options.length > 0 && (
                 <div className="flex flex-wrap gap-1.5">
                   {q.options.map((opt, j) => {
-                    const isSelected = answer === opt.label;
+                    const safeLabel = stringifySafe(opt.label);
+                    const isSelected = answer === safeLabel;
                     return (
                       <Badge
                         key={j}
                         variant={isSelected ? 'default' : 'outline'}
                         className={isSelected ? 'text-[10px] bg-blue-500 hover:bg-blue-500 text-white' : 'text-[10px]'}
-                        title={opt.description || undefined}
+                        title={stringifySafe(opt.description) || undefined}
                       >
-                        {opt.label}
+                        {safeLabel}
                       </Badge>
                     );
                   })}
                 </div>
               )}
 
-              {answer && (!q.options || !q.options.some(o => o.label === answer)) && (
+              {answer && (!q.options || !q.options.some(o => stringifySafe(o.label) === answer)) && (
                 <div className="flex items-center gap-1.5">
                   <span className="text-[10px] text-muted-foreground">Answer:</span>
                   <Badge variant="default" className="text-[10px] bg-blue-500 hover:bg-blue-500 text-white">

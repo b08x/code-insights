@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Terminal } from 'lucide-react';
 import type { ToolCall, ToolResult } from '@/lib/types';
 import { CollapsibleToolPanel } from '../CollapsibleToolPanel';
+import { stringifySafe } from '../utils';
 
 interface GenericToolPanelProps {
   toolCall: ToolCall;
@@ -11,10 +12,15 @@ interface GenericToolPanelProps {
 export function GenericToolPanel({ toolCall, result }: GenericToolPanelProps) {
   const [showResult, setShowResult] = useState(false);
 
-  let formattedInput = toolCall.input;
-  try { formattedInput = JSON.stringify(JSON.parse(toolCall.input), null, 2); } catch { /* keep as-is */ }
+  let formattedInput = '';
+  try {
+    const parsed = JSON.parse(toolCall.input);
+    formattedInput = JSON.stringify(parsed, null, 2);
+  } catch {
+    formattedInput = stringifySafe(toolCall.input);
+  }
 
-  const resultText = result?.output || '';
+  const resultText = stringifySafe(result?.output);
   const hasResult = resultText.length > 0;
 
   const inputPreview = formattedInput.length > 60

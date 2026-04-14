@@ -1,6 +1,6 @@
 import { Search, FolderSearch } from 'lucide-react';
 import type { ToolCall, ToolResult } from '@/lib/types';
-import { parseToolInput } from '../utils';
+import { parseToolInput, stringifySafe } from '../utils';
 import { usePreviewLines } from '../usePreview';
 import { CollapsibleToolPanel } from '../CollapsibleToolPanel';
 import { Badge } from '@/components/ui/badge';
@@ -15,10 +15,10 @@ export function SearchToolPanel({ toolCall, result }: SearchToolPanelProps) {
   const isGrep = toolCall.name === 'Grep';
   const Icon = isGrep ? Search : FolderSearch;
 
-  const pattern = (input.pattern as string) || '';
-  const searchPath = (input.path as string) || '';
+  const pattern = stringifySafe(input.pattern);
+  const searchPath = stringifySafe(input.path);
 
-  const resultText = result?.output || '';
+  const resultText = stringifySafe(result?.output);
   const resultLines = resultText.split('\n').filter(l => l.trim());
   const PREVIEW_LINES = 15;
   const { hasMore, previewLines, showFull, toggle } = usePreviewLines(resultLines, PREVIEW_LINES);

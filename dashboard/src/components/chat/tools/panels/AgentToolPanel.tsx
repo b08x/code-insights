@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { AGENT_PARTICIPANT_COLORS, AGENT_DEFAULT_COLOR } from '@/lib/constants/colors';
 import type { ToolCall, ToolResult } from '@/lib/types';
-import { parseToolInput } from '../utils';
+import { parseToolInput, stringifySafe } from '../utils';
 import { usePreviewText } from '../usePreview';
 import { CollapsibleToolPanel } from '../CollapsibleToolPanel';
 
@@ -14,32 +14,33 @@ interface AgentToolPanelProps {
   result?: ToolResult;
 }
 
-function getAgentDisplayName(input: Record<string, unknown>): string {
-  return (input.name as string) || (input.subagent_type as string) || 'Agent';
+function getAgentDisplayName(input: Record<string, any>): string {
+  return stringifySafe(input.name || input.subagent_type || 'Agent');
 }
 
 function getAgentInitials(name: string): string {
-  const parts = name.split(/[-_\s]/);
+  const safeName = stringifySafe(name);
+  const parts = safeName.split(/[-_\s]/);
   if (parts.length >= 2) {
     return (parts[0][0] + parts[1][0]).toUpperCase();
   }
-  return name.slice(0, 2).toUpperCase();
+  return safeName.slice(0, 2).toUpperCase();
 }
 
 export function AgentToolPanel({ toolCall, result }: AgentToolPanelProps) {
   const [showPrompt, setShowPrompt] = useState(false);
   const input = parseToolInput(toolCall.input);
 
-  const description = (input.description as string) || '';
-  const subagentType = (input.subagent_type as string) || '';
-  const model = (input.model as string) || '';
-  const prompt = (input.prompt as string) || '';
+  const description = stringifySafe(input.description);
+  const subagentType = stringifySafe(input.subagent_type);
+  const model = stringifySafe(input.model);
+  const prompt = stringifySafe(input.prompt);
   const agentName = getAgentDisplayName(input);
   const initials = getAgentInitials(agentName);
   const avatarColor = AGENT_PARTICIPANT_COLORS[subagentType] || AGENT_DEFAULT_COLOR;
 
   const PREVIEW_LINES = 20;
-  const resultText = result?.output || '';
+  const resultText = stringifySafe(result?.output);
   const { hasMore, previewText, resultLines, showFull, toggle } = usePreviewText(resultText, PREVIEW_LINES);
 
   const descriptionPreview = description.length > 60
