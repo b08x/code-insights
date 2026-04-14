@@ -18,6 +18,8 @@
 import chalk from 'chalk';
 import { getDb } from '../db/client.js';
 import { ClaudeNativeRunner } from '../analysis/native-runner.js';
+import { CodexNativeRunner } from '../analysis/codex-runner.js';
+import { GeminiNativeRunner } from '../analysis/gemini-runner.js';
 import { ProviderRunner } from '../analysis/provider-runner.js';
 import {
   SHARED_ANALYST_SYSTEM_PROMPT,
@@ -93,6 +95,8 @@ function isAlreadyAnalyzed(sessionId: string, currentMessageCount: number): bool
 export interface InsightsCommandOptions {
   sessionId: string;
   native: boolean;
+  codex?: boolean;
+  gemini?: boolean;
   hookMode?: boolean;
   force?: boolean;
   quiet?: boolean;
@@ -103,11 +107,6 @@ export interface InsightsCommandOptions {
 
 // ── Core logic ────────────────────────────────────────────────────────────────
 
-/**
- * Run analysis on a session. Called by the CLI command and tests.
- *
- * @throws if session not found or LLM is not configured / not available
- */
 export async function runInsightsCommand(options: InsightsCommandOptions): Promise<void> {
   const log = options.quiet ? () => {} : console.log.bind(console);
 
@@ -115,12 +114,63 @@ export async function runInsightsCommand(options: InsightsCommandOptions): Promi
   let runner: AnalysisRunner;
   if (options._runner) {
     runner = options._runner;
+  } else if (options.gemini) {
+    GeminiNativeRunner.validate();
+    runner = new GeminiNativeRunner();
+  } else if (options.codex) {
+    CodexNativeRunner.validate();
+    runner = new CodexNativeRunner();
   } else if (options.native) {
-    ClaudeNativeRunner.validate();
-    runner = new ClaudeNativeRunner();
+    // Default native is now Codex, falling back to Claude
+    try {
+      CodexNativeRunner.validate();
+      runner = new CodexNativeRunner();
+    } catch {
+      try {
+        ClaudeNativeRunner.validate();
+        runner = new ClaudeNativeRunner();
+      } catch (err) {
+        throw new Error(`No native runners found. --native requires either Codex or Claude Code to be installed.`);
+      }
+    }
   } else {
     runner = ProviderRunner.fromConfig();
   }
+
+  // Helper to run analysis with multi-level fallback (Codex -> Claude -> Gemini)
+  const performAnalysis = async (params: { systemPrompt: string; userPrompt: string }) => {
+    try {
+      return await runner.runAnalysis(params);
+    } catch (err: any) {
+      // If using general 'native' mode (not forced to a specific runner)
+      if (options.native && !options.codex && !options.gemini) {
+        // Fallback 1: Codex -> Claude
+        if (runner instanceof CodexNativeRunner && err.message.includes('usage limit reached')) {
+          log(chalk.yellow(`[Code Insights] Codex usage limit reached, falling back to Claude...`));
+          try {
+            ClaudeNativeRunner.validate();
+            const fallbackRunner = new ClaudeNativeRunner();
+            return await fallbackRunner.runAnalysis(params);
+          } catch (fallbackErr: any) {
+            log(chalk.yellow(`[Code Insights] Fallback to Claude failed: ${fallbackErr.message}. Trying Gemini...`));
+            // Fall through to next fallback
+          }
+        }
+
+        // Fallback 2: (Codex OR Claude) -> Gemini
+        if (runner instanceof CodexNativeRunner || runner instanceof ClaudeNativeRunner) {
+          try {
+            GeminiNativeRunner.validate();
+            const fallbackRunner = new GeminiNativeRunner();
+            return await fallbackRunner.runAnalysis(params);
+          } catch (fallbackErr: any) {
+            throw new Error(`Fallback system exhausted. Original error: ${err.message}. Last fallback error: ${fallbackErr.message}`);
+          }
+        }
+      }
+      throw err;
+    }
+  };
 
   // 2. Load session from DB
   const session = loadSessionForAnalysis(options.sessionId);
@@ -176,7 +226,7 @@ export async function runInsightsCommand(options: InsightsCommandOptions): Promi
   );
   const sessionUserPrompt = `${buildCacheableConversationBlock(formattedMessages).text}\n${sessionInstructions}`;
 
-  const sessionResult = await runner.runAnalysis({
+  const sessionResult = await performAnalysis({
     systemPrompt: SHARED_ANALYST_SYSTEM_PROMPT,
     userPrompt: sessionUserPrompt,
   });
@@ -221,7 +271,7 @@ export async function runInsightsCommand(options: InsightsCommandOptions): Promi
   );
   const pqUserPrompt = `${buildCacheableConversationBlock(formattedMessages).text}\n${pqInstructions}`;
 
-  const pqResult = await runner.runAnalysis({
+  const pqResult = await performAnalysis({
     systemPrompt: SHARED_ANALYST_SYSTEM_PROMPT,
     userPrompt: pqUserPrompt,
   });
@@ -266,6 +316,8 @@ export async function insightsCommand(
   sessionId: string | undefined,
   opts: {
     native?: boolean;
+    codex?: boolean;
+    gemini?: boolean;
     hook?: boolean;
     source?: string;
     force?: boolean;
@@ -309,6 +361,8 @@ export async function insightsCommand(
     await runInsightsCommand({
       sessionId: resolvedSessionId,
       native: opts.native ?? false,
+      codex: opts.codex ?? false,
+      gemini: opts.gemini ?? false,
       hookMode: opts.hook ?? false,
       force: opts.force ?? false,
       quiet,
@@ -331,6 +385,9 @@ export async function insightsCheckCommand(opts: {
   days?: number;
   quiet?: boolean;
   analyze?: boolean;
+  native?: boolean;
+  codex?: boolean;
+  gemini?: boolean;
 }): Promise<void> {
   const days = opts.days ?? 7;
   const quiet = opts.quiet ?? false;
@@ -364,44 +421,124 @@ export async function insightsCheckCommand(opts: {
     }
 
     // --analyze: process all found sessions with progress output
-    if (analyze) {
-      ClaudeNativeRunner.validate();
-      const runner = new ClaudeNativeRunner();
-      let successCount = 0;
+    if (analyze || count <= 2) {
+      let runner: AnalysisRunner | undefined;
+      type RunnerType = 'claude' | 'codex' | 'gemini' | 'provider';
 
-      for (let i = 0; i < rows.length; i++) {
-        const row = rows[i];
-        const label = row.custom_title ?? row.generated_title ?? row.id;
-        const position = `[${i + 1}/${count}]`;
-        process.stdout.write(`${position} ${label} ... `);
-        const start = Date.now();
+      const initializeRunner = (type: RunnerType): AnalysisRunner | undefined => {
         try {
-          await runInsightsCommand({ sessionId: row.id, native: true, quiet: true, _runner: runner });
-          const elapsed = Math.round((Date.now() - start) / 1000);
-          process.stdout.write(`done (${elapsed}s)\n`);
-          successCount++;
+          if (type === 'gemini') {
+            GeminiNativeRunner.validate();
+            return new GeminiNativeRunner();
+          } else if (type === 'codex') {
+            CodexNativeRunner.validate();
+            return new CodexNativeRunner();
+          } else if (type === 'claude') {
+            ClaudeNativeRunner.validate();
+            return new ClaudeNativeRunner();
+          } else {
+            return ProviderRunner.fromConfig();
+          }
         } catch (err) {
-          process.stdout.write('failed\n');
-          console.error(chalk.red(`  [Code Insights] ${err instanceof Error ? err.message : 'Analysis failed'}`));
+          log(chalk.yellow(`[Code Insights] ${type} runner not available: ${err instanceof Error ? err.message : String(err)}`));
+          return undefined;
         }
+      };
+
+      if (analyze) {
+        // Determine initial runner type
+        let currentRunnerType: RunnerType = 'provider';
+        if (opts.gemini) currentRunnerType = 'gemini';
+        else if (opts.codex) currentRunnerType = 'codex';
+        else if (opts.native) currentRunnerType = 'claude';
+
+        runner = initializeRunner(currentRunnerType);
+
+        // Fallback logic for native modes: Claude -> Codex -> Gemini
+        if (!runner && (opts.native || opts.codex || opts.gemini)) {
+          if (currentRunnerType === 'claude' || currentRunnerType === 'provider') {
+            log(chalk.yellow(`[Code Insights] Falling back to Codex...`));
+            currentRunnerType = 'codex';
+            runner = initializeRunner('codex');
+          }
+          if (!runner && (currentRunnerType === 'codex')) {
+            log(chalk.yellow(`[Code Insights] Falling back to Gemini...`));
+            currentRunnerType = 'gemini';
+            runner = initializeRunner('gemini');
+          }
+        }
+
+        if (!runner) {
+          throw new Error(`No runners could be initialized. Please check your configuration or tool availability.`);
+        }
+
+        let successCount = 0;
+
+        for (let i = 0; i < rows.length; i++) {
+          const row = rows[i];
+          const label = row.custom_title ?? row.generated_title ?? row.id;
+          const position = `[${i + 1}/${count}]`;
+          process.stdout.write(`${position} ${label} ... `);
+          const start = Date.now();
+          try {
+            await runInsightsCommand({ 
+              sessionId: row.id, 
+              native: currentRunnerType === 'claude', 
+              codex: currentRunnerType === 'codex', 
+              gemini: currentRunnerType === 'gemini',
+              quiet: true, 
+              _runner: runner 
+            });
+            const elapsed = Math.round((Date.now() - start) / 1000);
+            process.stdout.write(`done (${elapsed}s)\n`);
+            successCount++;
+          } catch (err: any) {
+            process.stdout.write('failed\n');
+            console.error(chalk.red(`  [Code Insights] ${err instanceof Error ? err.message : 'Analysis failed'}`));
+          }
+        }
+
+        log(chalk.green(`Analyzed ${successCount} session${successCount !== 1 ? 's' : ''}.`));
+        return;
       }
 
-      log(chalk.green(`Analyzed ${successCount} session${successCount !== 1 ? 's' : ''}.`));
-      return;
-    }
+      // Auto-analyze silently when 1-2 unanalyzed sessions
+      if (count <= 2) {
+        let runnerType: RunnerType = 'provider';
 
-    // Auto-analyze silently when 1-2 unanalyzed sessions
-    if (count <= 2) {
-      ClaudeNativeRunner.validate();
-      const runner = new ClaudeNativeRunner();
-      for (const row of rows) {
-        try {
-          await runInsightsCommand({ sessionId: row.id, native: true, quiet: true, _runner: runner });
-        } catch {
-          // Silently ignore auto-analyze errors for 1-2 sessions
+        // Try provider first, then fallbacks
+        runner = initializeRunner('provider');
+        if (!runner) {
+          runnerType = 'codex';
+          runner = initializeRunner('codex');
+        }
+        if (!runner) {
+          runnerType = 'claude';
+          runner = initializeRunner('claude');
+        }
+        if (!runner) {
+          runnerType = 'gemini';
+          runner = initializeRunner('gemini');
+        }
+
+        if (runner) {
+          for (const row of rows) {
+            try {
+              await runInsightsCommand({ 
+                sessionId: row.id, 
+                native: runnerType === 'claude',
+                codex: runnerType === 'codex',
+                gemini: runnerType === 'gemini',
+                quiet: true, 
+                _runner: runner 
+              });
+            } catch {
+              // Silently ignore auto-analyze errors for 1-2 sessions
+            }
+          }
+          return;
         }
       }
-      return;
     }
 
     // 3-10: print count + suggestion

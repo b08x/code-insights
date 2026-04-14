@@ -14,6 +14,8 @@ import { configCommand } from './commands/config.js';
 import { telemetryCommand } from './commands/telemetry.js';
 import { reflectCommand } from './commands/reflect.js';
 import { insightsCommand, insightsCheckCommand } from './commands/insights.js';
+import { buildQueueCommand } from './commands/queue.js';
+import { sessionEndCommand } from './commands/session-end.js';
 import { showTelemetryNoticeIfNeeded } from './utils/telemetry.js';
 
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf-8'));
@@ -118,6 +120,25 @@ program.addCommand(statsCommand);
 program.addCommand(configCommand);
 program.addCommand(telemetryCommand);
 program.addCommand(reflectCommand);
+program.addCommand(buildQueueCommand());
+
+program
+  .command('session-end')
+  .description('Internal: Claude Code SessionEnd hook entry point')
+  .option('--no-native', 'Use configured provider instead of claude -p')
+  .option('--codex', 'Use codex exec fallback')
+  .option('--gemini', 'Use gemini -p fallback')
+  .option('-s, --source <tool>', 'Source tool identifier (default: claude-code)')
+  .option('-q, --quiet', 'Suppress output')
+  .action(async (opts) => {
+    await sessionEndCommand({ 
+      native: opts.native, 
+      codex: opts.codex, 
+      gemini: opts.gemini,
+      source: opts.source, 
+      quiet: opts.quiet 
+    });
+  });
 
 
 // insights command — analyze a session using native claude -p or configured LLM
@@ -125,6 +146,8 @@ const insightsCmd = program
   .command('insights [session_id]')
   .description('Analyze a session with AI — extracts insights and prompt quality score')
   .option('--native', 'Use claude -p (your Claude subscription, no API key required)')
+  .option('--codex', 'Use codex exec (OpenAI Codex, no API key required)')
+  .option('--gemini', 'Use gemini -p (Google Gemini CLI, no API key required)')
   .option('--hook', 'Read session context from stdin (for Claude Code SessionEnd hook)')
   .option('-s, --source <tool>', 'Source tool identifier (default: claude-code)')
   .option('--force', 'Re-analyze even if already analyzed at this session length')
@@ -139,11 +162,17 @@ insightsCmd
   .option('--days <n>', 'Lookback window in days', '7')
   .option('-q, --quiet', 'Machine-readable output (just count)')
   .option('--analyze', 'Process all found sessions sequentially')
+  .option('--native', 'Use native runner (claude -p) for batch analysis')
+  .option('--codex', 'Use codex exec for batch analysis')
+  .option('--gemini', 'Use gemini -p for batch analysis')
   .action(async (opts) => {
     await insightsCheckCommand({
       days: opts.days ? parseInt(opts.days, 10) : 7,
       quiet: opts.quiet,
       analyze: opts.analyze,
+      native: opts.native,
+      codex: opts.codex,
+      gemini: opts.gemini,
     });
   });
 

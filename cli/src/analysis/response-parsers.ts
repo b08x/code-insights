@@ -330,8 +330,21 @@ export function parseAnalysisResponse(response: string): ParseResult<AnalysisRes
   // Normalize facet arrays before monitors access .some() — a non-array truthy value
   // (e.g. LLM returns "friction_points": "none") would throw a TypeError on .some().
   if (parsed.facets) {
+    // Required field for DB: outcome_satisfaction (TEXT NOT NULL)
+    if (!parsed.facets.outcome_satisfaction) {
+      console.warn('[analysis-parser] Missing outcome_satisfaction in facets, defaulting to "medium"');
+      parsed.facets.outcome_satisfaction = 'medium';
+    }
+
     if (!Array.isArray(parsed.facets.friction_points)) parsed.facets.friction_points = [];
     if (!Array.isArray(parsed.facets.effective_patterns)) parsed.facets.effective_patterns = [];
+    
+    // Ensure numeric fields have defaults to avoid NULLs in DB
+    parsed.facets.iteration_count = typeof parsed.facets.iteration_count === 'number' 
+      ? parsed.facets.iteration_count 
+      : 0;
+    
+    parsed.facets.had_course_correction = !!parsed.facets.had_course_correction;
   }
 
   // Observability: two-tier tooling-limitation monitor.

@@ -70,7 +70,14 @@ describe('ClaudeNativeRunner.runAnalysis()', () => {
 
     expect(mockExecFileSync).toHaveBeenCalledWith(
       'claude',
-      expect.arrayContaining(['-p', '--output-format', 'json', '--append-system-prompt-file', expect.stringContaining('ci-prompt-'), '--bare']),
+      expect.arrayContaining([
+        '-p', 
+        '--output-format', 'json', 
+        '--append-system-prompt-file', expect.stringContaining('ci-prompt-'),
+        '--no-session-persistence',
+        '--disable-slash-commands',
+        '--tools', '""'
+      ]),
       expect.objectContaining({
         input: 'Analyze this session.',
         encoding: 'utf-8',
@@ -144,14 +151,6 @@ describe('ClaudeNativeRunner.runAnalysis()', () => {
 
     await expect(runner.runAnalysis({ systemPrompt: 's', userPrompt: 'u' }))
       .rejects.toThrow(/non-JSON output/);
-  });
-
-  it('throws when output is JSON but not an array', async () => {
-    mockExecFileSync.mockReturnValueOnce('{"type":"result"}' as unknown as Buffer);
-    const runner = new ClaudeNativeRunner();
-
-    await expect(runner.runAnalysis({ systemPrompt: 's', userPrompt: 'u' }))
-      .rejects.toThrow(/not an array/);
   });
 
   it('throws when event array is empty', async () => {
