@@ -108,12 +108,12 @@ STRENGTH CATEGORIES:
 - "effective-context": Prerequisite: User actively supplied systemic context, prior codebase choices, or environment preconditions.
 - "productive-correction": Prerequisite: User halted the AI and injected exact missing parameters allowing immediate recovery.
 
-DIMENSION SCORING [0-100]:
-- context_provision: Measure of proactive requirement loading. (<30 = blind processing, 90+ = zero requirement loss).
-- request_specificity: Measure of explicit path/function bindings in initial tasks.
-- scope_management: Maintainability of singular objective.
-- information_timing: Measure of early-bound constraints versus late-bound corrections.
-- correction_quality: Measure of corrective explicit details. (75 = no corrections required).
+DIMENSION SCORING [0-100] (0 = catastrophic deficit, 50 = baseline functioning, 100 = flawless systemic execution):
+- context_provision: 0 = Zero architecture provided. 50 = Basic paths provided. 100 = All entities, dependencies, and environment states explicitly loaded.
+- request_specificity: 0 = "Fix the bug" (Vague). 50 = "Fix the bug in X" (Partial). 100 = "Fix the bug in X by applying Y constraint" (Explicit).
+- scope_management: 0 = Fractured into multiple unrelated tasks mid-session. 50 = Minor scope drift corrected quickly. 100 = Singular, immutable execution boundary maintained.
+- information_timing: 0 = All constraints provided AFTER the AI failed (late-bound). 100 = All constraints provided BEFORE execution (early-bound).
+- correction_quality: 0 = "That didn't work" (Unclear). 50 = "That failed with error X." 100 = "That failed with error X. Rewrite using constraint Y." (Score 100 if no corrections were required).
 </classification_guidance>`;
 
 export const EFFECTIVE_PATTERN_CLASSIFICATION_GUIDANCE = `<classification_guidance name="effective_patterns">
