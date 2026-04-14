@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-**Code Insights** is a local-first analytics platform designed to turn AI coding sessions into actionable knowledge. It extracts structured insights, decisions, learnings, and prompt quality scores from tools like **Claude Code, Cursor, Codex CLI, Copilot CLI, Gemini CLI, Hermes Agent, OpenCode, and Crush**.
+**Code Insights** is a local-first analytics platform designed to turn AI coding sessions into actionable knowledge. It extracts structured insights, decisions, learnings, and prompt quality scores from tools like **Claude Code, Cursor, Codex CLI, Copilot CLI, Gemini CLI, Hermes Agent, OpenCode, Crush, and Google Antigravity**.
 
 - **Purpose:** Help developers understand their AI coding patterns, track costs, and improve their AI fluency through automated session analysis and background processing.
 - **Architecture:**

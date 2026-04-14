@@ -8,6 +8,7 @@ import { GeminiCliProvider } from './gemini-cli.js';
 import { HermesAgentProvider } from './hermes-agent.js';
 import { OpenCodeProvider } from './opencode.js';
 import { CrushProvider } from './crush.js';
+import { AntigravityProvider } from './antigravity.js';
 
 const providers = new Map<string, SessionProvider>();
 
@@ -38,6 +39,9 @@ providers.set(opencode.getProviderName(), opencode);
 
 const crush = new CrushProvider();
 providers.set(crush.getProviderName(), crush);
+
+const antigravity = new AntigravityProvider();
+providers.set(antigravity.getProviderName(), antigravity);
 
 /**
  * Get a provider by name
