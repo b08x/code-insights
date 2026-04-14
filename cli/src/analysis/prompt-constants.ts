@@ -91,65 +91,30 @@ export const CANONICAL_PQ_CATEGORIES = [
   ...CANONICAL_PQ_STRENGTH_CATEGORIES,
 ] as const;
 
-export const PROMPT_QUALITY_CLASSIFICATION_GUIDANCE = `
-PROMPT QUALITY CLASSIFICATION GUIDANCE:
+export const PROMPT_QUALITY_CLASSIFICATION_GUIDANCE = `<classification_guidance>
+Each finding encapsulates precisely one execution pattern (deficit or strength). 
 
-Each finding captures a specific moment where the user's prompting either caused friction (deficit) or enabled productivity (strength).
+DEFICIT CATEGORIES:
+- "vague-request": Prerequisite: The AI lacked required file paths, references, or behavioral boundaries to proceed logically. 
+- "missing-context": Prerequisite: Essential architectural facts or codebase dependencies were omitted.
+- "late-constraint": Prerequisite: The user provided a requirement AFTER the AI completed partial implementation based on previous constraints.
+- "unclear-correction": Prerequisite: The user rejected the AI output without providing a corrective vector or structural reason.
+- "scope-drift": Prerequisite: The session's primary objective altered boundaries mid-execution.
+- "missing-acceptance-criteria": Prerequisite: The end-state boolean condition for success was left undefined, causing cyclical validation checks.
+- "assumption-not-surfaced": Prerequisite: The user harbored an implicit local constraint unsupported by provided text.
 
-DEFICIT CATEGORIES — classify prompting problems:
-- "vague-request": Request lacked specificity needed for the AI to act without guessing. Missing file paths, function names, expected behavior, or concrete details.
-  NOT this category if the AI had enough context to succeed but failed anyway — that is an AI capability issue, not a prompting issue.
+STRENGTH CATEGORIES:
+- "precise-request": Prerequisite: Initial input contained complete explicit boundaries, file paths, and output targets.
+- "effective-context": Prerequisite: User actively supplied systemic context, prior codebase choices, or environment preconditions.
+- "productive-correction": Prerequisite: User halted the AI and injected exact missing parameters allowing immediate recovery.
 
-- "missing-context": Critical background knowledge about architecture, conventions, dependencies, or current state was not provided.
-  NOT this category if the information was available in the codebase and the AI could have found it by reading files — that is an AI context-gathering failure.
-
-- "late-constraint": A requirement or constraint was provided AFTER the AI had already started implementing a different approach, causing rework.
-  NOT this category if the constraint was genuinely discovered during implementation (requirements changed). Only classify if the user KNEW the constraint before the session started.
-
-- "unclear-correction": The user told the AI its output was wrong without explaining what was wrong or why. "That's not right", "try again", "no" without context.
-  NOT this category if the user gave a brief but sufficient correction ("use map instead of forEach" is clear enough).
-
-- "scope-drift": The session objective shifted mid-conversation, or multiple unrelated objectives were addressed in one session.
-  NOT this category if the user is working through logically connected subtasks of one objective.
-
-- "missing-acceptance-criteria": The user did not define what successful completion looks like, leading to back-and-forth about whether the output meets expectations.
-  NOT this category for exploratory sessions where the user is discovering what they want.
-
-- "assumption-not-surfaced": The user held an unstated assumption that the AI could not reasonably infer from code or conversation.
-  NOT this category if the assumption was reasonable for the AI to make (e.g., standard coding conventions).
-
-STRENGTH CATEGORIES — classify prompting successes (only when notably above average):
-- "precise-request": Request included enough specificity (file paths, function names, expected behavior, error messages) that the AI could act correctly on the first attempt.
-
-- "effective-context": User proactively shared architecture, conventions, prior decisions, or current state that the AI demonstrably used to make better decisions.
-
-- "productive-correction": When the AI went off track, the user provided a correction that included WHAT was wrong, WHY, and enough context for the AI to redirect effectively on the next response.
-
-CONTRASTIVE PAIRS:
-- vague-request vs missing-context: Was the problem in HOW THE TASK WAS DESCRIBED (vague-request) or WHAT BACKGROUND KNOWLEDGE WAS ABSENT (missing-context)?
-- late-constraint vs missing-context: Did the user EVENTUALLY provide it in the same session? Yes → late-constraint. Never → missing-context.
-- missing-context vs assumption-not-surfaced: Is this a FACT the user could have copy-pasted (missing-context), or a BELIEF/PREFERENCE they held (assumption-not-surfaced)?
-- scope-drift vs missing-acceptance-criteria: Did the user try to do TOO MANY THINGS (scope-drift) or ONE THING WITHOUT DEFINING SUCCESS (missing-acceptance-criteria)?
-- unclear-correction vs vague-request: Was this the user's FIRST MESSAGE about this task (vague-request) or a RESPONSE TO AI OUTPUT (unclear-correction)?
-
-DIMENSION SCORING (0-100):
-- context_provision: How well did the user provide relevant background upfront?
-  90+: Proactively shared architecture, constraints, conventions. 50-69: Notable gaps causing detours. <30: No context, AI working blind.
-- request_specificity: How precise were task requests?
-  90+: File paths, expected behavior, scope boundaries. 50-69: Mix of specific and vague. <30: Nearly all requests lacked detail.
-- scope_management: How focused was the session?
-  90+: Single clear objective, logical progression. 50-69: Some drift but primary goal met. <30: Unfocused, no clear objective.
-- information_timing: Were requirements provided when needed?
-  90+: All constraints front-loaded before implementation. 50-69: Some important requirements late. <30: Requirements drip-fed, constant corrections.
-- correction_quality: How well did the user redirect the AI?
-  90+: Corrections included what, why, and context. 50-69: Mix of clear and unclear. <30: Corrections gave almost no signal.
-  Score 75 if no corrections were needed (absence of corrections in a successful session = good prompting).
-
-EDGE CASES:
-- Short sessions (<5 user messages): Structure evaluations proportionally. Do not classify lack of detail as a deficit if unnecessary for the task.
-- Exploration sessions: Exclude missing acceptance criteria or scope drift as deficits.
-- Sessions where AI performed well despite vague prompts: Classify deficits regardless of outcome; assign "low" impact.
-- Agentic/delegation sessions: Explicit high-level directives followed by autonomous AI execution constitute precise prompting. Evaluate the structure of the initial delegation prompt rather than penalizing for low interaction volume.`;
+DIMENSION SCORING [0-100]:
+- context_provision: Measure of proactive requirement loading. (<30 = blind processing, 90+ = zero requirement loss).
+- request_specificity: Measure of explicit path/function bindings in initial tasks.
+- scope_management: Maintainability of singular objective.
+- information_timing: Measure of early-bound constraints versus late-bound corrections.
+- correction_quality: Measure of corrective explicit details. (75 = no corrections required).
+</classification_guidance>`;
 
 export const EFFECTIVE_PATTERN_CLASSIFICATION_GUIDANCE = `
 EFFECTIVE PATTERN CLASSIFICATION GUIDANCE:

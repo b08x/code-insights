@@ -258,86 +258,58 @@ export function buildPromptQualityInstructions(
   },
   meta?: SessionMetadata
 ): string {
-  return `You are an analytical evaluator of prompt architecture. You review conversations to identify specific moments where prompt structure caused friction or enabled efficient machine execution.
+  return `<task>
+Extract structural inefficiencies and effective prompt patterns from the preceding conversation. Assess ONLY the user's input messages.
+</task>
 
-You will produce:
-1. **Takeaways**: Concrete before/after examples the user can learn from (max 4)
-2. **Findings**: Categorized findings for cross-session aggregation (max 8)
-3. **Dimension scores**: 5 numeric dimensions for progress tracking
-4. **Efficiency score**: 0-100 overall rating
-5. **Assessment**: 2-3 sentence summary
+<context>
+  <project_name>${projectName}</project_name>
+  <session_shape>
+    <human_messages>${sessionMeta.humanMessageCount}</human_messages>
+    <assistant_messages>${sessionMeta.assistantMessageCount}</assistant_messages>
+    <tool_exchanges>${sessionMeta.toolExchangeCount}</tool_exchanges>
+  </session_shape>
+  <system_metadata>${formatSessionMetaLine(meta)}</system_metadata>
+</context>
 
-Project: ${projectName}
-Session shape: ${sessionMeta.humanMessageCount} user messages, ${sessionMeta.assistantMessageCount} assistant messages, ${sessionMeta.toolExchangeCount} tool exchanges
-${formatSessionMetaLine(meta)}
-Before evaluating, mentally walk through the conversation and identify:
-1. Each time the assistant asked for clarification that could have been avoided
-2. Each time the user corrected the assistant's interpretation
-3. Each time the user repeated an instruction they gave earlier
-4. Whether critical context or requirements were provided late
-5. Whether the user discussed the plan/approach before implementation
-6. Moments where the user's prompt was notably well-crafted
-7. If context compactions occurred, note that the AI may have lost context — repeated instructions IMMEDIATELY after a compaction are NOT a user prompting deficit
-These are your candidate findings. Only include them if they are genuinely actionable.
+<rules>
+1. Distinguish strictly between user input quality and model capability. 
+2. You must evaluate the user's prompt quality independently of whether the model succeeded or failed. 
+3. If the model misbehaves or hallucinates despite a high-quality user prompt, this is an AI capability deficit. Do NOT penalize the user's prompt quality for this context.
+4. Use the assistant's responses ONLY as evidence of how the model interpreted the user's prompt, not as a reflection of the user's intent.
+5. Output neutral, factual assessments. Avoid prescriptive or lecturing tones.
+6. Extract both deficit and strength patterns based ONLY on explicit evidence.
+7. If no notable patterns exist, omit the findings array entirely.
+8. If the session had context compactions, classify repetition immediately following a compaction as an environmental restatement, NOT a prompting deficit.
+</rules>
 
 ${PROMPT_QUALITY_CLASSIFICATION_GUIDANCE}
 
-Guidelines:
-- Evaluate USER messages only; do not evaluate assistant responses.
-- Output neutral, factual assessments. Avoid prescriptive or lecturing tones.
-- A score of 100 indicates maximal prompt efficiency (no overhead).
-- A score of 50 indicates substantial prompt overhead.
-- Extract both deficit and strength patterns.
-- Do not manufacture findings if no notable patterns exist.
-- If the session had context compactions, do not classify repeated instructions immediately following a compaction as a user deficit. Repetition unrelated to compaction events must still be flagged.
-
-Length Guidance:
-- Max 4 takeaways (ordered: improve first, then reinforce), max 8 findings
-- better_prompt must be a complete, usable prompt — not vague meta-advice
-- assessment: 2-3 sentences
-- Total response: stay under 2500 tokens
-
-Evaluate the user's prompting quality and respond with this JSON format:
+<output_schema>
 {
   "efficiency_score": 75,
   "message_overhead": 3,
-  "assessment": "2-3 sentence summary of prompting style and efficiency",
+  "assessment": "2-3 sentence neutral summary of prompting strategy and efficiency.",
   "takeaways": [
     {
-      "type": "improve",
-      "category": "late-constraint",
-      "label": "Short human-readable heading",
-      "message_ref": "User#5",
+      "type": "improve | reinforce",
+      "category": "category-name",
+      "label": "Short Actionable Heading",
+      "message_ref": "User#N",
       "original": "The user's original message (abbreviated)",
-      "better_prompt": "A concrete rewrite with the missing context included",
-      "why": "One sentence: why the original caused friction"
-    },
-    {
-      "type": "reinforce",
-      "category": "precise-request",
-      "label": "Short human-readable heading",
-      "message_ref": "User#0",
-      "what_worked": "What the user did well",
-      "why_effective": "Why it led to a good outcome"
+      "better_prompt": "A concrete standalone prompt rewrite handling the missing constraints",
+      "why": "One exact reason the original caused friction"
     }
   ],
   "findings": [
     {
-      "category": "late-constraint",
-      "type": "deficit",
-      "description": "One neutral sentence with specific details",
-      "message_ref": "User#5",
-      "impact": "high",
+      "category": "category-name",
+      "type": "deficit | strength",
+      "description": "One neutral sentence using specific terms",
+      "message_ref": "User#N",
+      "impact": "high | medium | low",
       "confidence": 90,
-      "suggested_improvement": "Concrete rewrite or behavioral change"
-    },
-    {
-      "category": "precise-request",
-      "type": "strength",
-      "description": "One sentence describing what the user did well",
-      "message_ref": "User#0",
-      "impact": "medium",
-      "confidence": 85
+      "suggested_improvement": "Concrete text replacement or structure rule"
     }
   ],
   "dimension_scores": {
@@ -348,22 +320,14 @@ Evaluate the user's prompting quality and respond with this JSON format:
     "correction_quality": 75
   }
 }
+</output_schema>
 
-Category values — use these PREFERRED categories:
-Deficits: ${CANONICAL_PQ_DEFICIT_CATEGORIES.join(', ')}
-Strengths: ${CANONICAL_PQ_STRENGTH_CATEGORIES.join(', ')}
-Create a new kebab-case category only when none of these fit.
+Category Enforcement:
+Deficits MUST use: ${CANONICAL_PQ_DEFICIT_CATEGORIES.join(', ')}
+Strengths MUST use: ${CANONICAL_PQ_STRENGTH_CATEGORIES.join(', ')}
+Create a custom kebab-case category ONLY if the schema strictly diverges from canonical bounds.
 
-Rules:
-- message_ref uses the labeled turns in the conversation (e.g., "User#0", "User#5")
-- Only include genuinely notable findings, not normal back-and-forth
-- Takeaways are the user-facing highlights — max 4, ordered: improve first, then reinforce
-- Findings are the full categorized set for aggregation — max 8
-- Extract strength findings and reinforce takeaways when prompt efficiency is high; do not manufacture issues
-- message_overhead is how many fewer messages the session could have taken with better prompts
-- dimension_scores: each 0-100. Score correction_quality as 75 if no corrections were needed.
-
-Respond with valid JSON only, wrapped in <json>...</json> tags. Do not include any other text.`;
+Respond with valid JSON only, wrapped in <json>...</json> tags.`;
 }
 
 // =============================================================================
