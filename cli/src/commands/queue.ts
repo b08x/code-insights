@@ -59,12 +59,12 @@ export async function queueStatusCommand(opts: { quiet?: boolean } = {}): Promis
 
 // ── queue process ─────────────────────────────────────────────────────────────
 
-export async function queueProcessCommand(opts: { quiet?: boolean } = {}): Promise<void> {
-  const { quiet = false } = opts;
+export async function queueProcessCommand(opts: { quiet?: boolean; codex?: boolean; gemini?: boolean } = {}): Promise<void> {
+  const { quiet = false, codex = false, gemini = false } = opts;
   const log = quiet ? () => {} : console.log.bind(console);
 
   try {
-    const count = await processQueue({ quiet });
+    const count = await processQueue({ quiet, useCodex: codex, useGemini: gemini });
     if (count === 0) {
       log(chalk.dim('[Code Insights] No pending items in queue'));
     } else {
@@ -131,7 +131,9 @@ export function buildQueueCommand(): Command {
     .command('process')
     .description('Process pending queue items (foreground)')
     .option('-q, --quiet', 'Suppress output')
-    .action((opts) => queueProcessCommand({ quiet: opts.quiet }));
+    .option('--codex', 'Use codex exec for processing')
+    .option('--gemini', 'Use gemini -p for processing')
+    .action((opts) => queueProcessCommand({ quiet: opts.quiet, codex: opts.codex, gemini: opts.gemini }));
 
   queueCmd
     .command('retry [session_id]')
