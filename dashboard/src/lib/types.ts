@@ -200,6 +200,11 @@ export interface InsightMetadata {
     why?: string;
     what_worked?: string;
     why_effective?: string;
+    sfl_breakdown?: {
+      ideational: string;
+      interpersonal: string;
+      textual: string;
+    };
   }>;
   findings?: Array<{
     category: string;
@@ -209,6 +214,11 @@ export interface InsightMetadata {
     impact: 'high' | 'medium' | 'low';
     confidence: number;
     suggested_improvement?: string;
+    sfl_breakdown?: {
+      ideational: string;
+      interpersonal: string;
+      textual: string;
+    };
   }>;
   dimension_scores?: {
     context_provision: number;

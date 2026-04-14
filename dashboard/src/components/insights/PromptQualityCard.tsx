@@ -21,6 +21,11 @@ interface PQFinding {
   impact: 'high' | 'medium' | 'low';
   confidence: number;
   suggested_improvement?: string;
+  sfl_breakdown?: {
+    ideational: string;
+    interpersonal: string;
+    textual: string;
+  };
 }
 
 interface PQTakeaway {
@@ -35,6 +40,11 @@ interface PQTakeaway {
   // reinforce fields
   what_worked?: string;
   why_effective?: string;
+  sfl_breakdown?: {
+    ideational: string;
+    interpersonal: string;
+    textual: string;
+  };
 }
 
 interface PQDimensionScores {

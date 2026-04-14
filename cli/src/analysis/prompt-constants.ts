@@ -4,48 +4,48 @@
 // Shared guidance for friction category and attribution classification.
 // Actor-neutral category definitions describe the gap, not the actor.
 // Attribution field captures who contributed to the friction for actionability.
-export const FRICTION_CLASSIFICATION_GUIDANCE = `
-FRICTION CLASSIFICATION GUIDANCE:
+export const FRICTION_CLASSIFICATION_GUIDANCE = `<classification_guidance name="friction_points">
+<rules>
+  1. Capture WHAT went wrong (category + description).
+  2. Capture WHO contributed (attribution).
+  3. Explain WHY you classified it that way (_reasoning).
+</rules>
 
-Each friction point captures WHAT went wrong (category + description), WHO contributed (attribution), and WHY you classified it that way (_reasoning).
+<categories>
+- "wrong-approach": Suboptimal tool, architecture, or pattern chosen when a better one existed.
+- "knowledge-gap": Incorrect API/library usage due to factual error.
+- "stale-assumptions": Actions based on false state (stale files, changed config).
+- "incomplete-requirements": Missing critical constraints or acceptance criteria.
+- "context-loss": Prior established session constraints forgotton or dropped.
+- "scope-creep": Execution expanded beyond stated boundaries.
+- "repeated-mistakes": Same error occurred multiple times post-correction.
+- "documentation-gap": Unfindable or inaccessible documentation.
+- "tooling-limitation": Permanent tool gap (no workaround exists).
+</categories>
 
-CATEGORIES — classify the TYPE of gap or obstacle:
-- "wrong-approach": A strategy was pursued that didn't fit the task — wrong architecture, wrong tool, wrong pattern. Includes choosing a suboptimal tool when a better one was available.
-- "knowledge-gap": Incorrect knowledge was applied about a library, API, framework, or language feature. The capability existed but was used wrong.
-- "stale-assumptions": Work proceeded from assumptions about current state that were incorrect (stale files, changed config, different environment, tool behavior changed between versions).
-- "incomplete-requirements": Instructions were missing critical context, constraints, or acceptance criteria needed to proceed correctly.
-- "context-loss": Prior decisions or constraints established earlier in the session were lost or forgotten.
-- "scope-creep": Work expanded beyond the boundaries of the stated task.
-- "repeated-mistakes": The same or similar error occurred multiple times despite earlier correction.
-- "documentation-gap": Relevant docs existed but were inaccessible or unfindable during the session.
-- "tooling-limitation": The AI coding tool or its underlying model genuinely could not perform a needed action — missing file system access, unsupported language feature, context window overflow, inability to run a specific command type. Diagnostic: Could a reasonable user prompt or approach have achieved the same result? If the only workaround is unreasonably complex or loses significant fidelity, this IS a tooling-limitation. If a straightforward alternative existed → it is NOT tooling-limitation.
-  RECLASSIFY if any of these apply:
-  - Rate-limited or throttled → create "rate-limit-hit" instead
-  - Agent crashed or lost state → use "wrong-approach" or create "agent-orchestration-failure"
-  - Wrong tool chosen when a better one existed → "wrong-approach"
-  - User didn't know the tool could do something → "knowledge-gap"
-  - Tool worked differently than expected → "stale-assumptions"
+<disambiguation_rules>
+- tooling-limitation vs wrong-approach: Limitation = NO workaround. Wrong-approach = Suboptimal choice.
+- tooling-limitation vs knowledge-gap: Limitation = Capability missing. Knowledge-gap = Capability applied wrong.
+- tooling-limitation vs stale-assumptions: Limitation = Permanent gap. Stale-assumptions = Tool behavior changed.
+- wrong-approach vs knowledge-gap: Wrong-approach = Strategic choice. Knowledge-gap = Factual error.
+- incomplete-requirements vs context-loss: Incomplete = Never provided. Context-loss = Provided but forgotten.
+</disambiguation_rules>
 
-DISAMBIGUATION — use these to break ties when two categories seem to fit:
-- tooling-limitation vs wrong-approach: Limitation = the tool CANNOT do it (no workaround exists). Wrong-approach = the tool CAN do it but a suboptimal method was chosen.
-- tooling-limitation vs knowledge-gap: Limitation = the capability genuinely does not exist. Knowledge-gap = the capability exists but was applied incorrectly.
-- tooling-limitation vs stale-assumptions: Limitation = permanent gap in the tool. Stale-assumptions = the tool USED TO work differently or the assumption about current behavior was wrong.
-- wrong-approach vs knowledge-gap: Wrong-approach = strategic choice (chose library X over Y). Knowledge-gap = factual error (used library X's API incorrectly).
-- incomplete-requirements vs context-loss: Incomplete = the information was NEVER provided. Context-loss = it WAS provided earlier but was forgotten or dropped.
+<attribution_decision_tree>
+Evaluate in strict order:
+1. "environmental" = Cause external to user-AI interaction (infra outage, missing docs).
+2. "user-actionable" = Vague prompt, missing context, no constraints, ambiguous correction.
+3. "ai-capability" = User input clear, AI still failed.
+Resolve ambiguity to "user-actionable" to maintain analytical focus.
+</attribution_decision_tree>
 
-When no category fits, create a specific kebab-case category. A precise novel category is better than a vague canonical one.
-
-ATTRIBUTION — 3-step decision tree (follow IN ORDER):
-Step 1: Is the cause external to the user-AI interaction? (missing docs, broken tooling, infra outage) → "environmental"
-Step 2: Could the USER have prevented this with better input? Evidence: vague prompt, missing context, no constraints, late requirements, ambiguous correction → "user-actionable"
-Step 3: User input was clear and the AI still failed → "ai-capability"
-When causality is ambiguous between user-actionable and ai-capability, classify as "user-actionable" to maintain analytical focus on prompt constraints.
-
-DESCRIPTION RULES:
-- One neutral sentence describing the GAP, not the actor
-- Include specific details (file names, APIs, error messages)
-- Frame as "Missing X caused Y" NOT "The AI failed to X" or "The user forgot to X"
-- Let the attribution field carry the who`;
+<description_rules>
+- Output one neutral sentence describing the GAP, not the actor.
+- Inject specific details (file names, APIs, errors).
+- Sequence as "Missing X caused Y".
+- Transfer actor attribution entirely to the attribution field.
+</description_rules>
+</classification_guidance>`;
 
 export const CANONICAL_FRICTION_CATEGORIES = [
   'wrong-approach',
@@ -116,39 +116,37 @@ DIMENSION SCORING [0-100]:
 - correction_quality: Measure of corrective explicit details. (75 = no corrections required).
 </classification_guidance>`;
 
-export const EFFECTIVE_PATTERN_CLASSIFICATION_GUIDANCE = `
-EFFECTIVE PATTERN CLASSIFICATION GUIDANCE:
-
-Each effective pattern captures a technique or approach that contributed to a productive session outcome.
-
-BASELINE EXCLUSION — do NOT classify these as patterns:
+export const EFFECTIVE_PATTERN_CLASSIFICATION_GUIDANCE = `<classification_guidance name="effective_patterns">
+<exclusion_rules>
+Do NOT classify these as patterns:
 - Routine file reads at session start (Read/Glob/Grep on <5 files before editing)
-- Following explicit user instructions (user said "run tests" → running tests is not a pattern)
+- Following explicit user instructions (e.g., user said "run tests")
 - Basic tool usage (single file edits, standard CLI commands)
 - Trivial self-corrections (typo fixes, minor syntax errors caught immediately)
-Only classify behavior that is NOTABLY thorough, strategic, or beyond baseline expectations.
+</exclusion_rules>
 
-CATEGORIES — classify the TYPE of effective pattern:
-- "structured-planning": Decomposed the task into explicit steps, defined scope boundaries, or established a plan BEFORE writing code. Signal: plan/task-list/scope-definition appears before implementation.
-- "incremental-implementation": Work progressed in small, verifiable steps with validation between them. Signal: multiple small edits with checks between, not one large batch.
-- "verification-workflow": Proactive correctness checks (builds, tests, linters, types) BEFORE considering work complete. Signal: test/build/lint commands when nothing was known broken.
-- "systematic-debugging": Methodical investigation using structured techniques (binary search, log insertion, reproduction isolation). Signal: multiple targeted diagnostic steps, not random guessing.
-- "self-correction": Recognized a wrong path and pivoted WITHOUT user correction. Signal: explicit acknowledgment of mistake + approach change. NOT this if the user pointed out the error.
-- "context-gathering": NOTABLY thorough investigation before changes — reading 5+ files, cross-module exploration, schema/type/config review. Signal: substantial Read/Grep/Glob usage spanning multiple directories before any Edit/Write.
-- "domain-expertise": Applied specific framework/API/language knowledge correctly on first attempt without searching. Signal: correct non-obvious API usage with no preceding search and no subsequent error. NOT this if files were read first — that is context-gathering.
-- "effective-tooling": Leveraged advanced tool capabilities that multiplied productivity — agent delegation, parallel work, multi-file coordination, strategic mode selection. Signal: use of tool features beyond basic read/write/edit.
+<categories>
+- "structured-planning": Task decomposed and boundaries defined BEFORE writing code.
+- "incremental-implementation": Work progressed in verifiable steps with validation between them.
+- "verification-workflow": Proactive correctness checks BEFORE considering work complete.
+- "systematic-debugging": Methodical investigation using structured techniques.
+- "self-correction": Pivoted from wrong path WITHOUT user correction.
+- "context-gathering": Thorough investigation spanning multiple directories BEFORE any writes.
+- "domain-expertise": Correct specific tool knowledge applied without searching.
+- "effective-tooling": Leveraged advanced tool capabilities for outsized utility.
+</categories>
 
-CONTRASTIVE PAIRS:
-- structured-planning vs incremental-implementation: Planning = DECIDING what to do (before). Incremental = HOW you execute (during). Can have one without the other.
-- context-gathering vs domain-expertise: Gathering = ACTIVE INVESTIGATION (reading files). Expertise = APPLYING EXISTING KNOWLEDGE without investigation. If files were read first → context-gathering.
-- verification-workflow vs systematic-debugging: Verification = PROACTIVE (checking working code). Debugging = REACTIVE (investigating a failure).
-- self-correction vs user-directed: Self-correction = AI caught own mistake unprompted. User said "that's wrong" → NOT self-correction.
+<disambiguation_rules>
+- structured-planning vs incremental-implementation: Planning = DECIDING what to do. Incremental = HOW you execute.
+- context-gathering vs domain-expertise: Gathering = ACTIVE INVESTIGATION. Expertise = APPLYING EXISTING KNOWLEDGE.
+- verification-workflow vs systematic-debugging: Verification = PROACTIVE correctness check. Debugging = REACTIVE investigation.
+- self-correction vs user-directed: Self-correction = AI unprompted correction.
+</disambiguation_rules>
 
-DRIVER — 4-step decision tree (follow IN ORDER):
-Step 1: Did user infrastructure enable this? (CLAUDE.md rules, agent configs, hookify hooks, custom commands, system prompts) → "user-driven"
-Step 2: Did the user explicitly request this behavior? (asked for plan, requested tests, directed investigation) → "user-driven"
-Step 3: Did the AI exhibit this without any user prompting or infrastructure? → "ai-driven"
-Step 4: Both made distinct, identifiable contributions → "collaborative"
-Use "collaborative" ONLY when you can name what EACH party contributed. If uncertain, prefer the more specific label.
-
-When no canonical category fits, create a specific kebab-case category (a precise novel category is better than forcing a poor fit).`;
+<driver_decision_tree>
+Evaluate in strict order:
+1. "user-driven" = User infrastructure enabled this or user explicitly requested it.
+2. "ai-driven" = AI exhibited behavior without user prompting or infrastructure.
+3. "collaborative" = Both made distinct, identifiable contributions.
+</driver_decision_tree>
+</classification_guidance>`;

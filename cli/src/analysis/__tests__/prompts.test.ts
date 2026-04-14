@@ -371,23 +371,25 @@ describe('buildCacheableConversationBlock', () => {
 describe('buildSessionAnalysisInstructions', () => {
   it('includes project name in the instructions', () => {
     const result = buildSessionAnalysisInstructions('my-app', null);
-    expect(result).toContain('Project: my-app');
+    expect(result).toContain('<project_name>my-app</project_name>');
   });
 
   it('includes session summary when provided', () => {
     const result = buildSessionAnalysisInstructions('my-app', 'Fixed a critical bug');
-    expect(result).toContain('Session Summary: Fixed a critical bug');
+    expect(result).toContain('<session_summary>Fixed a critical bug</session_summary>');
   });
 
   it('omits session summary line when null', () => {
     const result = buildSessionAnalysisInstructions('my-app', null);
-    expect(result).not.toContain('Session Summary:');
+    expect(result).not.toContain('<session_summary>');
   });
 
-  it('contains the PART 1 and PART 2 section headers', () => {
+  it('contains structured XML sections', () => {
     const result = buildSessionAnalysisInstructions('my-app', null);
-    expect(result).toContain('=== PART 1: SESSION FACETS ===');
-    expect(result).toContain('=== PART 2: INSIGHTS ===');
+    expect(result).toContain('<task>');
+    expect(result).toContain('<context>');
+    expect(result).toContain('<rules>');
+    expect(result).toContain('<output_schema>');
   });
 
   it('ends with json tags instruction', () => {
@@ -409,12 +411,15 @@ describe('buildPromptQualityInstructions', () => {
 
   it('includes project name in the instructions', () => {
     const result = buildPromptQualityInstructions('my-app', sessionMeta);
-    expect(result).toContain('Project: my-app');
+    expect(result).toContain('<project_name>my-app</project_name>');
+    expect(result).toContain('<task>');
   });
 
   it('formats session shape header with structured counts', () => {
     const result = buildPromptQualityInstructions('my-app', sessionMeta);
-    expect(result).toContain('Session shape: 8 user messages, 12 assistant messages, 31 tool exchanges');
+    expect(result).toContain('<human_messages>8</human_messages>');
+    expect(result).toContain('<assistant_messages>12</assistant_messages>');
+    expect(result).toContain('<tool_exchanges>31</tool_exchanges>');
   });
 
   it('handles zero tool exchanges', () => {
@@ -423,10 +428,12 @@ describe('buildPromptQualityInstructions', () => {
       assistantMessageCount: 2,
       toolExchangeCount: 0,
     });
-    expect(result).toContain('2 user messages, 2 assistant messages, 0 tool exchanges');
+    expect(result).toContain('<human_messages>2</human_messages>');
+    expect(result).toContain('<assistant_messages>2</assistant_messages>');
+    expect(result).toContain('<tool_exchanges>0</tool_exchanges>');
   });
 
-  it('omits Context signals line when meta is not provided', () => {
+  it('omits context signals string when meta is not provided', () => {
     const result = buildPromptQualityInstructions('proj', sessionMeta);
     expect(result).not.toContain('Context signals:');
   });
@@ -460,17 +467,17 @@ describe('buildPromptQualityInstructions', () => {
 describe('buildFacetOnlyInstructions', () => {
   it('includes project name', () => {
     const result = buildFacetOnlyInstructions('my-app', null);
-    expect(result).toContain('Project: my-app');
+    expect(result).toContain('<project_name>my-app</project_name>');
   });
 
   it('includes session summary when provided', () => {
     const result = buildFacetOnlyInstructions('my-app', 'Fixed auth bug');
-    expect(result).toContain('Session Summary: Fixed auth bug');
+    expect(result).toContain('<session_summary>Fixed auth bug</session_summary>');
   });
 
   it('omits session summary when null', () => {
     const result = buildFacetOnlyInstructions('my-app', null);
-    expect(result).not.toContain('Session Summary:');
+    expect(result).not.toContain('<session_summary>');
   });
 
   it('ends with json tags instruction', () => {

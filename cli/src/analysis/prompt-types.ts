@@ -109,6 +109,11 @@ export interface PromptQualityFinding {
   impact: 'high' | 'medium' | 'low';
   confidence: number;
   suggested_improvement?: string;
+  sfl_breakdown?: {
+    ideational: string;
+    interpersonal: string;
+    textual: string;
+  };
 }
 
 export interface PromptQualityTakeaway {
@@ -123,6 +128,11 @@ export interface PromptQualityTakeaway {
   // reinforce fields
   what_worked?: string;
   why_effective?: string;
+  sfl_breakdown?: {
+    ideational: string;
+    interpersonal: string;
+    textual: string;
+  };
 }
 
 export interface PromptQualityDimensionScores {
