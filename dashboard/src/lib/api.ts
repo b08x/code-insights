@@ -59,7 +59,10 @@ export function fetchSession(id: string) {
   return request<{ session: Session }>(`/sessions/${id}`);
 }
 
-export function patchSession(id: string, body: { customTitle: string }) {
+export function patchSession(
+  id: string,
+  body: { customTitle?: string; projectName?: string; gitRemoteUrl?: string }
+) {
   return request<{ ok: boolean }>(`/sessions/${id}`, {
     method: 'PATCH',
     body: JSON.stringify(body),

@@ -40,6 +40,7 @@ import { AnalyzeButton } from '@/components/analysis/AnalyzeButton';
 import { useAnalysis } from '@/components/analysis/AnalysisContext';
 import { useMissingFacets, useBackfillFacets } from '@/hooks/useFacets';
 import { ExportGenerateRequest, exportGenerateStream } from '@/lib/api';
+import { exportSession } from '@/lib/export-session';
 import { CollapsibleInsightItem } from '@/components/sessions/CollapsibleInsightItem';
 import { PromptQualityAnalyzeButton } from '@/components/sessions/PromptQualityAnalyzeButton';
 import { EditSessionDialog } from '@/components/sessions/EditSessionDialog';
@@ -601,7 +602,7 @@ export function SessionDetailPanel({ sessionId, onDelete }: SessionDetailPanelPr
               loadingMore={loadingMore}
               hasMore={hasMore}
               onLoadMore={() => messagesQuery.fetchNextPage()}
-              sourceTool={session.source_tool}
+              sourceTool={session.source_tool ?? undefined}
               highlightMessageId={searchHighlightId}
               searchQuery={searchQuery}
             />
