@@ -55,6 +55,21 @@ describe('sync prune logic', () => {
     expect(sessions[0].title).toBe('Trivial Session');
   });
 
+  it('getTrivialSessions excludes antigravity sessions even if low message count', () => {
+    const antigravity = makeParsedSession({
+      id: 'ag-1',
+      messageCount: 2,
+      sourceTool: 'antigravity',
+      generatedTitle: 'Antigravity Session'
+    });
+    insertSessionWithProject(antigravity);
+
+    const sessions = getTrivialSessions();
+    // Should still only have 'trivial-1' if inserted in previous test, 
+    // but beforeEach clears the DB, so it should be 0 here if only ag-1 is inserted.
+    expect(sessions.find(s => s.id === 'ag-1')).toBeUndefined();
+  });
+
   it('getTrivialSessions respects custom_title over generated_title', () => {
     const session = makeParsedSession({
       id: 'session-custom',
