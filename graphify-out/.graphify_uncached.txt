@@ -1,0 +1,7 @@
+CLAUDE.md
+README.md
+GEMINI.md
+RULES.md
+claude-commands/insights.md
+cli/CHANGELOG.md
+cli/README.md
