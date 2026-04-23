@@ -31,16 +31,36 @@ vi.mock('../../db/write.js', () => ({
   recalculateUsageStats: vi.fn(() => ({ sessionsWithUsage: 0 })),
 }));
 
-const mockValidate = vi.fn();
-const mockRunAnalysis = vi.fn();
+const { mockValidate, mockRunAnalysis } = vi.hoisted(() => ({
+  mockValidate: vi.fn(),
+  mockRunAnalysis: vi.fn()
+}));
+
 vi.mock('../../analysis/native-runner.js', () => {
-  // Must use a real class (not vi.fn()) so `new ClaudeNativeRunner()` works
-  class MockNativeRunner {
+  class MockClaudeRunner {
     readonly name = 'claude-code-native';
     runAnalysis = mockRunAnalysis;
     static validate = mockValidate;
   }
-  return { ClaudeNativeRunner: MockNativeRunner };
+  return { ClaudeNativeRunner: MockClaudeRunner };
+});
+
+vi.mock('../../analysis/codex-runner.js', () => {
+  class MockCodexRunner {
+    readonly name = 'codex-native';
+    runAnalysis = mockRunAnalysis;
+    static validate = mockValidate;
+  }
+  return { CodexNativeRunner: MockCodexRunner };
+});
+
+vi.mock('../../analysis/gemini-runner.js', () => {
+  class MockGeminiRunner {
+    readonly name = 'gemini-native';
+    runAnalysis = mockRunAnalysis;
+    static validate = mockValidate;
+  }
+  return { GeminiNativeRunner: MockGeminiRunner };
 });
 
 const mockFromConfig = vi.fn();

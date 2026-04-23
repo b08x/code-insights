@@ -39,9 +39,12 @@ describe('GeminiNativeRunner', () => {
 
     expect(mockedExecFileSync).toHaveBeenCalledWith(
       'gemini',
-      expect.arrayContaining(['-p', expect.stringMatching(/^@.*\.txt$/), '-o', 'json', '--approval-mode', 'plan']),
+      expect.arrayContaining(['-p', '-', '-o', 'json', '--approval-mode', 'plan']),
       expect.objectContaining({
+        input: expect.stringContaining('sys'),
         encoding: 'utf-8',
+        timeout: 300000,
+        maxBuffer: 30 * 1024 * 1024,
       })
     );
     expect(result.rawJson).toBe('{"summary": "test"}');

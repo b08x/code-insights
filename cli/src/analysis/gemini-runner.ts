@@ -41,8 +41,8 @@ export class GeminiNativeRunner implements AnalysisRunner {
         rawOutput = execFileSync('gemini', args, {
           input: fullPrompt,
           encoding: 'utf-8',
-          timeout: 120_000,    // 2-minute hard limit
-          maxBuffer: 10 * 1024 * 1024,
+          timeout: 300_000,    // 5-minute hard limit
+          maxBuffer: 30 * 1024 * 1024,
           stdio: ['pipe', 'pipe', 'pipe'], // Capture stdout and stderr
         });
       } catch (err: any) {

@@ -64,5 +64,7 @@ node-compile-cache/
 .ck/
 .ckignore
 
-graphify-out/
+**/graphify-out/cache/*
+**/graphify-out/manifest.json
+**/graphify-out/cost.json
 .graphifyignore

@@ -100,7 +100,7 @@ describe('installHookCommand', () => {
       expect(sessionEndCmd.type).toBe('command');
       expect(sessionEndCmd.command).toContain('insights --hook --native -q');
       expect(sessionEndCmd.command).toMatch(/^node .+index\.js insights --hook --native -q$/);
-      expect(sessionEndCmd.timeout).toBe(120000);
+      expect(sessionEndCmd.timeout).toBe(300000);
     });
 
     it('preserves existing settings.json content', async () => {
@@ -256,7 +256,7 @@ describe('uninstallHookCommand', () => {
       hooks: {
         SessionEnd: [
           { hooks: [{ type: 'command', command: 'other-tool end-session' }] },
-          { hooks: [{ type: 'command', command: 'node /path/code-insights insights --hook --native -q', timeout: 120000 }] },
+          { hooks: [{ type: 'command', command: 'node /path/code-insights insights --hook --native -q', timeout: 300000 }] },
         ],
       },
     });

@@ -57,8 +57,8 @@ export class CodexNativeRunner implements AnalysisRunner {
       execFileSync('codex', args, {
         input: fullPrompt,
         encoding: 'utf-8',
-        timeout: 180_000, // 3-minute limit
-        maxBuffer: 10 * 1024 * 1024,
+        timeout: 300_000, // 5-minute limit
+        maxBuffer: 30 * 1024 * 1024,
       });
 
       let rawJson = readFileSync(outputFile, 'utf-8').trim();
