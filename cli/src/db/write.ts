@@ -128,10 +128,19 @@ function getStmts() {
 
   if (!_stmtInsertMessage) {
     _stmtInsertMessage = db.prepare(`
-      INSERT OR IGNORE INTO messages (
+      INSERT INTO messages (
         id, session_id, type, content, thinking,
         tool_calls, tool_results, usage, timestamp, parent_id
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        type = excluded.type,
+        content = excluded.content,
+        thinking = excluded.thinking,
+        tool_calls = excluded.tool_calls,
+        tool_results = excluded.tool_results,
+        usage = excluded.usage,
+        timestamp = excluded.timestamp,
+        parent_id = excluded.parent_id
     `);
   }
 
@@ -290,7 +299,7 @@ function upsertSession(
  * Insert messages for a session.
  * Replaces firebase/client.ts uploadMessages().
  */
-export function insertMessages(session: ParsedSession): void {
+export function insertMessages(session: ParsedSession, _isForce = false): void {
   if (session.messages.length === 0) return;
 
   const db = getDb();

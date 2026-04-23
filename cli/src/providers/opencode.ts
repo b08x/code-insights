@@ -152,6 +152,11 @@ export class OpenCodeProvider implements SessionProvider {
       this.log('debug', `Found ${projectDirs.length} project directories`);
 
       for (const projectDir of projectDirs) {
+        if (options?.projectFilter && !projectDir.toLowerCase().includes(options.projectFilter.toLowerCase())) {
+          this.log('debug', `Filtering out project directory ${projectDir}`);
+          continue;
+        }
+
         const projectPath = path.join(sessionsDir, projectDir);
 
         let stat;
@@ -260,7 +265,18 @@ export class OpenCodeProvider implements SessionProvider {
       const modelsUsed = new Set<string>();
 
       for (const msgRow of messageRows) {
-        this.log('debug', `Processing message ${msgRow.id} (role: ${msgRow.role})`);
+        let msgUsage: any = null;
+        let msgData: any = {};
+        if (msgRow.data) {
+          try {
+            msgData = this.parseJsonSafely(msgRow.data, `message ${msgRow.id} data`);
+          } catch (e) {
+            this.log('warn', `Failed to parse message data for ${msgRow.id}`, e);
+          }
+        }
+
+        const role = msgData.role || msgRow.role || 'system';
+        this.log('debug', `Processing message ${msgRow.id} (role: ${role})`);
 
         // Validate required message fields
         if (!msgRow.id) {
@@ -288,72 +304,93 @@ export class OpenCodeProvider implements SessionProvider {
         const toolResults: ToolResult[] = [];
 
         for (const partRow of partRows) {
-          this.log('debug', `Processing part ${partRow.id} (type: ${partRow.type})`);
+          let partData: any = {};
+          if (partRow.data) {
+            try {
+              partData = this.parseJsonSafely(partRow.data, `part ${partRow.id} data`);
+            } catch (e) {
+              this.log('warn', `Failed to parse part data for ${partRow.id}`, e);
+            }
+          }
 
-          if (partRow.type === 'text' && partRow.text) {
-            content += (content ? '\n' : '') + partRow.text;
-          } else if (partRow.type === 'thinking' && partRow.text) {
-            thinking = (thinking ? thinking + '\n' : '') + partRow.text;
-          } else if (partRow.type === 'tool') {
-            const tcId = partRow.call_id || `tool-${partRow.id}`;
+          const partType = partData.type || partRow.type;
+          const partText = partData.text || partRow.text;
+          const partTool = partData.tool || partRow.tool;
+          const partState = partData.state || (partRow.state ? this.parseJsonSafely(partRow.state, `part ${partRow.id} state`) : null);
+
+          this.log('debug', `Processing part ${partRow.id} (type: ${partType})`);
+
+          if ((partType === 'text' || partType === 'markdown') && partText) {
+            content += (content ? '\n' : '') + partText;
+          } else if ((partType === 'thinking' || partType === 'reasoning') && partText) {
+            thinking = (thinking ? thinking + '\n' : '') + partText;
+          } else if (partType === 'tool') {
+            const tcId = partData.callID || partRow.call_id || `tool-${partRow.id}`;
             let toolInput = {};
 
-            try {
-              if (partRow.state) {
-                const state = this.parseJsonSafely(partRow.state, `tool part ${partRow.id} state`);
-                toolInput = state.input || {};
+            if (partState) {
+              toolInput = partState.input || {};
 
-                if (state.output) {
-                  toolResults.push({
-                    toolUseId: tcId,
-                    output: typeof state.output === 'string' ? state.output : JSON.stringify(state.output),
-                  });
-                }
+              if (partState.output) {
+                toolResults.push({
+                  toolUseId: tcId,
+                  output: typeof partState.output === 'string' ? partState.output : JSON.stringify(partState.output),
+                });
               }
-            } catch (stateErr) {
-              this.log('warn', `Failed to parse tool state for part ${partRow.id}`, stateErr);
             }
 
             toolCalls.push({
               id: tcId,
-              name: partRow.tool || 'unknown',
+              name: partTool || 'unknown',
               input: toolInput,
             });
+          } else if (partType === 'step-finish' && partData.tokens) {
+            // Some tokens might be in step-finish parts in newer versions
+            if (!msgRow.tokens_input && !msgRow.tokens) {
+              const model = msgData.modelID || (msgData.model?.modelID) || msgRow.model_id || 'unknown';
+              msgUsage = {
+                inputTokens: partData.tokens.input || 0,
+                outputTokens: partData.tokens.output || 0,
+                cacheCreationTokens: partData.tokens.cache?.write || 0,
+                cacheReadTokens: partData.tokens.cache?.read || 0,
+                model,
+                estimatedCostUsd: partData.cost || 0,
+              };
+            }
           }
         }
 
-        const model = msgRow.model_id || 'unknown';
+        const model = msgData.modelID || (msgData.model?.modelID) || msgRow.model_id || 'unknown';
         if (model !== 'unknown') modelsUsed.add(model);
 
-        // Usage data might be in JSON format in the database row or separate columns
-        let msgUsage = null;
-        if (msgRow.tokens_input !== undefined) {
-           msgUsage = {
-             inputTokens: msgRow.tokens_input || 0,
-             outputTokens: msgRow.tokens_output || 0,
-             cacheCreationTokens: msgRow.tokens_cache_write || 0,
-             cacheReadTokens: msgRow.tokens_cache_read || 0,
-             model,
-             estimatedCostUsd: msgRow.cost || 0,
-           };
-           this.log('debug', `Parsed usage from columns for message ${msgRow.id}: ${msgUsage.inputTokens}/${msgUsage.outputTokens} tokens`);
-        } else if (msgRow.tokens) {
-           try {
-             const tokens = this.parseJsonSafely(msgRow.tokens, `message ${msgRow.id} tokens`);
+        // Usage data might be in JSON format in the database row, separate columns, or already parsed from parts
+        if (!msgUsage) {
+          if (msgRow.tokens_input !== undefined) {
              msgUsage = {
-               inputTokens: tokens.input || 0,
-               outputTokens: tokens.output || 0,
-               cacheCreationTokens: tokens.cache?.write || 0,
-               cacheReadTokens: tokens.cache?.read || 0,
+               inputTokens: msgRow.tokens_input || 0,
+               outputTokens: msgRow.tokens_output || 0,
+               cacheCreationTokens: msgRow.tokens_cache_write || 0,
+               cacheReadTokens: msgRow.tokens_cache_read || 0,
                model,
                estimatedCostUsd: msgRow.cost || 0,
              };
-             this.log('debug', `Parsed usage from JSON for message ${msgRow.id}: ${msgUsage.inputTokens}/${msgUsage.outputTokens} tokens`);
-           } catch (tokensErr) {
-             this.log('warn', `Failed to parse tokens JSON for message ${msgRow.id}`, tokensErr);
-           }
-        } else {
-          this.log('debug', `No usage data found for message ${msgRow.id}`);
+             this.log('debug', `Parsed usage from columns for message ${msgRow.id}: ${msgUsage.inputTokens}/${msgUsage.outputTokens} tokens`);
+          } else if (msgRow.tokens || msgData.tokens) {
+             try {
+               const tokens = msgData.tokens || this.parseJsonSafely(msgRow.tokens, `message ${msgRow.id} tokens`);
+               msgUsage = {
+                 inputTokens: tokens.input || 0,
+                 outputTokens: tokens.output || 0,
+                 cacheCreationTokens: tokens.cache?.write || 0,
+                 cacheReadTokens: tokens.cache?.read || 0,
+                 model,
+                 estimatedCostUsd: msgData.cost || msgRow.cost || 0,
+               };
+               this.log('debug', `Parsed usage from JSON for message ${msgRow.id}: ${msgUsage.inputTokens}/${msgUsage.outputTokens} tokens`);
+             } catch (tokensErr) {
+               this.log('warn', `Failed to parse tokens JSON for message ${msgRow.id}`, tokensErr);
+             }
+          }
         }
 
         if (msgUsage) {
@@ -362,7 +399,7 @@ export class OpenCodeProvider implements SessionProvider {
           totalCost += msgUsage.estimatedCostUsd;
         }
 
-        const type = msgRow.role === 'assistant' ? 'assistant' : (msgRow.role === 'user' ? 'user' : 'system');
+        const type = role === 'assistant' ? 'assistant' : (role === 'user' ? 'user' : 'system');
         if (type === 'user') userMessageCount++;
         if (type === 'assistant') assistantMessageCount++;
         toolCallCount += toolCalls.length;
@@ -377,7 +414,7 @@ export class OpenCodeProvider implements SessionProvider {
           toolResults,
           usage: msgUsage,
           timestamp: new Date(msgRow.time_created),
-          parentId: msgRow.parent_id || null,
+          parentId: msgData.parentID || msgRow.parent_id || null,
         });
       }
 
@@ -505,6 +542,7 @@ export class OpenCodeProvider implements SessionProvider {
         const msgPartsDir = path.join(partsDir, msgData.id);
         let content = '';
         let thinking: string | null = null;
+        let msgUsage: any = null;
         const toolCalls: ToolCall[] = [];
         const toolResults: ToolResult[] = [];
 
@@ -524,9 +562,9 @@ export class OpenCodeProvider implements SessionProvider {
               this.log('error', `Failed to read part file ${partPath}`, partReadErr);
               continue;
             }
-            if (partData.type === 'text' && partData.text) {
+            if ((partData.type === 'text' || partData.type === 'markdown') && partData.text) {
               content += (content ? '\n' : '') + partData.text;
-            } else if (partData.type === 'thinking' && partData.text) {
+            } else if ((partData.type === 'thinking' || partData.type === 'reasoning') && partData.text) {
               thinking = (thinking ? thinking + '\n' : '') + partData.text;
             } else if (partData.type === 'tool') {
               const tcId = partData.callID || `tool-${partData.id}`;
@@ -544,6 +582,18 @@ export class OpenCodeProvider implements SessionProvider {
                     : JSON.stringify(partData.state.output),
                 });
               }
+            } else if (partData.type === 'step-finish' && partData.tokens) {
+              // Extract usage from step-finish if not present in message
+              if (!msgData.tokens) {
+                msgUsage = {
+                  inputTokens: partData.tokens.input || 0,
+                  outputTokens: partData.tokens.output || 0,
+                  cacheCreationTokens: partData.tokens.cache?.write || 0,
+                  cacheReadTokens: partData.tokens.cache?.read || 0,
+                  model: msgData.modelID || (msgData.model?.modelID) || 'unknown',
+                  estimatedCostUsd: partData.cost || 0,
+                };
+              }
             } else {
               this.log('debug', `Unknown part type ${partData.type} in ${partFile}`);
             }
@@ -555,8 +605,8 @@ export class OpenCodeProvider implements SessionProvider {
         const model = msgData.modelID || (msgData.model?.modelID) || 'unknown';
         if (model !== 'unknown') modelsUsed.add(model);
 
-        let usage = null;
-        if (msgData.tokens) {
+        let usage = msgUsage || null;
+        if (!usage && msgData.tokens) {
           usage = {
             inputTokens: msgData.tokens.input || 0,
             outputTokens: msgData.tokens.output || 0,
@@ -566,7 +616,7 @@ export class OpenCodeProvider implements SessionProvider {
             estimatedCostUsd: msgData.cost || 0,
           };
           this.log('debug', `Message ${msgData.id} usage: ${usage.inputTokens}/${usage.outputTokens} tokens`);
-        } else {
+        } else if (!usage) {
           this.log('debug', `No usage data for message ${msgData.id}`);
         }
 
