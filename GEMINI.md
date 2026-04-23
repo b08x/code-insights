@@ -56,10 +56,15 @@ The project uses `pnpm` workspaces for dependency management.
 
 Code Insights supports multiple providers for analysis and synthesis.
 
-- **Native Runners:** Zero-config analysis using locally installed CLIs. Supports **Codex** (default native), **Claude Code**, and **Gemini CLI**. Features automatic usage-limit fallback: `Codex` → `Claude` → `Gemini`.
+- **Native Runners:** Zero-config analysis using locally installed CLIs. Supports **Codex** (default native), **Claude Code**, and **Gemini CLI**. Features automatic usage-limit fallback: `Codex` → `Claude` → `Gemini`. **Updated:** Optimized native extraction to handle session-end hooks and background processing.
 - **Supported Providers:** OpenAI (GPT-4o), Anthropic (Claude 3.5), Google Gemini (2.0 Flash), OpenRouter, Mistral (Codestral), and Ollama (Local).
 - **Dynamic Discovery:** Supports fetching latest models via `POST /api/config/llm/models`.
 - **Cost Tracking:** Per-session and per-analysis cost tracking stored in `analysis_usage`.
+
+## Provider Highlights
+
+- **OpenCode:** Now features robust multi-schema support. Handles both legacy column-based storage and the latest JSON-in-SQLite `data` column format for messages and parts.
+- **Background Sync:** The `ON CONFLICT` strategy in the database layer ensures that forced syncs (`--force`) correctly refresh message content and metadata from the source providers.
 
 ### Reference SDKs (Context7)
 
