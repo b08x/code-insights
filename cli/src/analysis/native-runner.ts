@@ -137,8 +137,8 @@ export class ClaudeNativeRunner implements AnalysisRunner {
         rawOutput = execFileSync('claude', args, {
           input: params.userPrompt,
           encoding: 'utf-8',
-          timeout: 120_000,    // 2-minute hard limit per analysis call
-          maxBuffer: 10 * 1024 * 1024,  // 10 MB
+          timeout: 300_000,    // 5-minute hard limit per analysis call
+          maxBuffer: 30 * 1024 * 1024,  // 30 MB
           stdio: ['pipe', 'pipe', 'pipe'], // Capture stdout/stderr separately
         });
       } catch (err: any) {

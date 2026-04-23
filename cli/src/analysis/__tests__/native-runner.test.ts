@@ -81,8 +81,8 @@ describe('ClaudeNativeRunner.runAnalysis()', () => {
       expect.objectContaining({
         input: 'Analyze this session.',
         encoding: 'utf-8',
-        timeout: 120_000,
-        maxBuffer: 10 * 1024 * 1024,
+        timeout: 300_000,
+        maxBuffer: 30 * 1024 * 1024,
       })
     );
 
