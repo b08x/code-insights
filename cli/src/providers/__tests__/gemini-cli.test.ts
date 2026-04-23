@@ -118,6 +118,27 @@ describe('GeminiCliProvider', () => {
       expect(discovered).toContain(file1);
       expect(discovered).not.toContain(file2);
     });
+
+    it('discovers session files recursively in chats directory', async () => {
+      const projectName = 'recursive-project';
+      const projectDir = path.join(tempTmpDir, projectName);
+      const chatsDir = path.join(projectDir, 'chats');
+      const subDir = path.join(chatsDir, 'sub-session');
+      fs.mkdirSync(subDir, { recursive: true });
+      
+      const file1 = path.join(chatsDir, 'main.json');
+      const file2 = path.join(subDir, 'part.json');
+      const file3 = path.join(chatsDir, 'new.jsonl');
+      
+      fs.writeFileSync(file1, JSON.stringify(VALID_GEMINI_SESSION));
+      fs.writeFileSync(file2, JSON.stringify(VALID_GEMINI_SESSION));
+      fs.writeFileSync(file3, JSON.stringify(VALID_GEMINI_SESSION));
+
+      const discovered = await provider.discover();
+      expect(discovered).toContain(file1);
+      expect(discovered).toContain(file2);
+      expect(discovered).toContain(file3);
+    });
   });
 
   describe('parse', () => {
@@ -158,6 +179,50 @@ describe('GeminiCliProvider', () => {
 
       const session = await provider.parse(filePath);
       expect(session).toBeNull();
+    });
+
+    it('parses a valid Gemini JSONL session file', async () => {
+      const projectDir = path.join(tempTmpDir, 'test-jsonl');
+      const chatsDir = path.join(projectDir, 'chats');
+      fs.mkdirSync(chatsDir, { recursive: true });
+      
+      const filePath = path.join(chatsDir, 'session.jsonl');
+      const header = {
+        sessionId: "jsonl-session-id",
+        startTime: "2026-04-23T11:32:49.958Z",
+        lastUpdated: "2026-04-23T11:32:49.958Z"
+      };
+      const msg1 = {
+        id: "m1",
+        timestamp: "2026-04-23T11:33:00.000Z",
+        type: "user",
+        content: [{ text: "Hello JSONL" }]
+      };
+      const update = { "$set": { "lastUpdated": "2026-04-23T11:33:00.000Z" } };
+      const msg2 = {
+        id: "m2",
+        timestamp: "2026-04-23T11:34:00.000Z",
+        type: "gemini",
+        content: "Hi there!",
+        tokens: { input: 50, output: 20 },
+        model: "gemini-2.0-flash"
+      };
+
+      fs.writeFileSync(filePath, [
+        JSON.stringify(header),
+        JSON.stringify(msg1),
+        JSON.stringify(update),
+        JSON.stringify(msg2)
+      ].join('\n'));
+
+      const session = await provider.parse(filePath);
+
+      expect(session).not.toBeNull();
+      expect(session!.id).toBe("jsonl-session-id");
+      expect(session!.messageCount).toBe(2);
+      expect(session!.messages[0].content).toBe("Hello JSONL");
+      expect(session!.messages[1].content).toBe("Hi there!");
+      expect(session!.messages[1].usage!.inputTokens).toBe(50);
     });
   });
 });
