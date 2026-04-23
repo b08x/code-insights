@@ -23,7 +23,7 @@ Code Insights is a local-first analytics platform designed to extract structured
 - **Cross-Session Pattern Synthesis** — Identifies recurring friction points and effective patterns across weeks of work.
 - **Rule Generation** — Automatically exports high-signal patterns as custom rules for your `CLAUDE.md` or `.cursorrules`.
 - **Zero-Cost Local Analysis** — Native support for Ollama allows for full AI analysis using local models like Llama 3.
-- **Privacy by Architecture** — Persistence is handled via a local SQLite database at `~/.code-insights/data.db`; no accounts or cloud sync required.
+- **Privacy by Architecture** — Persistence is handled via a local SQLite database at `~/.code-insights/data.db`; no accounts or cloud sync required. Schema V9 ensures robust background processing and content-aware updates.
 
 ## Supported AI Tools
 

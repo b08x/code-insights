@@ -70,6 +70,22 @@ export class AntigravityProvider implements SessionProvider {
         }
       }
 
+      if (fs.existsSync(planPath)) {
+        const content = fs.readFileSync(planPath, 'utf-8');
+        messages.push({
+          id: crypto.randomUUID(),
+          sessionId,
+          type: 'assistant',
+          content: `Implementation Plan:\n${content}`,
+          thinking: null,
+          toolCalls: [],
+          toolResults: [],
+          usage: null,
+          timestamp: new Date(startedAt.getTime() + 1000 * 60 * 15), // halfway between start and end
+          parentId: null,
+        });
+      }
+
       // Try to extract project info from walkthrough if it exists
       if (fs.existsSync(walkthroughPath)) {
         const content = fs.readFileSync(walkthroughPath, 'utf-8');

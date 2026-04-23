@@ -191,7 +191,7 @@ export async function runSync(options: SyncOptions = {}): Promise<SyncResult> {
           }
 
           // Skip trivial sessions (≤2 messages) — likely abandoned prompts with no content
-          if (session.messageCount <= 2) {
+          if (session.messageCount <= 2 && session.sourceTool !== 'antigravity') {
             providerSkippedCount++;
             updateSyncState(syncState, filePath, session.id);
             saveSyncState(syncState);
@@ -200,7 +200,7 @@ export async function runSync(options: SyncOptions = {}): Promise<SyncResult> {
 
           // Write session and messages to SQLite
           const isNew = insertSessionWithProjectAndReturnIsNew(session, !!options.force);
-          insertMessages(session);
+          insertMessages(session, !!options.force);
 
           // Update and persist sync state after each file
           // so progress survives crashes
@@ -381,7 +381,7 @@ export async function syncSingleFile(options: {
   const session = await provider.parse(options.filePath);
   if (!session) return;
   insertSessionWithProjectAndReturnIsNew(session, false);
-  insertMessages(session);
+  insertMessages(session, false);
 }
 
 /**
@@ -473,7 +473,7 @@ export function getTrivialSessions(): TrivialSession[] {
   return db.prepare(`
     SELECT id, COALESCE(custom_title, generated_title) AS title, project_name, message_count
     FROM sessions
-    WHERE message_count <= 2 AND deleted_at IS NULL
+    WHERE message_count <= 2 AND source_tool != 'antigravity' AND deleted_at IS NULL
     ORDER BY started_at DESC
   `).all() as TrivialSession[];
 }
@@ -490,7 +490,7 @@ export function pruneTrivialSessions(ids: string[]): { deleted: number } {
   const result = db.prepare(`
     UPDATE sessions
     SET deleted_at = datetime('now')
-    WHERE id IN (${placeholders}) AND deleted_at IS NULL
+    WHERE id IN (${placeholders}) AND source_tool != 'antigravity' AND deleted_at IS NULL
   `).run(...ids);
   return { deleted: result.changes };
 }

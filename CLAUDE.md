@@ -145,7 +145,8 @@ code-insights stats patterns           # Cross-session patterns summary
 
 - **Runtime**: Node.js (ES2022, ES Modules)
 - **CLI Framework**: Commander.js
-- **Database**: SQLite (better-sqlite3) — WAL mode, local at `~/.code-insights/data.db`, Schema V8
+- **Database**: SQLite (better-sqlite3) — WAL mode, local at `~/.code-insights/data.db`, Schema V9
+- **Storage Strategy**: `ON CONFLICT DO UPDATE` for messages to ensure `--force` sync refreshes content.
 - **Dashboard**: Vite + React 19 SPA
 - **Server**: Hono
 - **UI**: Tailwind CSS 4 + shadcn/ui (New York), Lucide icons
@@ -201,6 +202,12 @@ The CLI and dashboard support sessions from multiple AI coding tools via the `so
 **Supported sources:** `'claude-code'` (default), `'cursor'`, `'codex-cli'`, `'copilot-cli'`, `'copilot'`, `'crush'`, `'opencode'`, `'hermes-agent'`
 
 **Adding a new source tool:** See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the 6-step provider guide.
+
+### OpenCode Multi-Schema Support
+The `OpenCodeProvider` handles two distinct storage formats:
+1. **Legacy**: Individual columns for `role`, `text`, `tool`, etc.
+2. **Modern**: JSON blobs in a `data` column for `message` and `part` tables.
+It also supports `markdown` and `reasoning` part types and extracts usage from `step-finish` events.
 
 ### Analysis & Processing Features
 
