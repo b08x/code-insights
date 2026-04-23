@@ -68,3 +68,5 @@ node-compile-cache/
 **/graphify-out/manifest.json
 **/graphify-out/cost.json
 .graphifyignore
+
+tea_debug.log
