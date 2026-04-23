@@ -9,6 +9,7 @@ import { HermesAgentProvider } from './hermes-agent.js';
 import { OpenCodeProvider } from './opencode.js';
 import { CrushProvider } from './crush.js';
 import { AntigravityProvider } from './antigravity.js';
+import { MistralVibeProvider } from './mistral-vibe.js';
 
 const providers = new Map<string, SessionProvider>();
 
@@ -42,6 +43,9 @@ providers.set(crush.getProviderName(), crush);
 
 const antigravity = new AntigravityProvider();
 providers.set(antigravity.getProviderName(), antigravity);
+
+const mistralVibe = new MistralVibeProvider();
+providers.set(mistralVibe.getProviderName(), mistralVibe);
 
 /**
  * Get a provider by name

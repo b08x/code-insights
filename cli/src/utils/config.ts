@@ -124,6 +124,20 @@ export function getOpenCodeDir(): string {
 }
 
 /**
+ * Get Mistral Vibe home directory
+ */
+export function getVibeHomeDir(): string {
+  return process.env.VIBE_HOME || path.join(os.homedir(), '.vibe');
+}
+
+/**
+ * Get Mistral Vibe logs directory
+ */
+export function getVibeLogsDir(): string {
+  return path.join(getVibeHomeDir(), 'logs', 'session');
+}
+
+/**
  * Check if config exists
  */
 export function isConfigured(): boolean {
