@@ -293,20 +293,30 @@ export function saveFacetsToDb(
     : [];
 
   db.prepare(`
-    INSERT OR REPLACE INTO session_facets
-    (session_id, outcome_satisfaction, workflow_pattern, had_course_correction,
-     course_correction_reason, iteration_count, friction_points, effective_patterns,
-     analysis_version)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  INSERT OR REPLACE INTO session_facets
+  (session_id, outcome_satisfaction, workflow_pattern, had_course_correction,
+   course_correction_reason, iteration_count, friction_points, effective_patterns,
+   analysis_version)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
-    sessionId,
-    facets.outcome_satisfaction,
-    facets.workflow_pattern ?? null,
-    facets.had_course_correction ? 1 : 0,
-    facets.course_correction_reason,
-    facets.iteration_count,
-    JSON.stringify(Array.isArray(facets.friction_points) ? facets.friction_points : []),
-    JSON.stringify(normalizedPatterns),
-    analysisVersion,
+  sessionId,
+  facets.outcome_satisfaction,
+  facets.workflow_pattern ?? null,
+  facets.had_course_correction ? 1 : 0,
+  facets.course_correction_reason,
+  facets.iteration_count,
+  JSON.stringify(Array.isArray(facets.friction_points) ? facets.friction_points : []),
+  JSON.stringify(normalizedPatterns),
+  analysisVersion,
   );
-}
+  }
+
+  /**
+  * Update the generated_title for a session.
+  */
+  export function updateSessionTitle(sessionId: string, title: string): void {
+  const db = getDb();
+  db.prepare('UPDATE sessions SET generated_title = ? WHERE id = ? AND deleted_at IS NULL')
+  .run(title.slice(0, 120), sessionId);
+  }
+

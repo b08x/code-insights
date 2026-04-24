@@ -164,7 +164,7 @@ describe('V8 migration — session_message_count column', () => {
       .prepare('SELECT version FROM schema_version ORDER BY version')
       .all() as Array<{ version: number }>;
 
-    expect(rows.map(r => r.version)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+    expect(rows.map(r => r.version)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
     db.close();
   });
 
@@ -428,7 +428,7 @@ describe('syncSingleFile', () => {
 
     expect(mockProvider.parse).toHaveBeenCalledWith('/path/to/session.jsonl');
     expect(mockInsertSession).toHaveBeenCalledWith(fakeSession, false);
-    expect(mockInsertMessages).toHaveBeenCalledWith(fakeSession);
+    expect(mockInsertMessages).toHaveBeenCalledWith(fakeSession, false);
   });
 
   it('does nothing if provider.parse() returns null', async () => {
@@ -562,7 +562,7 @@ describe('insightsCheckCommand — auto-analyze (1-2 sessions)', () => {
       .mockResolvedValueOnce({ rawJson: makeAnalysisResponse(), durationMs: 500, inputTokens: 0, outputTokens: 0, model: 'claude-native', provider: 'claude-code-native' })
       .mockResolvedValueOnce({ rawJson: makePQResponse(), durationMs: 400, inputTokens: 0, outputTokens: 0, model: 'claude-native', provider: 'claude-code-native' });
     const { insightsCheckCommand } = await import('../insights.js');
-    await insightsCheckCommand({ days: 7, quiet: false });
+    await insightsCheckCommand({ days: 7, quiet: false, native: true });
     expect(mockValidate).toHaveBeenCalledTimes(1);
     expect(mockRunAnalysis).toHaveBeenCalledTimes(2);
   });
@@ -576,7 +576,7 @@ describe('insightsCheckCommand — auto-analyze (1-2 sessions)', () => {
       .mockResolvedValueOnce({ rawJson: makeAnalysisResponse(), durationMs: 500, inputTokens: 0, outputTokens: 0, model: 'claude-native', provider: 'claude-code-native' })
       .mockResolvedValueOnce({ rawJson: makePQResponse(), durationMs: 400, inputTokens: 0, outputTokens: 0, model: 'claude-native', provider: 'claude-code-native' });
     const { insightsCheckCommand } = await import('../insights.js');
-    await insightsCheckCommand({ days: 7, quiet: false });
+    await insightsCheckCommand({ days: 7, quiet: false, native: true });
     expect(mockValidate).toHaveBeenCalled();
     expect(mockRunAnalysis).toHaveBeenCalledTimes(4);
   });
@@ -614,7 +614,7 @@ describe('insightsCheckCommand — --analyze flag', () => {
   it('processes all sessions with --analyze and shows [N/total] progress', async () => {
     seedSessions(mockDb, 3);
     for (let i = 0; i < 3; i++) {
-      mockRunAnalysis
+      mockProviderRunAnalysis
         .mockResolvedValueOnce({ rawJson: makeAnalysisResponse(), durationMs: 1000, inputTokens: 0, outputTokens: 0, model: 'claude-native', provider: 'claude-code-native' })
         .mockResolvedValueOnce({ rawJson: makePQResponse(), durationMs: 800, inputTokens: 0, outputTokens: 0, model: 'claude-native', provider: 'claude-code-native' });
     }
@@ -632,7 +632,7 @@ describe('insightsCheckCommand — --analyze flag', () => {
 
   it('continues processing after one session fails', async () => {
     seedSessions(mockDb, 3);
-    mockRunAnalysis
+    mockProviderRunAnalysis
       .mockRejectedValueOnce(new Error('fail on session 0'))
       .mockResolvedValueOnce({ rawJson: makeAnalysisResponse(), durationMs: 1000, inputTokens: 0, outputTokens: 0, model: 'claude-native', provider: 'claude-code-native' })
       .mockResolvedValueOnce({ rawJson: makePQResponse(), durationMs: 800, inputTokens: 0, outputTokens: 0, model: 'claude-native', provider: 'claude-code-native' })

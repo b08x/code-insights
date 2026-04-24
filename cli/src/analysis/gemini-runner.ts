@@ -26,8 +26,12 @@ export class GeminiNativeRunner implements AnalysisRunner {
   async runAnalysis(params: RunAnalysisParams): Promise<RunAnalysisResult> {
     const start = Date.now();
     
-    // Combine system + user prompt
-    const fullPrompt = `${params.systemPrompt}\n\nUSER INSTRUCTIONS:\n${params.userPrompt}`;
+    // Combine system + user prompt. If a formal JSON schema is provided,
+    // inject it into the instructions to ensure structural compliance.
+    let fullPrompt = `${params.systemPrompt}\n\nUSER INSTRUCTIONS:\n${params.userPrompt}`;
+    if (params.jsonSchema) {
+      fullPrompt += `\n\nSTRICT JSON SCHEMA:\n${JSON.stringify(params.jsonSchema, null, 2)}`;
+    }
     
     try {
       const args = [

@@ -16,6 +16,9 @@
  */
 
 import chalk from 'chalk';
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 import { getDb } from '../db/client.js';
 import { ClaudeNativeRunner } from '../analysis/native-runner.js';
 import { CodexNativeRunner } from '../analysis/codex-runner.js';
@@ -35,10 +38,30 @@ import {
   saveFacetsToDb,
   convertToInsightRows,
   convertPQToInsightRow,
+  updateSessionTitle,
 } from '../analysis/analysis-db.js';
 import { saveAnalysisUsage } from '../analysis/analysis-usage-db.js';
 import type { AnalysisRunner } from '../analysis/runner-types.js';
 import type { SQLiteMessageRow } from '../analysis/prompt-types.js';
+
+// ── Schema loading ────────────────────────────────────────────────────────────
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+// Helper to safely load schema files from the same relative location in src or dist
+function loadSchema(filename: string): object | undefined {
+  try {
+    const path = join(__dirname, '..', 'analysis', 'schemas', filename);
+    return JSON.parse(readFileSync(path, 'utf-8'));
+  } catch (err) {
+    // Silently fail if schema is missing; runners will fall back to text-only prompts
+    return undefined;
+  }
+}
+
+const SESSION_ANALYSIS_SCHEMA = loadSchema('session-analysis.json');
+const PROMPT_QUALITY_SCHEMA = loadSchema('prompt-quality.json');
 
 // ── DB types ──────────────────────────────────────────────────────────────────
 
@@ -138,14 +161,14 @@ export async function runInsightsCommand(options: InsightsCommandOptions): Promi
   }
 
   // Helper to run analysis with multi-level fallback (Codex -> Claude -> Gemini)
-  const performAnalysis = async (params: { systemPrompt: string; userPrompt: string }) => {
+  const performAnalysis = async (params: { systemPrompt: string; userPrompt: string; jsonSchema?: object }) => {
     try {
       return await runner.runAnalysis(params);
     } catch (err: any) {
       // If using general 'native' mode (not forced to a specific runner)
       if (options.native && !options.codex && !options.gemini) {
         // Fallback 1: Codex -> Claude
-        if (runner instanceof CodexNativeRunner && err.message.includes('usage limit reached')) {
+        if (runner.name === 'codex-native' && err.message.includes('usage limit reached')) {
           log(chalk.yellow(`[Code Insights] Codex usage limit reached, falling back to Claude...`));
           try {
             ClaudeNativeRunner.validate();
@@ -158,7 +181,7 @@ export async function runInsightsCommand(options: InsightsCommandOptions): Promi
         }
 
         // Fallback 2: (Codex OR Claude) -> Gemini
-        if (runner instanceof CodexNativeRunner || runner instanceof ClaudeNativeRunner) {
+        if (runner.name === 'codex-native' || runner.name === 'claude-code-native') {
           try {
             GeminiNativeRunner.validate();
             const fallbackRunner = new GeminiNativeRunner();
@@ -229,6 +252,7 @@ export async function runInsightsCommand(options: InsightsCommandOptions): Promi
   const sessionResult = await performAnalysis({
     systemPrompt: SHARED_ANALYST_SYSTEM_PROMPT,
     userPrompt: sessionUserPrompt,
+    jsonSchema: SESSION_ANALYSIS_SCHEMA,
   });
 
   const parsedSession = parseAnalysisResponse(sessionResult.rawJson);
@@ -246,6 +270,11 @@ export async function runInsightsCommand(options: InsightsCommandOptions): Promi
 
   if (parsedSession.data.facets) {
     saveFacetsToDb(session.id, parsedSession.data.facets);
+  }
+
+  // Auto-apply generated title to the session record
+  if (parsedSession.data.summary?.title) {
+    updateSessionTitle(session.id, parsedSession.data.summary.title);
   }
 
   saveAnalysisUsage({
@@ -274,6 +303,7 @@ export async function runInsightsCommand(options: InsightsCommandOptions): Promi
   const pqResult = await performAnalysis({
     systemPrompt: SHARED_ANALYST_SYSTEM_PROMPT,
     userPrompt: pqUserPrompt,
+    jsonSchema: PROMPT_QUALITY_SCHEMA,
   });
 
   const parsedPQ = parsePromptQualityResponse(pqResult.rawJson);
