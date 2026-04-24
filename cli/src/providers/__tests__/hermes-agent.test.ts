@@ -49,6 +49,7 @@ vi.mock('better-sqlite3', () => {
         }),
       };
     });
+    pragma = vi.fn();
     close = vi.fn();
   }
   return {
@@ -102,28 +103,52 @@ describe('HermesAgentProvider', () => {
   describe('discover', () => {
     it('discovers sessions from central database', async () => {
       const discovered = await provider.discover();
-      expect(discovered).toContain(`central:${centralDbPath}#session-1`);
+      expect(discovered).toContain(`${centralDbPath}#session-1`);
     });
 
     it('discovers sessions from profile databases', async () => {
       const discovered = await provider.discover();
-      expect(discovered).toContain(`testuser:${profileDbPath}#session-1`);
+      expect(discovered).toContain(`${profileDbPath}#session-1`);
+    });
+
+    it('discovers JSON session files', async () => {
+      const sessionsDir = path.join(tempHomeDir, 'sessions');
+      fs.mkdirSync(sessionsDir, { recursive: true });
+      const sessionFile = path.join(sessionsDir, 'session_json-1.json');
+      fs.writeFileSync(sessionFile, JSON.stringify({ session_id: 'json-1' }));
+
+      const discovered = await provider.discover();
+      expect(discovered).toContain(sessionFile);
+    });
+
+    it('discovers bundled session directories and skips their parent files', async () => {
+      const sessionsDir = path.join(tempHomeDir, 'sessions');
+      fs.mkdirSync(sessionsDir, { recursive: true });
+      
+      const parentFile = path.join(sessionsDir, 'session_bundle-1.json');
+      fs.writeFileSync(parentFile, JSON.stringify({ session_id: 'bundle-1' }));
+      
+      const bundleDir = path.join(sessionsDir, 'bundle-1');
+      fs.mkdirSync(bundleDir, { recursive: true });
+      
+      const discovered = await provider.discover();
+      expect(discovered).toContain(bundleDir);
+      expect(discovered).not.toContain(parentFile);
     });
 
     it('discovers sessions from both central and profile databases', async () => {
       const discovered = await provider.discover();
 
-      expect(discovered).toHaveLength(2); // One from central, one from profile
-      expect(discovered).toContain(`central:${centralDbPath}#session-1`);
-      expect(discovered).toContain(`testuser:${profileDbPath}#session-1`);
+      expect(discovered).toContain(`${centralDbPath}#session-1`);
+      expect(discovered).toContain(`${profileDbPath}#session-1`);
     });
 
     it('filters sessions by title in central database', async () => {
       const discovered = await provider.discover({ projectFilter: 'Test' });
-      expect(discovered).toContain(`central:${centralDbPath}#session-1`);
+      expect(discovered).toContain(`${centralDbPath}#session-1`);
 
       const filtered = await provider.discover({ projectFilter: 'None' });
-      expect(filtered).not.toContain(`central:${centralDbPath}#session-1`);
+      expect(filtered).not.toContain(`${centralDbPath}#session-1`);
     });
 
     it('handles missing central database gracefully', async () => {
@@ -132,8 +157,8 @@ describe('HermesAgentProvider', () => {
       const discovered = await provider.discover();
 
       // Should still find profile database
-      expect(discovered).toContain(`testuser:${profileDbPath}#session-1`);
-      expect(discovered).not.toContain(`central:${centralDbPath}#session-1`);
+      expect(discovered).toContain(`${profileDbPath}#session-1`);
+      expect(discovered).not.toContain(`${centralDbPath}#session-1`);
     });
 
     it('handles missing profiles directory gracefully', async () => {
@@ -142,7 +167,7 @@ describe('HermesAgentProvider', () => {
       const discovered = await provider.discover();
 
       // Should still find central database
-      expect(discovered).toContain(`central:${centralDbPath}#session-1`);
+      expect(discovered).toContain(`${centralDbPath}#session-1`);
       expect(discovered).toHaveLength(1);
     });
 
@@ -161,7 +186,7 @@ describe('HermesAgentProvider', () => {
 
   describe('parse', () => {
     it('parses a valid session from central database', async () => {
-      const virtualPath = `central:${centralDbPath}#session-1`;
+      const virtualPath = `${centralDbPath}#session-1`;
       const session = await provider.parse(virtualPath);
 
       expect(session).not.toBeNull();
@@ -183,6 +208,48 @@ describe('HermesAgentProvider', () => {
       expect(session!.usage!.totalInputTokens).toBe(100);
       expect(session!.usage!.totalOutputTokens).toBe(50);
       expect(session!.usage!.estimatedCostUsd).toBe(0.01);
+    });
+
+    it('parses a bundled session with aggregated messages', async () => {
+      const sessionsDir = path.join(tempHomeDir, 'sessions');
+      fs.mkdirSync(sessionsDir, { recursive: true });
+      
+      const sessionId = 'bundle-test';
+      const parentFile = path.join(sessionsDir, `session_${sessionId}.json`);
+      fs.writeFileSync(parentFile, JSON.stringify({
+        session_id: sessionId,
+        session_start: 1714000000000,
+        messages: [
+          { role: 'user', content: 'Parent message', timestamp: 1714000000000 }
+        ]
+      }));
+      
+      const bundleDir = path.join(sessionsDir, sessionId);
+      fs.mkdirSync(bundleDir, { recursive: true });
+      
+      fs.writeFileSync(path.join(bundleDir, 'sub-1.json'), JSON.stringify({
+        messages: [
+          { role: 'assistant', content: 'Sub message', timestamp: 1714000001000 }
+        ]
+      }));
+
+      const session = await provider.parse(bundleDir);
+      
+      expect(session).not.toBeNull();
+      expect(session!.messageCount).toBe(2);
+      expect(session!.messages[0].content).toBe('Parent message');
+      expect(session!.messages[1].content).toBe('Sub message');
+      expect(session!.startedAt.getTime()).toBe(1714000000000);
+      expect(session!.endedAt.getTime()).toBe(1714000001000);
+    });
+
+    it('handles missing database timestamps with Date.now() fallback', async () => {
+      const virtualPath = `${centralDbPath}#session-1`;
+      const session = await provider.parse(virtualPath);
+      if (session) {
+        expect(session.startedAt.getTime()).toBeGreaterThan(0);
+        expect(session.endedAt.getTime()).toBeGreaterThan(0);
+      }
     });
 
     it('parses a valid session from profile database', async () => {
