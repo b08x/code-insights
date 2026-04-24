@@ -110,6 +110,21 @@ describe('OpenCodeProvider', () => {
       expect(discovered).toContain(path.join(tempBaseDir, 'storage', 'session', 'project-1', 'ses-1.json'));
     });
 
+    it('discovers bundled session directories and skips their parent files', async () => {
+      const projectDir = path.join(tempBaseDir, 'storage', 'session', 'project-bundle');
+      fs.mkdirSync(projectDir, { recursive: true });
+      
+      const parentFile = path.join(projectDir, 'bundle-1.json');
+      fs.writeFileSync(parentFile, JSON.stringify({ id: 'bundle-1' }));
+      
+      const bundleDir = path.join(projectDir, 'bundle-1');
+      fs.mkdirSync(bundleDir, { recursive: true });
+      
+      const discovered = await provider.discover({ projectFilter: 'project-bundle' });
+      expect(discovered).toContain(bundleDir);
+      expect(discovered).not.toContain(parentFile);
+    });
+
     it('filters by project slug (directory name)', async () => {
       const discovered = await provider.discover({ projectFilter: 'project-1' });
       expect(discovered).toHaveLength(1);
@@ -146,6 +161,67 @@ describe('OpenCodeProvider', () => {
       expect(session!.usage!.totalInputTokens).toBe(100);
       expect(session!.usage!.totalOutputTokens).toBe(50);
       expect(session!.usage!.estimatedCostUsd).toBe(0.05);
+    });
+
+    it('parses a bundled session with aggregated messages', async () => {
+      const sessionId = 'bundle-ses';
+      const projectDir = path.join(tempBaseDir, 'storage', 'session', 'project-bundle');
+      fs.mkdirSync(projectDir, { recursive: true });
+      
+      const parentFile = path.join(projectDir, `${sessionId}.json`);
+      fs.writeFileSync(parentFile, JSON.stringify({
+        id: sessionId,
+        title: 'Parent Session',
+        time: { created: 1714000000000 }
+      }));
+      
+      const messagesDir = path.join(tempBaseDir, 'storage', 'message', sessionId);
+      fs.mkdirSync(messagesDir, { recursive: true });
+      fs.writeFileSync(path.join(messagesDir, 'msg-parent.json'), JSON.stringify({
+        id: 'msg-parent',
+        role: 'user',
+        time: { created: 1714000000000 }
+      }));
+
+      const bundleDir = path.join(projectDir, sessionId);
+      fs.mkdirSync(bundleDir, { recursive: true });
+      fs.writeFileSync(path.join(bundleDir, 'sub-1.json'), JSON.stringify({
+        id: 'sub-1-id',
+        title: 'Sub Session',
+        time: { created: 1714000001000 }
+      }));
+      
+      const subMessagesDir = path.join(tempBaseDir, 'storage', 'message', 'sub-1-id');
+      fs.mkdirSync(subMessagesDir, { recursive: true });
+      fs.writeFileSync(path.join(subMessagesDir, 'msg-sub.json'), JSON.stringify({
+        id: 'msg-sub',
+        role: 'assistant',
+        time: { created: 1714000001000 }
+      }));
+
+      const session = await provider.parse(bundleDir);
+      
+      expect(session).not.toBeNull();
+      expect(session!.messageCount).toBe(2);
+      expect(session!.messages[0].id).toBe('msg-parent');
+      expect(session!.messages[1].id).toBe('msg-sub');
+      expect(session!.startedAt.getTime()).toBe(1714000000000);
+      expect(session!.endedAt.getTime()).toBe(1714000001000);
+    });
+
+    it('handles missing timestamps with Date.now() fallback', async () => {
+      const filePath = path.join(tempBaseDir, 'storage', 'session', 'project-1', 'ses-1.json');
+      // Modify file to have 0 timestamps
+      fs.writeFileSync(filePath, JSON.stringify({
+        id: 'ses-1',
+        time: { created: 0, updated: 0 }
+      }));
+      
+      const session = await provider.parse(filePath);
+      if (session) {
+        expect(session.startedAt.getTime()).toBeGreaterThan(0);
+        expect(session.endedAt.getTime()).toBeGreaterThan(0);
+      }
     });
   });
 });

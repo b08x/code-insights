@@ -111,9 +111,21 @@ export class HermesAgentProvider implements SessionProvider {
 
   private discoverJsonFilesInDir(dir: string): string[] {
     try {
-      return fs.readdirSync(dir)
-        .filter(file => file.startsWith('session_') && file.endsWith('.json'))
-        .map(file => path.join(dir, file));
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      const results: string[] = [];
+      const subDirs = entries.filter(e => e.isDirectory()).map(e => e.name);
+
+      for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          results.push(fullPath);
+        } else if (entry.isFile() && entry.name.startsWith('session_') && entry.name.endsWith('.json')) {
+          const sessionId = entry.name.replace('session_', '').replace('.json', '');
+          if (subDirs.includes(sessionId)) continue;
+          results.push(fullPath);
+        }
+      }
+      return results;
     } catch {
       return [];
     }
@@ -156,6 +168,10 @@ export class HermesAgentProvider implements SessionProvider {
   }
 
   async parse(virtualPath: string): Promise<ParsedSession | null> {
+    if (fs.existsSync(virtualPath) && fs.statSync(virtualPath).isDirectory()) {
+      return this.parseBundledSession(virtualPath);
+    }
+
     // 1. Handle backward compatible virtualPath format: "source:dbPath#sessionId"
     if (virtualPath.includes(':') && virtualPath.includes('#') && !virtualPath.startsWith('/')) {
       const sourceEndIndex = virtualPath.indexOf(':');
@@ -179,6 +195,89 @@ export class HermesAgentProvider implements SessionProvider {
     }
 
     return null;
+  }
+
+  private async parseBundledSession(dirPath: string): Promise<ParsedSession | null> {
+    try {
+      const sessionId = path.basename(dirPath);
+      const parentDir = path.dirname(dirPath);
+      const parentFile = path.join(parentDir, `session_${sessionId}.json`);
+
+      if (!fs.existsSync(parentFile)) return null;
+
+      const parentSession = await this.parseJsonSession(parentFile);
+      if (!parentSession) return null;
+
+      const subFiles = this.findFiles(dirPath, ['.json']);
+      for (const subFile of subFiles) {
+        const subSession = await this.parseJsonSession(subFile);
+        if (subSession && subSession.messages.length > 0) {
+          for (const msg of subSession.messages) {
+            msg.sessionId = parentSession.id;
+          }
+          parentSession.messages.push(...subSession.messages);
+          
+          if (subSession.startedAt < parentSession.startedAt) parentSession.startedAt = subSession.startedAt;
+          if (subSession.endedAt > parentSession.endedAt) parentSession.endedAt = subSession.endedAt;
+        }
+      }
+
+      parentSession.messages.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+      parentSession.messageCount = parentSession.messages.length;
+      parentSession.userMessageCount = parentSession.messages.filter(m => m.type === 'user').length;
+      parentSession.assistantMessageCount = parentSession.messages.filter(m => m.type === 'assistant').length;
+      parentSession.toolCallCount = parentSession.messages.reduce((sum, m) => sum + m.toolCalls.length, 0);
+      parentSession.usage = this.calculateSessionUsage(parentSession.messages);
+
+      return parentSession;
+    } catch (err) {
+      console.error(`[hermes-agent] Failed to parse bundled session ${dirPath}: ${err}`);
+      return null;
+    }
+  }
+
+  private findFiles(dir: string, extensions: string[]): string[] {
+    const results: string[] = [];
+    if (!fs.existsSync(dir)) return results;
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        results.push(...this.findFiles(fullPath, extensions));
+      } else if (extensions.some(ext => entry.name.endsWith(ext))) {
+        results.push(fullPath);
+      }
+    }
+    return results;
+  }
+
+  private calculateSessionUsage(messages: ParsedMessage[]): SessionUsage {
+    let totalInputTokens = 0;
+    let totalOutputTokens = 0;
+    let cacheReadTokens = 0;
+    const modelsUsed = new Set<string>();
+
+    for (const msg of messages) {
+      if (msg.usage) {
+        totalInputTokens += msg.usage.inputTokens;
+        totalOutputTokens += msg.usage.outputTokens;
+        cacheReadTokens += msg.usage.cacheReadTokens;
+        modelsUsed.add(msg.usage.model);
+      }
+    }
+
+    const primaryModel = Array.from(modelsUsed)[0] || 'unknown';
+
+    return {
+      totalInputTokens,
+      totalOutputTokens,
+      cacheCreationTokens: 0,
+      cacheReadTokens,
+      estimatedCostUsd: 0, // Costs handled by database if available, or 0 for JSON
+      modelsUsed: Array.from(modelsUsed),
+      primaryModel,
+      usageSource: 'session',
+    };
   }
 
   private getSourceFromPath(dbOrJsonPath: string): string {
@@ -264,7 +363,7 @@ export class HermesAgentProvider implements SessionProvider {
             model: sessionRow.model || 'unknown',
             estimatedCostUsd: 0,
           } : null,
-          timestamp: new Date(row.timestamp * 1000),
+          timestamp: new Date((row.timestamp || (Date.now() / 1000)) * 1000),
           parentId: null,
         };
 
@@ -298,8 +397,8 @@ export class HermesAgentProvider implements SessionProvider {
         generatedTitle: sessionRow.title || null,
         titleSource: sessionRow.title ? 'insight' : null,
         sessionCharacter: null,
-        startedAt: new Date(sessionRow.started_at * 1000),
-        endedAt: sessionRow.ended_at ? new Date(sessionRow.ended_at * 1000) : new Date(sessionRow.started_at * 1000),
+        startedAt: new Date((sessionRow.started_at || (Date.now() / 1000)) * 1000),
+        endedAt: sessionRow.ended_at ? new Date(sessionRow.ended_at * 1000) : new Date((sessionRow.started_at || (Date.now() / 1000)) * 1000),
         messageCount: messages.length,
         userMessageCount,
         assistantMessageCount,
@@ -383,7 +482,7 @@ export class HermesAgentProvider implements SessionProvider {
             toolCalls,
             toolResults: [],
             usage: null, // Per-message usage typically not in JSON dump
-            timestamp: new Date(data.session_start), // Fallback to session start if not in message
+            timestamp: new Date(msg.timestamp || data.session_start || Date.now()),
             parentId: null,
           };
 
@@ -395,6 +494,8 @@ export class HermesAgentProvider implements SessionProvider {
         }
       }
 
+      messages.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+
       const session: ParsedSession = {
         id: `hermes-agent-${source}:${sessionId}`,
         projectPath: '',
@@ -403,8 +504,8 @@ export class HermesAgentProvider implements SessionProvider {
         generatedTitle: null,
         titleSource: null,
         sessionCharacter: null,
-        startedAt: new Date(data.session_start),
-        endedAt: new Date(data.last_updated || data.session_start),
+        startedAt: new Date(data.session_start || (messages.length > 0 ? messages[0].timestamp : Date.now())),
+        endedAt: new Date(data.last_updated || (messages.length > 0 ? messages[messages.length - 1].timestamp : (data.session_start || Date.now()))),
         messageCount: messages.length,
         userMessageCount,
         assistantMessageCount,
@@ -415,16 +516,7 @@ export class HermesAgentProvider implements SessionProvider {
         gitBranch: null,
         claudeVersion: null,
         sourceTool: 'hermes-agent',
-        usage: {
-          totalInputTokens: 0,
-          totalOutputTokens: 0,
-          cacheCreationTokens: 0,
-          cacheReadTokens: 0,
-          estimatedCostUsd: 0,
-          modelsUsed: data.model ? [data.model] : [],
-          primaryModel: data.model || 'unknown',
-          usageSource: 'session',
-        },
+        usage: this.calculateSessionUsage(messages),
         messages,
       };
 

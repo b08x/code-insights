@@ -174,20 +174,31 @@ export class OpenCodeProvider implements SessionProvider {
 
         totalProjects++;
 
-        const files = fs.readdirSync(projectPath).filter(f => f.endsWith('.json'));
-        this.log('debug', `Project ${projectDir} has ${files.length} JSON files`);
+        const entries = fs.readdirSync(projectPath, { withFileTypes: true });
+        const subDirs = entries.filter(e => e.isDirectory()).map(e => e.name);
 
-        for (const file of files) {
-          const filePath = path.join(projectPath, file);
+        for (const entry of entries) {
+          const fullPath = path.join(projectPath, entry.name);
 
-          // Basic validation - check if file is readable
-          try {
-            fs.accessSync(filePath, fs.constants.R_OK);
-            sessionFiles.push(filePath);
-            this.log('debug', `Added JSON session: ${filePath}`);
-          } catch (accessErr) {
-            this.log('warn', `Cannot read session file ${filePath}`, accessErr);
-            skippedFiles++;
+          if (entry.isDirectory()) {
+            sessionFiles.push(fullPath);
+            this.log('debug', `Added bundled JSON session directory: ${fullPath}`);
+          } else if (entry.isFile() && entry.name.endsWith('.json')) {
+            const sessionId = entry.name.replace('.json', '');
+            if (subDirs.includes(sessionId)) {
+              this.log('debug', `Skipping parent file ${entry.name}, will be bundled via directory`);
+              continue;
+            }
+
+            // Basic validation - check if file is readable
+            try {
+              fs.accessSync(fullPath, fs.constants.R_OK);
+              sessionFiles.push(fullPath);
+              this.log('debug', `Added JSON session: ${fullPath}`);
+            } catch (accessErr) {
+              this.log('warn', `Cannot read session file ${fullPath}`, accessErr);
+              skippedFiles++;
+            }
           }
         }
       }
@@ -201,6 +212,10 @@ export class OpenCodeProvider implements SessionProvider {
   }
 
   async parse(virtualPath: string): Promise<ParsedSession | null> {
+    if (fs.existsSync(virtualPath) && fs.statSync(virtualPath).isDirectory()) {
+      return this.parseBundledSession(virtualPath);
+    }
+
     // 1. Handle database sessions
     if (virtualPath.includes('#')) {
       return this.parseDatabaseSession(virtualPath);
@@ -212,6 +227,91 @@ export class OpenCodeProvider implements SessionProvider {
     }
 
     return null;
+  }
+
+  private async parseBundledSession(dirPath: string): Promise<ParsedSession | null> {
+    try {
+      const sessionId = path.basename(dirPath);
+      const parentDir = path.dirname(dirPath);
+      const parentFile = path.join(parentDir, `${sessionId}.json`);
+
+      if (!fs.existsSync(parentFile)) return null;
+
+      const parentSession = await this.parseJsonSession(parentFile);
+      if (!parentSession) return null;
+
+      const subFiles = this.findFiles(dirPath, ['.json']);
+      for (const subFile of subFiles) {
+        const subSession = await this.parseJsonSession(subFile);
+        if (subSession && subSession.messages.length > 0) {
+          for (const msg of subSession.messages) {
+            msg.sessionId = parentSession.id;
+          }
+          parentSession.messages.push(...subSession.messages);
+          
+          if (subSession.startedAt < parentSession.startedAt) parentSession.startedAt = subSession.startedAt;
+          if (subSession.endedAt > parentSession.endedAt) parentSession.endedAt = subSession.endedAt;
+        }
+      }
+
+      parentSession.messages.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+      parentSession.messageCount = parentSession.messages.length;
+      parentSession.userMessageCount = parentSession.messages.filter(m => m.type === 'user').length;
+      parentSession.assistantMessageCount = parentSession.messages.filter(m => m.type === 'assistant').length;
+      parentSession.toolCallCount = parentSession.messages.reduce((sum, m) => sum + m.toolCalls.length, 0);
+      parentSession.usage = this.calculateSessionUsage(parentSession.messages);
+
+      return parentSession;
+    } catch (err) {
+      this.log('error', `Failed to parse bundled session ${dirPath}`, err);
+      return null;
+    }
+  }
+
+  private findFiles(dir: string, extensions: string[]): string[] {
+    const results: string[] = [];
+    if (!fs.existsSync(dir)) return results;
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        results.push(...this.findFiles(fullPath, extensions));
+      } else if (extensions.some(ext => entry.name.endsWith(ext))) {
+        results.push(fullPath);
+      }
+    }
+    return results;
+  }
+
+  private calculateSessionUsage(messages: ParsedMessage[]): SessionUsage {
+    let totalInputTokens = 0;
+    let totalOutputTokens = 0;
+    let cacheReadTokens = 0;
+    const modelsUsed = new Set<string>();
+    let totalCost = 0;
+
+    for (const msg of messages) {
+      if (msg.usage) {
+        totalInputTokens += msg.usage.inputTokens;
+        totalOutputTokens += msg.usage.outputTokens;
+        cacheReadTokens += msg.usage.cacheReadTokens;
+        totalCost += msg.usage.estimatedCostUsd;
+        modelsUsed.add(msg.usage.model);
+      }
+    }
+
+    const primaryModel = Array.from(modelsUsed)[0] || 'unknown';
+
+    return {
+      totalInputTokens,
+      totalOutputTokens,
+      cacheCreationTokens: 0,
+      cacheReadTokens,
+      estimatedCostUsd: totalCost,
+      modelsUsed: Array.from(modelsUsed),
+      primaryModel,
+      usageSource: 'session',
+    };
   }
 
   /**
@@ -259,10 +359,6 @@ export class OpenCodeProvider implements SessionProvider {
       let userMessageCount = 0;
       let assistantMessageCount = 0;
       let toolCallCount = 0;
-      let totalInputTokens = 0;
-      let totalOutputTokens = 0;
-      let totalCost = 0;
-      const modelsUsed = new Set<string>();
 
       for (const msgRow of messageRows) {
         let msgUsage: any = null;
@@ -284,9 +380,6 @@ export class OpenCodeProvider implements SessionProvider {
           continue;
         }
 
-        if (!msgRow.time_created) {
-          this.log('warn', `Message ${msgRow.id} missing timestamp, using current time`);
-        }
         // Load parts for this message
         let partRows: any[] = [];
         if (hasPartTable) {
@@ -361,7 +454,6 @@ export class OpenCodeProvider implements SessionProvider {
         }
 
         const model = msgData.modelID || (msgData.model?.modelID) || msgRow.model_id || 'unknown';
-        if (model !== 'unknown') modelsUsed.add(model);
 
         // Usage data might be in JSON format in the database row, separate columns, or already parsed from parts
         if (!msgUsage) {
@@ -374,7 +466,6 @@ export class OpenCodeProvider implements SessionProvider {
                model,
                estimatedCostUsd: msgRow.cost || 0,
              };
-             this.log('debug', `Parsed usage from columns for message ${msgRow.id}: ${msgUsage.inputTokens}/${msgUsage.outputTokens} tokens`);
           } else if (msgRow.tokens || msgData.tokens) {
              try {
                const tokens = msgData.tokens || this.parseJsonSafely(msgRow.tokens, `message ${msgRow.id} tokens`);
@@ -386,17 +477,10 @@ export class OpenCodeProvider implements SessionProvider {
                  model,
                  estimatedCostUsd: msgData.cost || msgRow.cost || 0,
                };
-               this.log('debug', `Parsed usage from JSON for message ${msgRow.id}: ${msgUsage.inputTokens}/${msgUsage.outputTokens} tokens`);
              } catch (tokensErr) {
                this.log('warn', `Failed to parse tokens JSON for message ${msgRow.id}`, tokensErr);
              }
           }
-        }
-
-        if (msgUsage) {
-          totalInputTokens += msgUsage.inputTokens;
-          totalOutputTokens += msgUsage.outputTokens;
-          totalCost += msgUsage.estimatedCostUsd;
         }
 
         const type = role === 'assistant' ? 'assistant' : (role === 'user' ? 'user' : 'system');
@@ -413,7 +497,7 @@ export class OpenCodeProvider implements SessionProvider {
           toolCalls,
           toolResults,
           usage: msgUsage,
-          timestamp: new Date(msgRow.time_created),
+          timestamp: new Date(msgRow.time_created || Date.now()),
           parentId: msgData.parentID || msgRow.parent_id || null,
         });
       }
@@ -426,8 +510,8 @@ export class OpenCodeProvider implements SessionProvider {
         generatedTitle: sessionRow.title || null,
         titleSource: sessionRow.title ? 'insight' : null,
         sessionCharacter: null,
-        startedAt: new Date(sessionRow.time_created),
-        endedAt: new Date(sessionRow.time_updated),
+        startedAt: new Date(sessionRow.time_created || (messages.length > 0 ? messages[0].timestamp : Date.now())),
+        endedAt: new Date(sessionRow.time_updated || (messages.length > 0 ? messages[messages.length - 1].timestamp : Date.now())),
         messageCount: messages.length,
         userMessageCount,
         assistantMessageCount,
@@ -438,16 +522,7 @@ export class OpenCodeProvider implements SessionProvider {
         gitBranch: null,
         claudeVersion: sessionRow.version || null,
         sourceTool: 'opencode',
-        usage: {
-          totalInputTokens,
-          totalOutputTokens,
-          cacheCreationTokens: 0,
-          cacheReadTokens: 0,
-          estimatedCostUsd: totalCost,
-          modelsUsed: Array.from(modelsUsed),
-          primaryModel: Array.from(modelsUsed)[0] || 'unknown',
-          usageSource: 'session',
-        },
+        usage: this.calculateSessionUsage(messages),
         messages,
       };
 
@@ -462,8 +537,7 @@ export class OpenCodeProvider implements SessionProvider {
         messages: messages.length,
         userMessages: userMessageCount,
         assistantMessages: assistantMessageCount,
-        toolCalls: toolCallCount,
-        totalTokens: totalInputTokens + totalOutputTokens
+        toolCalls: toolCallCount
       });
 
       return session;
@@ -510,10 +584,6 @@ export class OpenCodeProvider implements SessionProvider {
       let userMessageCount = 0;
       let assistantMessageCount = 0;
       let toolCallCount = 0;
-      let totalInputTokens = 0;
-      let totalOutputTokens = 0;
-      let totalCost = 0;
-      const modelsUsed = new Set<string>();
 
       const messageFiles = fs.readdirSync(messagesDir).filter(f => f.endsWith('.json'));
       this.log('debug', `Found ${messageFiles.length} message files in ${messagesDir}`);
@@ -603,7 +673,6 @@ export class OpenCodeProvider implements SessionProvider {
         }
 
         const model = msgData.modelID || (msgData.model?.modelID) || 'unknown';
-        if (model !== 'unknown') modelsUsed.add(model);
 
         let usage = msgUsage || null;
         if (!usage && msgData.tokens) {
@@ -615,15 +684,6 @@ export class OpenCodeProvider implements SessionProvider {
             model,
             estimatedCostUsd: msgData.cost || 0,
           };
-          this.log('debug', `Message ${msgData.id} usage: ${usage.inputTokens}/${usage.outputTokens} tokens`);
-        } else if (!usage) {
-          this.log('debug', `No usage data for message ${msgData.id}`);
-        }
-
-        if (usage) {
-          totalInputTokens += usage.inputTokens;
-          totalOutputTokens += usage.outputTokens;
-          totalCost += usage.estimatedCostUsd;
         }
 
         const type = msgData.role === 'assistant' ? 'assistant' : (msgData.role === 'user' ? 'user' : 'system');
@@ -640,7 +700,7 @@ export class OpenCodeProvider implements SessionProvider {
           toolCalls,
           toolResults,
           usage,
-          timestamp: new Date(msgData.time?.created || sessionData.time?.created || 0),
+          timestamp: new Date(msgData.time?.created || sessionData.time?.created || Date.now()),
           parentId: msgData.parentID || null,
         });
 
@@ -657,8 +717,8 @@ export class OpenCodeProvider implements SessionProvider {
         generatedTitle: sessionData.title || null,
         titleSource: sessionData.title ? 'insight' : null,
         sessionCharacter: null,
-        startedAt: new Date(sessionData.time?.created || (messages.length > 0 ? messages[0].timestamp.getTime() : 0)),
-        endedAt: new Date(sessionData.time?.updated || (messages.length > 0 ? messages[messages.length - 1].timestamp.getTime() : 0)),
+        startedAt: new Date(sessionData.time?.created || (messages.length > 0 ? messages[0].timestamp.getTime() : Date.now())),
+        endedAt: new Date(sessionData.time?.updated || (messages.length > 0 ? messages[messages.length - 1].timestamp.getTime() : Date.now())),
         messageCount: messages.length,
         userMessageCount,
         assistantMessageCount,
@@ -669,16 +729,7 @@ export class OpenCodeProvider implements SessionProvider {
         gitBranch: null,
         claudeVersion: sessionData.version || null,
         sourceTool: 'opencode',
-        usage: {
-          totalInputTokens,
-          totalOutputTokens,
-          cacheCreationTokens: 0,
-          cacheReadTokens: 0,
-          estimatedCostUsd: totalCost,
-          modelsUsed: Array.from(modelsUsed),
-          primaryModel: Array.from(modelsUsed)[0] || 'unknown',
-          usageSource: 'session',
-        },
+        usage: this.calculateSessionUsage(messages),
         messages,
       };
 
@@ -693,8 +744,7 @@ export class OpenCodeProvider implements SessionProvider {
         messages: messages.length,
         userMessages: userMessageCount,
         assistantMessages: assistantMessageCount,
-        toolCalls: toolCallCount,
-        totalTokens: totalInputTokens + totalOutputTokens
+        toolCalls: toolCallCount
       });
 
       return session;
