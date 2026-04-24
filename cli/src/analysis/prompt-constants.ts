@@ -19,11 +19,13 @@ export const FRICTION_CLASSIFICATION_GUIDANCE = `<classification_guidance name="
 - "context-loss": Prior established session constraints forgotton or dropped.
 - "scope-creep": Execution expanded beyond stated boundaries.
 - "repeated-mistakes": Same error occurred multiple times post-correction.
+- "rage-loop": Tight temporal message cluster where token count is maxed/static and semantic progress is zero.
 - "documentation-gap": Unfindable or inaccessible documentation.
 - "tooling-limitation": Permanent tool gap (no workaround exists).
 </categories>
 
 <disambiguation_rules>
+- rage-loop vs repeated-mistakes: Rage-loop requires static maxed context (high token count) and rapid-fire turns. Repeated-mistakes focus on content, not context pressure.
 - tooling-limitation vs wrong-approach: Limitation = NO workaround. Wrong-approach = Suboptimal choice.
 - tooling-limitation vs knowledge-gap: Limitation = Capability missing. Knowledge-gap = Capability applied wrong.
 - tooling-limitation vs stale-assumptions: Limitation = Permanent gap. Stale-assumptions = Tool behavior changed.
@@ -33,16 +35,16 @@ export const FRICTION_CLASSIFICATION_GUIDANCE = `<classification_guidance name="
 
 <attribution_decision_tree>
 Evaluate in strict order:
-1. "environmental" = Cause external to user-AI interaction (infra outage, missing docs).
-2. "user-actionable" = Vague prompt, missing context, no constraints, ambiguous correction.
-3. "ai-capability" = User input clear, AI still failed.
+1. "environmental" = Cause external to user-AI interaction (infra outage, missing docs, context window limits).
+2. "user-actionable" = Vague prompt, missing context, no constraints, ambiguous correction, entering a rage loop without /compact.
+3. "ai-capability" = User input clear, AI still failed (e.g. hallucinating tool success).
 Resolve ambiguity to "user-actionable" to maintain analytical focus.
 </attribution_decision_tree>
 
 <description_rules>
 - Output one neutral sentence describing the GAP, not the actor.
-- Inject specific details (file names, APIs, errors).
-- Sequence as "Missing X caused Y".
+- Inject specific details (file names, APIs, errors, turn ranges for loops).
+- Sequence as "Missing X caused Y" or "Static context window caused rage loop across turns User#N-User#M".
 - Transfer actor attribution entirely to the attribution field.
 </description_rules>
 </classification_guidance>`;
@@ -55,6 +57,7 @@ export const CANONICAL_FRICTION_CATEGORIES = [
   'context-loss',
   'scope-creep',
   'repeated-mistakes',
+  'rage-loop',
   'documentation-gap',
   'tooling-limitation',
 ] as const;

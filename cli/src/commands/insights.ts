@@ -31,6 +31,7 @@ import {
   buildCacheableConversationBlock,
 } from '../analysis/prompts.js';
 import { formatMessagesForAnalysis } from '../analysis/message-format.js';
+import { detectRageLoopHeuristic } from '../analysis/loop-detector.js';
 import { parseAnalysisResponse, parsePromptQualityResponse } from '../analysis/response-parsers.js';
 import {
   saveInsightsToDb,
@@ -223,6 +224,9 @@ export async function runInsightsCommand(options: InsightsCommandOptions): Promi
   // 5. Build shared conversation block (same for both passes)
   const formattedMessages = formatMessagesForAnalysis(messages);
 
+  // 6. Heuristic loop detection
+  const loopSignal = detectRageLoopHeuristic(messages);
+
   // Session metadata for prompt builders
   const slashCommands = (() => {
     try {
@@ -246,6 +250,7 @@ export async function runInsightsCommand(options: InsightsCommandOptions): Promi
     session.project_name,
     session.summary,
     sessionMeta,
+    loopSignal,
   );
   const sessionUserPrompt = `${buildCacheableConversationBlock(formattedMessages).text}\n${sessionInstructions}`;
 

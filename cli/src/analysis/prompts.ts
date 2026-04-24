@@ -3,6 +3,7 @@
 // formatting → message-format.ts, parsers → response-parsers.ts.
 
 import type { SessionMetadata, ContentBlock } from './prompt-types.js';
+import type { RageLoopSignal } from './loop-detector.js';
 import {
   FRICTION_CLASSIFICATION_GUIDANCE,
   CANONICAL_FRICTION_CATEGORIES,
@@ -76,15 +77,26 @@ export function buildCacheableConversationBlock(formattedMessages: string): Cont
 export function buildSessionAnalysisInstructions(
   projectName: string,
   sessionSummary: string | null,
-  meta?: SessionMetadata
+  meta?: SessionMetadata,
+  loopSignal?: RageLoopSignal
 ): string {
+  const loopInfo = loopSignal?.detected
+    ? `  <detected_signals>
+    <rage_loop>
+      <reasoning>${loopSignal.reasoning}</reasoning>
+      <turn_range>${loopSignal.turnRange?.join(' to ')}</turn_range>
+      <guidance>Verify if these turns exhibit zero semantic progress despite the static context. If so, classify as a high-severity rage-loop.</guidance>
+    </rage_loop>
+  </detected_signals>\n`
+    : '';
+
   return `<task>
 Extract analytical session facets, decisions, and learnings from the provided session transcript into structured JSON.
 </task>
 
 <context>
   <project_name>${projectName}</project_name>
-${sessionSummary ? `  <session_summary>${sessionSummary}</session_summary>\n` : ''}  <system_metadata>${formatSessionMetaLine(meta)}</system_metadata>
+${sessionSummary ? `  <session_summary>${sessionSummary}</session_summary>\n` : ''}${loopInfo}  <system_metadata>${formatSessionMetaLine(meta)}</system_metadata>
 </context>
 
 <rules>
@@ -283,15 +295,26 @@ Respond with valid JSON only, wrapped in <json>...</json> tags.`;
 export function buildFacetOnlyInstructions(
   projectName: string,
   sessionSummary: string | null,
-  meta?: SessionMetadata
+  meta?: SessionMetadata,
+  loopSignal?: RageLoopSignal
 ): string {
+  const loopInfo = loopSignal?.detected
+    ? `  <detected_signals>
+    <rage_loop>
+      <reasoning>${loopSignal.reasoning}</reasoning>
+      <turn_range>${loopSignal.turnRange?.join(' to ')}</turn_range>
+      <guidance>Verify if these turns exhibit zero semantic progress despite the static context. If so, classify as a high-severity rage-loop.</guidance>
+    </rage_loop>
+  </detected_signals>\n`
+    : '';
+
   return `<task>
 Extract session facets for cross-session pattern analysis. Focus on holistic session execution, friction points, and effective workflow patterns.
 </task>
 
 <context>
   <project_name>${projectName}</project_name>
-${sessionSummary ? `  <session_summary>${sessionSummary}</session_summary>\n` : ''}${formatSessionMetaLine(meta)}</context>
+${sessionSummary ? `  <session_summary>${sessionSummary}</session_summary>\n` : ''}${loopInfo}${formatSessionMetaLine(meta)}</context>
 
 <rules>
   1. Evaluate the session boundaries and overall progress explicitly.

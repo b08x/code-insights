@@ -66,29 +66,37 @@ export function classifyStoredUserMessage(content: string): 'human' | 'tool-resu
 export function formatMessagesForAnalysis(messages: SQLiteMessageRow[]): string {
   let userIndex = 0;
   let assistantIndex = 0;
+  let lastTimestamp: number | null = null;
 
   return messages
     .map((m) => {
       let roleLabel: string;
+      const currentTimestamp = new Date(m.timestamp).getTime();
+      const deltaSeconds = lastTimestamp ? Math.round((currentTimestamp - lastTimestamp) / 1000) : null;
+      lastTimestamp = currentTimestamp;
+
+      const deltaInfo = deltaSeconds !== null ? ` | +${deltaSeconds}s` : '';
+
+      // Extract token usage if available
+      const usage = safeParseJson<{ inputTokens?: number; totalTokens?: number }>(m.usage, {});
+      const tokenCount = usage.inputTokens || usage.totalTokens || 0;
+      const tokenInfo = tokenCount > 0 ? ` | ${Math.round(tokenCount / 1000)}k tokens` : '';
 
       if (m.type === 'user') {
         const msgClass = classifyStoredUserMessage(m.content);
         if (msgClass === 'tool-result') {
-          roleLabel = '[tool-result]';
+          roleLabel = `[tool-result${deltaInfo}${tokenInfo}]`;
         } else if (msgClass === 'system-artifact') {
-          // Auto-compact summaries use two known prefixes — everything else (slash commands,
-          // skill loads) is a generic system artifact, not a compaction event.
           const isAutoCompact = m.content.startsWith('Here is a summary of our conversation')
             || m.content.startsWith('This session is being continued');
-          roleLabel = isAutoCompact ? '[auto-compact]' : '[system]';
+          roleLabel = isAutoCompact ? `[auto-compact${deltaInfo}${tokenInfo}]` : `[system${deltaInfo}${tokenInfo}]`;
         } else {
-          // Genuine human message — increment counter
-          roleLabel = `User#${userIndex++}`;
+          roleLabel = `User#${userIndex++}${deltaInfo}${tokenInfo}`;
         }
       } else if (m.type === 'assistant') {
-        roleLabel = `Assistant#${assistantIndex++}`;
+        roleLabel = `Assistant#${assistantIndex++}${deltaInfo}${tokenInfo}`;
       } else {
-        roleLabel = 'System';
+        roleLabel = `System${deltaInfo}${tokenInfo}`;
       }
 
       // Parse JSON-encoded tool_calls and tool_results via safeParseJson

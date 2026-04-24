@@ -101,9 +101,20 @@ app.get('/:id', (c) => {
            models_used, primary_model, usage_source,
            compact_count, auto_compact_count, slash_commands
     FROM sessions WHERE id = ? AND deleted_at IS NULL
-  `).get(c.req.param('id'));
+  `).get(c.req.param('id')) as any;
+  
   if (!session) return c.json({ error: 'Not found' }, 404);
-  return c.json({ session });
+
+  const facets = db.prepare(`
+    SELECT * FROM session_facets WHERE session_id = ?
+  `).get(c.req.param('id'));
+
+  return c.json({ 
+    session: {
+      ...session,
+      facets: facets || null
+    } 
+  });
 });
 
 app.patch('/:id', async (c) => {

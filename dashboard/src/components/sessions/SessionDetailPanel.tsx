@@ -98,6 +98,20 @@ export function SessionDetailPanel({ sessionId, onDelete }: SessionDetailPanelPr
     [insights, missingFacetIds, sessionId]
   );
 
+  const rageLoopFriction = useMemo(() => {
+    if (!session?.facets?.friction_points) return null;
+    try {
+      const friction = JSON.parse(session.facets.friction_points) as Array<{
+        category: string;
+        description: string;
+        severity: string;
+      }>;
+      return friction.find(f => f.category === 'rage-loop');
+    } catch {
+      return null;
+    }
+  }, [session?.facets?.friction_points]);
+
   const messages = messagesQuery.data?.pages.flat() ?? [];
   const loadingMessages = messagesQuery.isLoading;
   const loadingMore = messagesQuery.isFetchingNextPage;
@@ -409,6 +423,27 @@ export function SessionDetailPanel({ sessionId, onDelete }: SessionDetailPanelPr
         {/* Tab 1: Insights */}
         <TabsContent value="insights" className="flex-1 overflow-y-auto mt-0 p-5 space-y-4">
           <VitalsStrip session={session} />
+
+          {/* Sunk Cost Alert (Rage Loop) */}
+          {rageLoopFriction && (
+            <div className="flex flex-col gap-2 rounded-md border border-red-500/30 bg-red-500/5 px-4 py-3 animate-in fade-in slide-in-from-top-1 duration-300">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 text-red-500 shrink-0" />
+                <h4 className="text-sm font-bold text-red-600 dark:text-red-400">Sunk Cost Alert: Rage Loop Detected</h4>
+              </div>
+              <p className="text-sm text-red-700/80 dark:text-red-300/80 leading-relaxed">
+                {rageLoopFriction.description}
+              </p>
+              <div className="flex items-center gap-2 mt-1">
+                <Badge variant="outline" className="text-[10px] uppercase tracking-wider bg-red-100 dark:bg-red-900/30 border-red-200 dark:border-red-800 text-red-600 dark:text-red-400">
+                  Critical Friction
+                </Badge>
+                <p className="text-[11px] text-muted-foreground">
+                  Recommendation: Use <code className="bg-muted px-1 rounded">/compact</code> or start a fresh session.
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Analysis cost indicator — only shown when analysis has been run or is running */}
           {(insights.length > 0 || isAnalyzingThisSession) && (
