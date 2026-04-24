@@ -43,6 +43,7 @@ The project uses `pnpm` workspaces for dependency management.
 - **Database:** Uses `better-sqlite3`. Schema is defined in `cli/src/db/schema.ts`. V9 introduces the `analysis_queue` table for robust background processing. All persistence MUST use **WAL mode** (`PRAGMA journal_mode = WAL`).
 - **SFL-Compliant Analysis:** The analysis pipeline (Session & Prompt Quality) enforces **Systemic Functional Linguistics (SFL)** constraints.
   - **Structured Prompts:** Uses explicit XML boundaries (`<task>`, `<context>`, `<rules>`, `<output_schema>`) for deterministic LLM behavior.
+  - **Rage Loop Detection:** Includes a pre-analysis heuristic (`loop-detector.ts`) to identify temporal loops and static token count stasis, flagged to the LLM as a dedicated friction category.
   - **Methodological Narratives:** Session summaries strictly forbid mechanical file listing; they must capture analytical methodology, power dynamics, and workflow milestones.
   - **SFL Breakdown:** Findings and takeaways include a mandatory `sfl_breakdown` (Ideational, Interpersonal, Textual) to log structural design choices.
   - **Dimension Scoring:** Scoring (0–100) is anchored by hard SFL constraints (0=catastrophic, 50=baseline, 100=flawless).
@@ -64,6 +65,7 @@ Code Insights supports multiple providers for analysis and synthesis.
 ## Provider Highlights
 
 - **OpenCode:** Now features robust multi-schema support. Handles both legacy column-based storage and the latest JSON-in-SQLite `data` column format for messages and parts.
+- **Sub-Agent Bundling:** Providers like `Gemini CLI` and `Hermes Agent` now align with a sub-agent model, recursively discovering and merging sub-agent interactions into the parent session for holistic analysis.
 - **Background Sync:** The `ON CONFLICT` strategy in the database layer ensures that forced syncs (`--force`) correctly refresh message content and metadata from the source providers.
 
 ### Reference SDKs (Context7)

@@ -274,7 +274,35 @@ This roadmap outlines the development phases for Code Insights. Timelines are fl
 
 ---
 
-## What's Next (After Phase 12)
+## Phase 13: Analysis Intelligence & Multi-Agent Support ✅
+
+**Goal:** Improve analysis depth with loop detection, sub-agent bundling, and richer classification facets
+
+### Milestones
+
+- [x] **13.1 Rage Loop Detection** ✅
+  - Heuristic pre-analysis detection using temporal clustering and context stasis
+  - Canonical `rage-loop` friction category with contrastive guidance
+  - Dashboard "Sunk Cost Alert" banner for detected loops
+
+- [x] **13.2 Sub-Agent Session Bundling** ✅
+  - Formalized sub-agent model in provider architecture
+  - Recursive discovery and merging of sub-agent interactions (Gemini CLI, Hermes Agent)
+  - Holistic analysis of parent+child agent collaborative context
+
+- [x] **13.3 Facet Refinement** ✅
+  - Added `abandoned` to outcome satisfaction taxonomy
+  - Enhanced JSON schema validation for LLM responses with auto-repair
+  - Session facets included in core session API responses
+
+### Deliverables
+- ✅ Heuristic rage loop detection and alerting
+- ✅ Recursive sub-agent bundling across providers
+- ✅ Expanded facet taxonomy and API integration
+
+---
+
+## What's Next (After Phase 13)
 
 - Progress tracking: weekly snapshots, friction-to-pattern affinity map, transformation detection, `driver`-based filtering for user growth signals
 - Test suite expansion (Vitest)

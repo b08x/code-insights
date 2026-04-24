@@ -85,9 +85,10 @@ Two-tier export system for turning session knowledge into shareable and actionab
 Cross-session pattern detection and synthesis, powered by session facets:
 
 **Session Facets** — Structured metadata extracted during LLM analysis for each session:
-- Outcome satisfaction (high/medium/low/mixed)
+- Outcome satisfaction (high/medium/low/abandoned)
 - Workflow pattern (iterative, plan-then-execute, exploratory, debugging, etc.)
-- Friction points with 9 canonical AI-session-focused categories: wrong-approach, knowledge-gap, stale-assumptions, incomplete-requirements, context-loss, scope-creep, repeated-mistakes, documentation-gap, tooling-limitation
+- Friction points with 10 canonical AI-session-focused categories: wrong-approach, knowledge-gap, stale-assumptions, incomplete-requirements, context-loss, scope-creep, repeated-mistakes, rage-loop, documentation-gap, tooling-limitation
+- **Rage Loop Detection:** Pre-analysis heuristic flags temporal loops and context stasis, triggering "Sunk Cost Alerts" in the dashboard.
 - Friction attribution model: each friction point is classified as user-actionable (better input would have prevented it), ai-capability (AI failed despite adequate input), or environmental (external constraint)
 - Effective patterns (what worked well and why, with 8 canonical categories)
 - Course correction tracking (whether the session changed direction and why)
@@ -121,7 +122,7 @@ Cross-session pattern detection and synthesis, powered by session facets:
 A shareable 1200×630 PNG image (OG standard for Twitter/X, LinkedIn, Slack, Discord) that visualizes a developer's AI coding fluency. Downloaded from the Patterns page.
 
 **What's on the card:**
-- **Archetype tagline** — LLM-generated identity label from working-style synthesis (e.g., "The Methodical Achiever")
+- **Archetype tagline** — LLM-generated identity label and subtitle descriptor from working-style synthesis (e.g., "The Methodical Achiever")
 - **AI Fluency Score** — Composite 0–100 score derived from 5 Prompt Quality dimension averages, displayed as a hero circle with gradient arc
 - **Fingerprint bars** — 5 rainbow-colored dimension bars showing per-dimension PQ scores:
   - Context (context_provision), Clarity (request_specificity), Focus (scope_management), Timing (information_timing), Orchestration (correction_quality)

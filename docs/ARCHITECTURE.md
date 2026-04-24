@@ -97,6 +97,8 @@ interface SessionProvider {
 }
 ```
 
+**Sub-Agent Model:** Providers for multi-agent tools (Gemini CLI, Hermes Agent) implement recursive discovery to bundle sub-agent interactions into the parent session. This ensures the analysis pipeline sees the full collaborative context rather than fragmented sub-sessions.
+
 Providers are registered in `providers/registry.ts`. To add a new source tool:
 1. Create `providers/<name>.ts` implementing `SessionProvider`
 2. Register it in `providers/registry.ts`
@@ -365,9 +367,10 @@ Dashboard Polling ← /api/analysis/queue ← getQueueStatus() ← Status Update
 The queue worker processes items sequentially:
 1. Reset any stale processing items from previous crashes
 2. Claim next pending item atomically
-3. Execute analysis using native runner (claude -p) or configured LLM provider
-4. Mark completed/failed and continue until queue empty
-5. Spawned as detached subprocess to avoid blocking CLI
+3. **Rage Loop Detection:** Execute heuristic detection (`detectRageLoopHeuristic`) before analysis; if a loop is found, the signal is injected into the LLM prompt to guide classification.
+4. Execute analysis using native runner (claude -p) or configured LLM provider
+5. Mark completed/failed and continue until queue empty
+6. Spawned as detached subprocess to avoid blocking CLI
 
 **Hook Integration:**
 - `session-end` hook enqueues analysis and spawns worker with `CODE_INSIGHTS_HOOK_ACTIVE=1`

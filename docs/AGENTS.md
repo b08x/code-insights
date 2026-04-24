@@ -104,7 +104,7 @@ Step 12:  Founder merges PR
 
 **Not required:** CLI commands without LLM, dashboard UI (unless LLM rendering logic), source tool providers, SQLite schema (unless for LLM results storage)
 
-**Proactive dispatch:** Auto-invoke `llm-expert` when conversation touches prompt design, token optimization, model selection, or when engineer writes new code in `server/src/llm/`.
+Proactive dispatch: auto-invoke `llm-expert` when conversation touches prompt design, token optimization, model selection, or when engineer writes new code in `cli/src/analysis/` or `server/src/llm/`.
 
 ### CI Simulation Gate (Step 8 — BLOCKING)
 
@@ -181,7 +181,7 @@ If any gate fails, the review is blocked — PR goes back to dev for the missing
 
 **Domain specialists** are selected dynamically based on PR content. See `docs/REVIEW-SPECIALISTS.md` for the full registry (SQL/Database, React/Frontend, Node/CLI, Parser/Provider) and selection algorithm.
 
-**LLM Expert invoked when PR touches:** `server/src/llm/`, LLM API calls, structured output schemas, SSE streaming, token budgets, or model selection logic.
+**LLM Expert invoked when PR touches:** `cli/src/analysis/`, `server/src/llm/`, LLM API calls, structured output schemas, SSE streaming, token budgets, or model selection logic.
 
 **All specialists include the Runtime Verification Rule:** when runtime behavior isn't self-evident from reading (escaping, encoding, regex, serialization, type coercion, async timing), flag as VERIFY AT RUNTIME instead of reasoning about correctness.
 
