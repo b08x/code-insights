@@ -1,0 +1,778 @@
+# Instincts generated from https://github.com/b08x/code-insights
+# Generated: 2026-04-01T16:44:21.576Z
+# Version: 2.0
+# NOTE: This file supplements (does not replace) any existing curated instincts.
+# High-confidence manually curated instincts should be preserved alongside these.
+
+---
+id: code-insights-commit-conventional
+trigger: "when writing a commit message"
+confidence: 0.85
+domain: git
+source: repo-analysis
+source_repo: https://github.com/b08x/code-insights
+---
+
+# Code Insights Commit Conventional
+
+## Action
+
+Use conventional commit format with prefixes: fix, feat, chore, docs
+
+## Evidence
+
+- 200 commits analyzed
+- Detected conventional commit pattern
+- Examples: chore: add cli/README.md to release checklist, fix: fd leak in spawnWorker, remove dead --immediate flag, invalidate queries on drain
+
+---
+id: code-insights-commit-length
+trigger: "when writing a commit message"
+confidence: 0.6
+domain: git
+source: repo-analysis
+source_repo: https://github.com/b08x/code-insights
+---
+
+# Code Insights Commit Length
+
+## Action
+
+Write moderate-length commit messages (~65 characters)
+
+## Evidence
+
+- Average commit message length: 65 chars
+- Based on 200 commits
+
+---
+id: code-insights-naming-files
+trigger: "when creating a new file"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/b08x/code-insights
+---
+
+# Code Insights Naming Files
+
+## Action
+
+Use camelCase naming convention
+
+## Evidence
+
+- Analyzed file naming patterns in repository
+- Dominant pattern: camelCase
+
+---
+id: code-insights-import-relative
+trigger: "when importing modules"
+confidence: 0.75
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/b08x/code-insights
+---
+
+# Code Insights Import Relative
+
+## Action
+
+Use relative imports for project files
+
+## Evidence
+
+- Import analysis shows relative import pattern
+- Example: import { x } from '../lib/x'
+
+---
+id: code-insights-export-style
+trigger: "when exporting from a module"
+confidence: 0.7
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/b08x/code-insights
+---
+
+# Code Insights Export Style
+
+## Action
+
+Prefer named exports
+
+## Evidence
+
+- Export pattern analysis
+- Dominant style: named
+
+---
+id: code-insights-arch-type-based
+trigger: "when adding new code"
+confidence: 0.8
+domain: architecture
+source: repo-analysis
+source_repo: https://github.com/b08x/code-insights
+---
+
+# Code Insights Arch Type Based
+
+## Action
+
+Place code in the appropriate type folder (components/, services/, utils/, etc.)
+
+## Evidence
+
+- Type-based module organization detected
+- Folders: 
+
+---
+id: code-insights-test-framework
+trigger: "when writing tests"
+confidence: 0.9
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/b08x/code-insights
+---
+
+# Code Insights Test Framework
+
+## Action
+
+Use vitest as the test framework
+
+## Evidence
+
+- Test framework detected: vitest
+- File pattern: *.test.ts
+
+---
+id: code-insights-test-naming
+trigger: "when creating a test file"
+confidence: 0.85
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/b08x/code-insights
+---
+
+# Code Insights Test Naming
+
+## Action
+
+Name test files using the pattern: *.test.ts
+
+## Evidence
+
+- File pattern: *.test.ts
+- Consistent across test files
+
+---
+id: code-insights-test-mocking
+trigger: "when mocking dependencies in tests"
+confidence: 0.75
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/b08x/code-insights
+---
+
+# Code Insights Test Mocking
+
+## Action
+
+Use vi.mock for mocking
+
+## Evidence
+
+- Mocking pattern detected: vi.mock
+- Consistent across test files
+
+---
+id: code-insights-test-types
+trigger: "when planning tests for a feature"
+confidence: 0.7
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/b08x/code-insights
+---
+
+# Code Insights Test Types
+
+## Action
+
+Write unit, integration tests to match project standards
+
+## Evidence
+
+- Test types detected: unit, integration
+- Coverage config: yes
+
+---
+id: code-insights-workflow-feature-development
+trigger: "when implementing a new feature"
+confidence: 0.9
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/b08x/code-insights
+---
+
+# Code Insights Workflow Feature Development
+
+## Action
+
+Follow the feature-development workflow:
+1. Add feature implementation
+2. Add tests for feature
+3. Update documentation
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~14x per month
+- Files: cli/src/analysis/__tests__/*, cli/src/analysis/*, cli/src/commands/*
+
+---
+id: code-insights-workflow-refactoring
+trigger: "when refactoring code"
+confidence: 0.65
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/b08x/code-insights
+---
+
+# Code Insights Workflow Refactoring
+
+## Action
+
+Follow the refactoring workflow:
+1. Ensure tests pass before refactor
+2. Refactor code structure
+3. Verify tests still pass
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~3x per month
+- Files: src/**/*
+
+---
+id: code-insights-workflow-add-or-migrate-database-table
+trigger: "when doing add or migrate database table"
+confidence: 0.6
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/b08x/code-insights
+---
+
+# Code Insights Workflow Add Or Migrate Database Table
+
+## Action
+
+Follow the add-or-migrate-database-table workflow:
+1. Edit cli/src/db/schema.ts to define or update the table.
+2. Edit cli/src/db/migrate.ts to add migration logic.
+3. Update or add tests in cli/src/db/__tests__/migrate.test.ts and cli/src/db/schema.test.ts.
+4. Update cli/src/db/queue.ts or other DB helper files if needed.
+5. Update cli/package.json exports if new DB helpers are added.
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~2x per month
+- Files: cli/src/db/schema.ts, cli/src/db/migrate.ts, cli/src/db/__tests__/migrate.test.ts
+
+---
+id: code-insights-workflow-add-or-update-cli-command
+trigger: "when doing add or update cli command"
+confidence: 0.65
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/b08x/code-insights
+---
+
+# Code Insights Workflow Add Or Update Cli Command
+
+## Action
+
+Follow the add-or-update-cli-command workflow:
+1. Create or modify command implementation in cli/src/commands/{command}.ts.
+2. Register the command in cli/src/index.ts.
+3. Add or update tests in cli/src/commands/__tests__/{command}.test.ts.
+4. Update documentation or changelog if needed.
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~3x per month
+- Files: cli/src/commands/*.ts, cli/src/commands/__tests__/*.test.ts, cli/src/index.ts
+
+---
+id: code-insights-workflow-api-endpoint-and-dashboard-integration
+trigger: "when doing api endpoint and dashboard integration"
+confidence: 0.6
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/b08x/code-insights
+---
+
+# Code Insights Workflow Api Endpoint And Dashboard Integration
+
+## Action
+
+Follow the api-endpoint-and-dashboard-integration workflow:
+1. Implement the endpoint in server/src/routes/{endpoint}.ts and register in server/src/index.ts.
+2. Update dashboard/src/lib/api.ts to call the new endpoint.
+3. Create or update React hooks in dashboard/src/hooks/ to fetch/process data.
+4. Update or add dashboard/src/components/ to display new data.
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~2x per month
+- Files: server/src/routes/*.ts, server/src/index.ts, dashboard/src/lib/api.ts
+
+---
+id: code-insights-workflow-feature-development-with-tests-and-docs
+trigger: "when doing feature development with tests and docs"
+confidence: 0.6
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/b08x/code-insights
+---
+
+# Code Insights Workflow Feature Development With Tests And Docs
+
+## Action
+
+Follow the feature-development-with-tests-and-docs workflow:
+1. Implement feature logic in relevant source files.
+2. Write or update automated tests (unit/integration).
+3. Update README.md, docs/ROADMAP.md, or other documentation as needed.
+4. Update cli/CHANGELOG.md and/or cli/package.json version if releasing.
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~2x per month
+- Files: src/**/*.ts, src/**/*.tsx, src/__tests__/**/*.test.ts
+
+---
+id: code-insights-workflow-deduplicate-or-move-shared-db-helpers
+trigger: "when doing deduplicate or move shared db helpers"
+confidence: 0.6
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/b08x/code-insights
+---
+
+# Code Insights Workflow Deduplicate Or Move Shared Db Helpers
+
+## Action
+
+Follow the deduplicate-or-move-shared-db-helpers workflow:
+1. Move helper implementations to cli/src/analysis/ (e.g., analysis-db.ts, analysis-usage-db.ts).
+2. Update server/src/llm/ to re-export or import from CLI.
+3. Update cli/package.json exports map to expose new modules.
+4. Refactor code to use the new shared helpers.
+5. Update or add tests in cli/src/analysis/__tests__/
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~2x per month
+- Files: cli/src/analysis/analysis-db.ts, cli/src/analysis/analysis-usage-db.ts, cli/src/analysis/__tests__/*.test.ts
+
+---
+id: code-insights-workflow-version-bump-and-release-checklist
+trigger: "when doing version bump and release checklist"
+confidence: 0.6
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/b08x/code-insights
+---
+
+# Code Insights Workflow Version Bump And Release Checklist
+
+## Action
+
+Follow the version-bump-and-release-checklist workflow:
+1. Update cli/package.json version.
+2. Update cli/CHANGELOG.md with release notes.
+3. Optionally update .claude/commands/release.md to adjust release checklist.
+4. Commit with a version bump message.
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~2x per month
+- Files: cli/package.json, cli/CHANGELOG.md, .claude/commands/release.md
+
+---
+id: code-insights-naming-files-camelcase
+trigger: "When creating or renaming a file"
+confidence: 0.85
+domain: code-style
+source: repo-analysis
+source_repo: b08x/code-insights
+---
+
+# Code Insights Naming Files Camelcase
+
+## Action
+
+Name the file using camelCase
+
+## Evidence
+
+- Pattern in namingConventions.files: camelCase
+- Examples in cli/src/analysis/analysis-db.ts
+
+---
+id: code-insights-naming-functions-camelcase
+trigger: "When defining a function"
+confidence: 0.85
+domain: code-style
+source: repo-analysis
+source_repo: b08x/code-insights
+---
+
+# Code Insights Naming Functions Camelcase
+
+## Action
+
+Name the function using camelCase
+
+## Evidence
+
+- Pattern in namingConventions.functions: camelCase
+
+---
+id: code-insights-naming-classes-pascalcase
+trigger: "When defining a class"
+confidence: 0.85
+domain: code-style
+source: repo-analysis
+source_repo: b08x/code-insights
+---
+
+# Code Insights Naming Classes Pascalcase
+
+## Action
+
+Name the class using PascalCase
+
+## Evidence
+
+- Pattern in namingConventions.classes: PascalCase
+
+---
+id: code-insights-naming-constants-screaming-snake-case
+trigger: "When defining a constant"
+confidence: 0.85
+domain: code-style
+source: repo-analysis
+source_repo: b08x/code-insights
+---
+
+# Code Insights Naming Constants Screaming Snake Case
+
+## Action
+
+Name the constant using SCREAMING_SNAKE_CASE
+
+## Evidence
+
+- Pattern in namingConventions.constants: SCREAMING_SNAKE_CASE
+
+---
+id: code-insights-imports-relative
+trigger: "When importing modules"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: b08x/code-insights
+---
+
+# Code Insights Imports Relative
+
+## Action
+
+Use relative import paths
+
+## Evidence
+
+- Pattern in importStyle: relative
+
+---
+id: code-insights-exports-named
+trigger: "When exporting modules or functions"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: b08x/code-insights
+---
+
+# Code Insights Exports Named
+
+## Action
+
+Use named exports
+
+## Evidence
+
+- Pattern in exportStyle: named
+
+---
+id: code-insights-testing-vitest-pattern
+trigger: "When writing tests"
+confidence: 0.9
+domain: testing
+source: repo-analysis
+source_repo: b08x/code-insights
+---
+
+# Code Insights Testing Vitest Pattern
+
+## Action
+
+Use Vitest framework and place test files as *.test.ts
+
+## Evidence
+
+- Pattern in testing.framework: vitest
+- Pattern in testing.filePattern: *.test.ts
+- Examples in cli/src/analysis/__tests__/analysis-db.test.ts
+
+---
+id: code-insights-testing-mocking-vi-mock
+trigger: "When mocking dependencies in tests"
+confidence: 0.8
+domain: testing
+source: repo-analysis
+source_repo: b08x/code-insights
+---
+
+# Code Insights Testing Mocking Vi Mock
+
+## Action
+
+Use vi.mock for mocking
+
+## Evidence
+
+- Pattern in testing.mockingStyle: vi.mock
+
+---
+id: code-insights-testing-coverage-config
+trigger: "When configuring tests"
+confidence: 0.8
+domain: testing
+source: repo-analysis
+source_repo: b08x/code-insights
+---
+
+# Code Insights Testing Coverage Config
+
+## Action
+
+Ensure coverage configuration is enabled
+
+## Evidence
+
+- Pattern in testing.coverageConfig: true
+
+---
+id: code-insights-testing-unit-integration
+trigger: "When writing tests"
+confidence: 0.8
+domain: testing
+source: repo-analysis
+source_repo: b08x/code-insights
+---
+
+# Code Insights Testing Unit Integration
+
+## Action
+
+Include both unit and integration tests as appropriate
+
+## Evidence
+
+- Pattern in testing.testTypes: unit, integration
+
+---
+id: code-insights-git-conventional-commits
+trigger: "When making a commit"
+confidence: 0.9
+domain: git
+source: repo-analysis
+source_repo: b08x/code-insights
+---
+
+# Code Insights Git Conventional Commits
+
+## Action
+
+Use conventional commit prefixes (fix, feat, chore, docs, test, refactor)
+
+## Evidence
+
+- Pattern in commits.prefixes: fix, feat, chore, docs
+- Examples: 'feat(dashboard): add analysis queue polling...'
+
+---
+id: code-insights-git-commit-length
+trigger: "When writing a commit message"
+confidence: 0.7
+domain: git
+source: repo-analysis
+source_repo: b08x/code-insights
+---
+
+# Code Insights Git Commit Length
+
+## Action
+
+Keep commit message length around 65 characters
+
+## Evidence
+
+- Pattern in commits.averageLength: 65
+
+---
+id: code-insights-git-merge-pr-title
+trigger: "When merging a pull request"
+confidence: 0.8
+domain: git
+source: repo-analysis
+source_repo: b08x/code-insights
+---
+
+# Code Insights Git Merge Pr Title
+
+## Action
+
+Use 'Merge pull request #[number] from [branch]' in commit title
+
+## Evidence
+
+- Examples: 'Merge pull request #262 from melagiri/feature/release-readme-check'
+
+---
+id: code-insights-workflow-add-or-migrate-database-table
+trigger: "When introducing a new table or modifying the database schema"
+confidence: 0.95
+domain: workflow
+source: repo-analysis
+source_repo: b08x/code-insights
+---
+
+# Code Insights Workflow Add Or Migrate Database Table
+
+## Action
+
+Edit cli/src/db/schema.ts, migrate.ts, update/add tests, update queue.ts/helpers, and update cli/package.json exports as needed
+
+## Evidence
+
+- Workflow: add-or-migrate-database-table
+- Files: cli/src/db/schema.ts, cli/src/db/migrate.ts, cli/src/db/__tests__/migrate.test.ts, cli/package.json
+
+---
+id: code-insights-workflow-add-or-update-cli-command
+trigger: "When adding or enhancing a CLI command"
+confidence: 0.92
+domain: workflow
+source: repo-analysis
+source_repo: b08x/code-insights
+---
+
+# Code Insights Workflow Add Or Update Cli Command
+
+## Action
+
+Implement command in cli/src/commands, register in cli/src/index.ts, add/update tests, and update docs/changelog as needed
+
+## Evidence
+
+- Workflow: add-or-update-cli-command
+- Files: cli/src/commands/*.ts, cli/src/commands/__tests__/*.test.ts, cli/src/index.ts
+
+---
+id: code-insights-workflow-api-endpoint-and-dashboard-integration
+trigger: "When exposing new backend data to the dashboard UI"
+confidence: 0.9
+domain: workflow
+source: repo-analysis
+source_repo: b08x/code-insights
+---
+
+# Code Insights Workflow Api Endpoint And Dashboard Integration
+
+## Action
+
+Implement endpoint in server/src/routes, register in server/src/index.ts, update dashboard/src/lib/api.ts, create/update hooks and components
+
+## Evidence
+
+- Workflow: api-endpoint-and-dashboard-integration
+- Files: server/src/routes/*.ts, dashboard/src/lib/api.ts, dashboard/src/hooks/*.ts
+
+---
+id: code-insights-workflow-feature-development-with-tests-and-docs
+trigger: "When delivering a user-facing feature or enhancement"
+confidence: 0.88
+domain: workflow
+source: repo-analysis
+source_repo: b08x/code-insights
+---
+
+# Code Insights Workflow Feature Development With Tests And Docs
+
+## Action
+
+Implement feature logic, write/update tests, update documentation, and update changelog/version if releasing
+
+## Evidence
+
+- Workflow: feature-development-with-tests-and-docs
+- Files: src/**/*.ts, src/__tests__/**/*.test.ts, README.md, cli/CHANGELOG.md
+
+---
+id: code-insights-workflow-deduplicate-or-move-shared-db-helpers
+trigger: "When centralizing or deduplicating DB helper logic"
+confidence: 0.87
+domain: workflow
+source: repo-analysis
+source_repo: b08x/code-insights
+---
+
+# Code Insights Workflow Deduplicate Or Move Shared Db Helpers
+
+## Action
+
+Move helpers to cli/src/analysis, update server to import from CLI, update exports, refactor usages, and update/add tests
+
+## Evidence
+
+- Workflow: deduplicate-or-move-shared-db-helpers
+- Files: cli/src/analysis/analysis-db.ts, server/src/llm/analysis-db.ts
+
+---
+id: code-insights-workflow-version-bump-and-release-checklist
+trigger: "When preparing a new release"
+confidence: 0.95
+domain: workflow
+source: repo-analysis
+source_repo: b08x/code-insights
+---
+
+# Code Insights Workflow Version Bump And Release Checklist
+
+## Action
+
+Update cli/package.json version, update cli/CHANGELOG.md, optionally update .claude/commands/release.md, and commit with version bump message
+
+## Evidence
+
+- Workflow: version-bump-and-release-checklist
+- Files: cli/package.json, cli/CHANGELOG.md, .claude/commands/release.md
+
