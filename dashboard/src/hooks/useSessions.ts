@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { fetchSessions, fetchSession, patchSession, deleteSession, fetchDeletedSessionCount } from '@/lib/api';
+import { fetchSessions, fetchSession, patchSession, deleteSession, fetchDeletedSessionCount, batchUpdateSessions, batchDeleteSessions } from '@/lib/api';
 
 interface SessionFilters {
   projectId?: string;
@@ -40,6 +40,31 @@ export function useDeleteSession() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => deleteSession(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sessions'] });
+      queryClient.invalidateQueries({ queryKey: ['deletedSessionCount'] });
+    },
+  });
+}
+
+export function useBatchUpdateSessions() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ ids, projectName, gitRemoteUrl }: { ids: string[]; projectName?: string; gitRemoteUrl?: string }) =>
+      batchUpdateSessions(ids, { projectName, gitRemoteUrl }),
+    onSuccess: (_data, variables) => {
+      variables.ids.forEach(id => {
+        queryClient.invalidateQueries({ queryKey: ['session', id] });
+      });
+      queryClient.invalidateQueries({ queryKey: ['sessions'] });
+    },
+  });
+}
+
+export function useBatchDeleteSessions() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (ids: string[]) => batchDeleteSessions(ids),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sessions'] });
       queryClient.invalidateQueries({ queryKey: ['deletedSessionCount'] });

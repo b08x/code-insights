@@ -1,7 +1,7 @@
 <div align="center">
   <img src="docs/assets/logo.svg" width="120" height="120" alt="Code Insights logo" />
   <h1>Code Insights</h1>
-  <p><strong>Turn your AI coding sessions into actionable knowledge.</strong></p>
+  <p><strong>Turn your AI coding sessions into actionable knowledge with local-first analytics and self-optimizing LLM prompts.</strong></p>
   <p>
     <a href="https://deepwiki.com/b08x/code-insights"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki"></a>
     <a href="https://github.com/melagiri/code-insights/blob/master/LICENSE"><img src="https://img.shields.io/github/license/melagiri/code-insights" alt="License" /></a>
@@ -10,191 +10,217 @@
   </p>
 </div>
 
-Code Insights is a local-first analytics platform designed to extract structured decisions, learnings, and prompt quality scores from your AI coding sessions. It surfaces cross-session patterns, friction points, and effective habits while tracking costs across multiple LLM providers—all without your data ever leaving your machine.
+**Code Insights** is a local-first analytics platform that extracts structured decisions, learnings, and prompt quality scores from your AI coding sessions. Surfacing cross-session patterns, friction points, and cost tracking—all persisted locally in SQLite—it features a self-optimizing prompt engine powered by **`@ax-llm/ax`** to continually align and improve LLM insight extraction.
 
 ---
 
-## Features
+## Key Capabilities
 
-- **Automated Session Discovery** — Seamlessly parses history from Claude Code, Cursor, Codex CLI, and GitHub Copilot.
-- **Structural Insight Extraction** — Distills raw session logs into methodological narratives, capturing collaborative dynamics and workflow milestones using SFL-compliant analysis.
-- **Rage Loop Detection** — Heuristically identifies temporal loops and context stasis, surfaces "Sunk Cost Alerts" in the dashboard to help you break unproductive cycles.
-- **AI Fluency Scoring** — Tracks your evolution in AI collaboration through multi-dimensional prompt quality metrics anchored by hard systemic linguistics constraints.
-- **Structured Takeaways** — Extracts findings with Ideational, Interpersonal, and Textual breakdowns for deep architectural learning.
-- **Cross-Session Pattern Synthesis** — Identifies recurring friction points and effective patterns across weeks of work.
-- **Rule Generation** — Automatically exports high-signal patterns as custom rules for your `CLAUDE.md` or `.cursorrules`.
-- **Zero-Cost Local Analysis** — Native support for Ollama allows for full AI analysis using local models like Llama 3.
-- **Semantic Embeddings** — Vector-based embeddings via Ollama (`embeddinggemma:latest`, 768-dim) enable KNN similarity search over insights and messages, with sqlite-vec for fast local retrieval.
-- **Prompt Optimization (GEPA)** — Automatically evolve insight-generation prompts using multi-objective optimization (coverage, precision, actionability, brevity) powered by `@ax-llm/ax`.
-- **Vector-Based Recurring Insights** — Replaces expensive LLM-only clustering with sqlite-vec KNN + MMR deduplication; LLM is used only for theme naming (~90% token reduction).
-- **Privacy by Architecture** — Persistence is handled via a local SQLite database at `~/.code-insights/data.db`; no accounts or cloud sync required. Schema V11 adds vector table support and embedding status tracking.
+- **Automated Session Discovery** — Automatically parse history from Claude Code, Cursor, Codex, Copilot, Gemini CLI, Hermes, OpenCode, and Crush.
+- **Self-Optimizing Prompts (GEPA)** — Automate prompt engineering using Gradient-free Evolutionary Prompt Adaptation powered by `@ax-llm/ax`.
+- **Rage Loop & Friction Detection** — Identify temporal looping and context stasis ("Sunk Cost Alerts") via SFL (Systemic Functional Linguistics) criteria.
+- **AI Fluency Scoring** — Evaluate your prompts using multi-dimensional prompt quality metrics.
+- **Vector-Based Recurring Insights** — Group similar insights using local `sqlite-vec` KNN search + MMR deduplication (~90% token savings).
+- **Privacy First** — Completely local SQLite backend with zero external dependencies (unless configuring cloud LLM models).
 
-## Supported AI Tools
-
-| Tool | Data Location |
-|------|---------------|
-| Claude Code | `~/.claude/projects/**/*.jsonl` |
-| Cursor | Workspace storage SQLite (macOS, Linux, Windows) |
-| Codex CLI | `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` |
-| Copilot CLI | `~/.copilot/session-state/{id}/events.jsonl` |
-| VS Code Copilot Chat | Platform-specific Copilot Chat storage |
-| Gemini CLI | `~/.gemini/tmp/<project_hash>/chats/*.json` |
-| Hermes Agent | `~/.hermes/state.db` and `~/.hermes/profiles/<profile_name>/state.db` |
-| OpenCode | `~/.local/share/opencode/storage/session/*.json` |
-| Crush | Project-specific `.crush/crush.db` |
-
-## Demo
-
-<div align="center">
-  <table>
-    <tr>
-      <td width="50%">
-        <h4 align="center">Session Analysis</h4>
-        <img src="docs/assets/screenshots/session-insight-light.png" alt="Session Insight" />
-      </td>
-      <td width="50%">
-        <h4 align="center">Pattern Detection</h4>
-        <img src="docs/assets/screenshots/patterns-light.png" alt="Pattern Detection" />
-      </td>
-    </tr>
-  </table>
-</div>
+---
 
 ## Installation
 
-<details>
-<summary><b>Quick Start (npx)</b></summary>
+### Prerequisites
+- **Node.js** `>= 18.0.0`
+- **Ollama** (optional, for local embeddings and zero-cost LLM analysis)
 
-The fastest way to try Code Insights without a permanent installation:
+### Installation Methods
+
+> [!TIP]
+> Use `npx` to test Code Insights immediately without a permanent global installation.
+
 ```bash
+# Option 1: Quick Start (npx)
 npx @code-insights/cli
-```
-</details>
 
-<details>
-<summary><b>Global Installation (NPM)</b></summary>
-
-```bash
+# Option 2: Global installation (NPM)
 npm install -g @code-insights/cli
-code-insights
-```
-</details>
 
-<details>
-<summary><b>PNPM (Recommended for development)</b></summary>
-
-```bash
+# Option 3: Global installation (pnpm)
 pnpm add -g @code-insights/cli
-code-insights
-```
-</details>
-
-## Usage
-
-Code Insights operates through a unified command-line interface. Use `code-insights --help` for the full command reference.
-
-### Primary Workflow
-
-```bash
-code-insights install-hook    # Automated sync for Claude Code users
-code-insights sync            # Manual discovery of new sessions
-code-insights reflect         # Generate weekly pattern analysis
-code-insights dashboard       # Launch visual analytics at localhost:7890
 ```
 
-### Options & Command Groups
+---
 
-#### Data & Synchronization
-- `sync`: Discovers and imports sessions from all supported providers.
-  - `--source [name]`: Limit sync to a specific provider (e.g., `cursor`, `claude`).
-- `reset`: Clears all synced data and resets the local SQLite database.
+## Primary Usage Workflow
 
-#### Analysis & Insights
-- `insights [id]`: Triggers a deep AI analysis of a specific session.
-- `reflect`: Synthesizes patterns across all sessions for a given timeframe.
-  - `--week [YYYY-W##]`: Analyze a specific week (default: current).
-- `stats`: Displays terminal-based analytics for quick review.
-  - `today`, `cost`, `projects`: Filtered views for terminal output.
+Start Code Insights and launch the dashboard in a few commands:
 
-#### Integration
-- `install-hook`: Installs an executable hook into Claude Code for zero-latency session analysis.
-- `dashboard`: Starts the Hono-based API server and serves the React frontend.
-  - `--port [num]`: Set custom server port (default: 7890).
-
-### Examples
-
-**Analyze cost breakdown for the current month:**
 ```bash
-code-insights stats cost
+code-insights install-hook    # Zero-latency hook for Claude Code
+code-insights sync            # Scan and import new session history
+code-insights reflect         # Synthesize cross-session weekly patterns
+code-insights dashboard       # Start visual dashboard at http://localhost:7890
 ```
 
-**Generate a rule-set for the previous week:**
-```bash
-code-insights reflect --week 2026-W13
+### CLI Command Reference
+
+| Command | Action | Key Options |
+|:---|:---|:---|
+| `sync` | Discover & import sessions | `--source [claude\|cursor\|copilot]` |
+| `insights [id]` | Run AI analysis on session | `--force` (re-run analysis) |
+| `reflect` | Compile cross-session synthesis | `--week [YYYY-W##]` |
+| `stats` | Fast terminal analytics | `today`, `cost`, `projects` |
+| `optimize` | Tune insight prompts via `@ax-llm/ax` | `run`, `status`, `list`, `apply`, `compare` |
+| `embeddings` | Manage SQLite vector database | `backfill`, `status`, `recompute`, `search` |
+
+---
+
+## Prompt Optimization with `@ax-llm/ax`
+
+Prompt engineering for structured AI logs is notoriously brittle. Instead of manually tuning prompts, Code Insights leverages `@ax-llm/ax` to programmatically optimize prompt templates against a multi-objective metric.
+
+```text
+               ┌──────────────────────────────────────┐
+               │    Training Data (Session Logs)      │
+               └──────────────────┬───────────────────┘
+                                  ▼
+               ┌──────────────────────────────────────┐
+               │     Optimizable Prompt Signature     │
+               │   (root::instruction, description)   │
+               └──────────────────┬───────────────────┘
+                                  ▼
+ ┌──────────────┐      ┌────────────────────┐      ┌──────────────┐
+ │  Student AI  │ ◄─── │      AxGEPA        │ ───► │  Teacher AI  │
+ │ (Fast/Cheap) │      │  Compiler Loop     │      │ (Strong/Val) │
+ └──────────────┘      └─────────┬──────────┘      └──────────────┘
+                                 │ Evolve Prompts
+                                 ▼
+               ┌──────────────────────────────────────┐
+               │      Pareto Frontier Selection       │
+               │ (Coverage, Precision, Actionability) │
+               └──────────────────┬───────────────────┘
+                                  ▼
+               ┌──────────────────────────────────────┐
+               │   Optimized CLAUDE.md Prompt Asset   │
+               └──────────────────────────────────────┘
 ```
 
-**Sync only from Cursor and open the dashboard:**
-```bash
-code-insights sync --source cursor && code-insights dashboard
+### 1. Declaring the Optimizable Program
+
+Using `@ax-llm/ax`, we express our prompt optimization as a compiled flow signature in `flow.ts`:
+
+```typescript
+import { ax, type AxOptimizableComponent } from '@ax-llm/ax';
+
+export class InsightProgram {
+  private _instruction = INSIGHT_INSTRUCTION;
+  private _description = INSIGHT_OUTPUT_FORMAT;
+  private _program: any;
+
+  constructor() {
+    this._rebuild();
+  }
+
+  private _rebuild(): void {
+    // Declarative schema structure
+    this._program = ax(`sessionData:string -> insights:json, quality:number`, {
+      description: `${this._instruction}\n\n${this._description}`
+    });
+  }
+
+  // Expose components for evolutionary compilation
+  getOptimizableComponents(): AxOptimizableComponent[] {
+    return [
+      { key: "root::instruction", current: this._instruction, kind: "instruction" },
+      { key: "root::description", current: this._description, kind: "description" }
+    ];
+  }
+
+  applyOptimizedComponents(optimizedProgram: any): void {
+    const signature = optimizedProgram.signature;
+    this.programDescription = signature.description;
+  }
+}
 ```
 
-## Embeddings & Semantic Search
+### 2. Evolving the Prompt Signature
 
-Vector embeddings enable KNN similarity search over your insights and messages. Requires an Ollama instance with an embedding model.
+We run **Gradient-free Evolutionary Prompt Adaptation (GEPA)** in `runner.ts` using `AxGEPA`. This instantiates a cheap **Student** model (e.g. `gpt-4o-mini`) to generate candidate responses, and a strong **Teacher** model (e.g. `claude-3-5-sonnet`) to score prompt quality:
 
-```bash
-# Backfill pending embeddings (insights, messages, or both)
-code-insights embeddings backfill
-code-insights embeddings backfill --entity insights
-code-insights embeddings backfill --entity messages
+```typescript
+import { AxGEPA } from '@ax-llm/ax';
 
-# Show embedding coverage and vector index stats
-code-insights embeddings status
+export class GEPARunner {
+  async optimize(trainData: TrainingExample[], validationData: TrainingExample[]) {
+    const program = new InsightProgram();
 
-# Force re-compute stale embeddings
-code-insights embeddings recompute --all
+    // Define the multi-objective fitness metric
+    const metricFn = (input) => {
+      return multiObjectiveMetric(input); // evaluates coverage, precision, actionability, brevity
+    };
 
-# KNN similarity search (for testing/debugging)
-code-insights embeddings search "how to handle auth"
-code-insights embeddings search "error handling patterns" --top-k 10
+    const optimizer = new AxGEPA({
+      studentAI, // cheap student model
+      teacherAI, // strong teacher model
+      numTrials: 25,
+      minibatch: true,
+      minibatchSize: 6,
+      earlyStoppingTrials: 8,
+      seed: 42,
+      onProgress: (p) => console.log(`Trial ${p.round}: score = ${p.currentScore}`)
+    });
+
+    // Evolve prompts in a transactional optimization loop
+    const result = await optimizer.compile(program, trainData, metricFn, {
+      validationExamples: validationData,
+      maxMetricCalls: 200,
+    });
+
+    // Apply the best prompt configuration from the Pareto frontier
+    if (result.optimizedProgram) {
+      program.applyOptimizedComponents(result.optimizedProgram);
+    }
+  }
+}
 ```
 
-**Ollama configuration:**
-- Set `OLLAMA_BASE_URL` environment variable (default: `http://tinybot:11434`)
-- Default embedding model: `embeddinggemma:latest` (768-dim)
+### 3. CLI Optimization Commands
 
-## Prompt Optimization (GEPA)
-
-Automatically evolve insight-generation prompts using multi-objective optimization powered by `@ax-llm/ax`.
+Manage evolved prompt versions directly from your terminal:
 
 ```bash
-# Run optimization on your session data
+# Evolve prompt instructions on local session history
 code-insights optimize run
 
-# Customize student/teacher models
-code-insights optimize run --provider openai --student-model gpt-4o-mini --teacher-model claude-sonnet-4-20250514
-
-# Show current optimization state
-code-insights optimize status
-
-# List, apply, compare, and delete versions
+# List, inspect, and apply generated Pareto points
 code-insights optimize list
 code-insights optimize apply <version-id>
 code-insights optimize compare
-code-insights optimize delete <version-id>
 ```
 
-**Optimization objectives (scored 0-1):**
-- **Coverage** — % of session content captured in generated insights
-- **Precision** — % of insights that are non-trivial (not filler)
-- **Actionability** — % of insights with concrete, actionable takeaways
-- **Brevity** — inverse of total insight token count (normalized)
+---
 
-**Supported providers:** `openai`, `anthropic`, `mistral`, `deepseek`, `cohere`, `google-gemini`
+## Local Embeddings & Semantic Search
 
-## Configuration File
+Code Insights uses local vector search to match similar insights and find related messages.
 
-The system maintains its state and preferences in `~/.code-insights/config.json`. While most configuration is handled via the CLI, you can manually adjust settings for custom LLM providers or dashboard ports.
+```bash
+# Index messages and insights with Ollama (embeddinggemma:latest)
+code-insights embeddings backfill
+
+# Verify coverage and storage stats
+code-insights embeddings status
+
+# Execute KNN query over SQLite vector indexes
+code-insights embeddings search "auth middleware refactor"
+```
+
+> [!NOTE]
+> Configured via `OLLAMA_BASE_URL` (default: `http://tinybot:11434`). It leverages `sqlite-vec` for native, lightning-fast in-database vector operations.
+
+---
+
+## Configuration
+
+Settings are maintained in `~/.code-insights/config.json`:
 
 ```json
 {
@@ -211,22 +237,6 @@ The system maintains its state and preferences in `~/.code-insights/config.json`
   }
 }
 ```
-
-### Configuration Options
-
-- `sync.autoAnalyze`: Automatically trigger AI analysis upon session discovery (default: `true`).
-- `dashboard.llm.provider`: The primary provider for generating reflections and rules. Supports `openai`, `anthropic`, `google`, `openrouter`, and `ollama`.
-- `dashboard.llm.apiKey`: Your API key for the selected provider (stored locally).
-
----
-
-## Integration Deep-Dives
-
-### Claude Code Subscription Optimization
-For developers using Claude Code, the `install-hook` command enables a high-efficiency workflow. By injecting a post-session hook, Code Insights leverages your active Claude session context to perform analysis with zero additional API cost and zero manual effort.
-
-### Ollama & Local Analysis
-The platform automatically detects local Ollama instances. If a supported model (e.g., `llama3.3`) is found, Code Insights can prioritize local execution for all insight extraction and pattern synthesis—ensuring your session data never leaves your infrastructure.
 
 ---
 
@@ -263,7 +273,7 @@ Session Sources (Claude, Cursor, Copilot, Gemini CLI, Hermes, OpenCode, Crush)
                       │ React SPA    │  Visual Dashboard
                       └──────────────┘
 
-── External Services (optional) ──
+── Cognitive Services ──
 ┌────────────┐  ┌──────────────┐  ┌─────────────┐
 │ Ollama     │  │ LLM Provider │  │ GEPA        │
 │ Embeddings │  │ (Analysis)   │  │ Optimization│
@@ -271,14 +281,23 @@ Session Sources (Claude, Cursor, Copilot, Gemini CLI, Hermes, OpenCode, Crush)
 └────────────┘  └──────────────┘  └─────────────┘
 ```
 
-## Privacy
+---
 
-Code Insights is built on a "local-first" philosophy. All session data, metadata, and derived insights are stored in a local SQLite database. Telemetry is limited to anonymous usage metrics and can be disabled via `code-insights telemetry disable`. LLM analysis content is sent only to your configured provider via their official SDKs.
+## Privacy & Security
+
+All analysis, data storage, and embedding computations are performed **locally** by default. Telemetry consists of simple, anonymized usage metrics, which can be turned off entirely with:
+```bash
+code-insights telemetry disable
+```
+
+---
 
 ## Contributing
 
-Contributions are welcome. Please see [CONTRIBUTING.md](CONTRIBUTING.md) for details on the monorepo structure and local development setup.
+Contributions are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) to understand the PNPM monorepo structure and local development guidelines.
+
+---
 
 ## License
 
-MIT — Copyright (c) 2026 melagiri
+MIT — Copyright (c) 2026 Srikanth Rao M

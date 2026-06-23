@@ -19,11 +19,23 @@ import { parseJsonField } from '@/lib/types';
 import type { Session, Insight, InsightMetadata } from '@/lib/types';
 import { extractPQScore } from '@/lib/score-utils';
 import { SearchX, Terminal, EyeOff, CalendarDays } from 'lucide-react';
-import { useDeletedSessionCount } from '@/hooks/useSessions';
+import { useDeletedSessionCount, useBatchDeleteSessions } from '@/hooks/useSessions';
 import { SaveFilterPopover } from '@/components/filters/SaveFilterPopover';
 import { SavedFiltersDropdown } from '@/components/filters/SavedFiltersDropdown';
 import { useSavedFilters } from '@/hooks/useSavedFilters';
 import { subDays, startOfDay, formatISO } from 'date-fns';
+import { BulkEditSessionsDialog } from './BulkEditSessionsDialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { toast } from 'sonner';
 
 const SESSION_CHARACTERS = [
   'deep_focus',
@@ -95,6 +107,49 @@ export function SessionListPanel({
   const { savedFilters, saveFilter, deleteFilter } = useSavedFilters('sessions');
 
   const { data: deletedCount = 0 } = useDeletedSessionCount(projectId);
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkEditOpen, setBulkEditOpen] = useState(false);
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+
+  const batchDeleteMutation = useBatchDeleteSessions();
+
+  const handleSelectAll = () => {
+    setSelectedIds(new Set(filteredSessions.map((s) => s.id)));
+  };
+
+  const handleSelectNone = () => {
+    setSelectedIds(new Set());
+  };
+
+  const handleSelectToggle = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const handleDeleteConfirm = async () => {
+    try {
+      const idsArray = Array.from(selectedIds);
+      await batchDeleteMutation.mutateAsync(idsArray);
+      toast.success(`Successfully deleted ${idsArray.length} session(s)`);
+      if (selectedSessionId && selectedIds.has(selectedSessionId)) {
+        onSelectSession('');
+      }
+      setSelectedIds(new Set());
+      setIsSelectionMode(false);
+      setBulkDeleteOpen(false);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to delete sessions');
+    }
+  };
+
   const analyzedSessionIds = useMemo(
     () => new Set(insights.map((i) => i.session_id)),
     [insights]
@@ -226,6 +281,17 @@ export function SessionListPanel({
             onChange={(e) => onFilterChange('q', e.target.value)}
             className="h-8 text-xs flex-1"
           />
+          <Button
+            variant={isSelectionMode ? "secondary" : "outline"}
+            size="sm"
+            className="h-8 text-xs shrink-0"
+            onClick={() => {
+              setIsSelectionMode(!isSelectionMode);
+              setSelectedIds(new Set());
+            }}
+          >
+            {isSelectionMode ? 'Cancel' : 'Select'}
+          </Button>
         </div>
 
         {/* Row 2: Character + Status */}
@@ -345,6 +411,52 @@ export function SessionListPanel({
         </div>
       </div>
 
+      {isSelectionMode && (
+        <div className="shrink-0 bg-accent/40 border-b px-3 py-2 flex items-center justify-between text-xs gap-2">
+          <div className="flex items-center gap-1.5 font-medium">
+            <span>{selectedIds.size} selected</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Button
+              variant="link"
+              size="sm"
+              className="h-auto p-0 text-xs font-normal"
+              onClick={handleSelectAll}
+            >
+              Select All
+            </Button>
+            <span className="text-muted-foreground/30">|</span>
+            <Button
+              variant="link"
+              size="sm"
+              className="h-auto p-0 text-xs font-normal"
+              onClick={handleSelectNone}
+            >
+              Clear
+            </Button>
+            <span className="text-muted-foreground/30">|</span>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-6 px-2 text-[11px] gap-1"
+              disabled={selectedIds.size === 0}
+              onClick={() => setBulkEditOpen(true)}
+            >
+              Edit
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              className="h-6 px-2 text-[11px] gap-1"
+              disabled={selectedIds.size === 0}
+              onClick={() => setBulkDeleteOpen(true)}
+            >
+              Delete
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Session list */}
       <div className="flex-1 overflow-y-auto">
         {loading ? (
@@ -395,6 +507,9 @@ export function SessionListPanel({
                     promptQualityScore={promptQualityScores.get(session.id)}
                     missingFacets={analyzedSessionIds.has(session.id) && (missingFacetIds?.has(session.id) ?? false)}
                     onClick={() => onSelectSession(session.id)}
+                    isSelectionMode={isSelectionMode}
+                    isSelected={selectedIds.has(session.id)}
+                    onSelectToggle={() => handleSelectToggle(session.id)}
                   />
                 ))}
               </div>
@@ -410,6 +525,40 @@ export function SessionListPanel({
           <span>{deletedCount} hidden session{deletedCount !== 1 ? 's' : ''}</span>
         </div>
       )}
+
+      <BulkEditSessionsDialog
+        open={bulkEditOpen}
+        onOpenChange={setBulkEditOpen}
+        sessionIds={Array.from(selectedIds)}
+        onUpdated={() => {
+          setSelectedIds(new Set());
+          setIsSelectionMode(false);
+        }}
+      />
+
+      <AlertDialog open={bulkDeleteOpen} onOpenChange={setBulkDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm Bulk Delete</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete {selectedIds.size} selected session(s)? This will soft-delete the sessions and exclude them from your dashboard views.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={(e) => {
+                e.preventDefault();
+                handleDeleteConfirm();
+              }}
+              disabled={batchDeleteMutation.isPending}
+            >
+              {batchDeleteMutation.isPending ? 'Deleting...' : `Delete ${selectedIds.size} Session(s)`}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
