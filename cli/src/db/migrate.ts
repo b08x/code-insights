@@ -8,6 +8,7 @@ export interface MigrationResult {
   v9Applied: boolean;
   v10Applied: boolean;
   v11Applied: boolean;
+  v12Applied: boolean;
 }
 
 /**
@@ -25,6 +26,7 @@ export interface MigrationResult {
  * Version 9: Add analysis_queue table for async hook-triggered analysis
  * Version 10: Add parent_session_id and agent_type columns to sessions for subagent hierarchy (Mistral Vibe)
  * Version 11: Add embedding_status to insights and messages, create embedding_metadata table
+ * Version 12: Create FTS5 virtual table messages_fts and triggers for full-text search
  */
 export function runMigrations(db: Database.Database): MigrationResult {
   // Create schema_version table first if it doesn't exist.
@@ -94,7 +96,13 @@ export function runMigrations(db: Database.Database): MigrationResult {
     v11Applied = true;
   }
 
-  return { v6Applied, v7Applied, v8Applied, v9Applied, v10Applied, v11Applied };
+  let v12Applied = false;
+  if (currentVersion < 12) {
+    applyV12(db);
+    v12Applied = true;
+  }
+
+  return { v6Applied, v7Applied, v8Applied, v9Applied, v10Applied, v11Applied, v12Applied };
 }
 
 function getCurrentVersion(db: Database.Database): number {
@@ -267,4 +275,36 @@ function applyV11(db: Database.Database): void {
   db.exec(`CREATE INDEX IF NOT EXISTS idx_embedding_metadata_type ON embedding_metadata(entity_type)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_embedding_metadata_model ON embedding_metadata(model)`);
   db.prepare('INSERT OR IGNORE INTO schema_version (version) VALUES (?)').run(11);
+}
+
+function applyV12(db: Database.Database): void {
+  // Create FTS5 virtual table for messages
+  db.exec(`
+    CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
+      content,
+      content='messages',
+      content_rowid='rowid'
+    );
+  `);
+  
+  // Triggers to keep FTS table in sync
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS messages_ai AFTER INSERT ON messages BEGIN
+      INSERT INTO messages_fts(rowid, content) VALUES (new.rowid, new.content);
+    END;
+    CREATE TRIGGER IF NOT EXISTS messages_ad AFTER DELETE ON messages BEGIN
+      INSERT INTO messages_fts(messages_fts, rowid, content) VALUES ('delete', old.rowid, old.content);
+    END;
+    CREATE TRIGGER IF NOT EXISTS messages_au AFTER UPDATE ON messages BEGIN
+      INSERT INTO messages_fts(messages_fts, rowid, content) VALUES ('delete', old.rowid, old.content);
+      INSERT INTO messages_fts(rowid, content) VALUES (new.rowid, new.content);
+    END;
+  `);
+
+  // Backfill existing messages into FTS
+  db.exec(`
+    INSERT INTO messages_fts(messages_fts) VALUES('rebuild');
+  `);
+
+  db.prepare('INSERT OR IGNORE INTO schema_version (version) VALUES (?)').run(12);
 }

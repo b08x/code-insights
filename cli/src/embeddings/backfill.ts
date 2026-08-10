@@ -41,6 +41,7 @@ function messageSourceText(row: { content: string }): string {
 export async function backfillEmbeddings(
   config: EmbeddingConfig,
   entityType: EmbeddingEntityType,
+  onProgress?: (computed: number, total: number) => void,
 ): Promise<BackfillStats> {
   const db = getDb();
   loadVectorExtension(db);
@@ -93,48 +94,46 @@ export async function backfillEmbeddings(
         : messageSourceText(row as { content: string }),
   }));
 
-  // Embed in batches
-  const embeddingResults: EmbeddingResult[] = [];
+  const metaStmt = db.prepare(`
+    INSERT OR REPLACE INTO embedding_metadata (id, entity_type, model, dim, source_text, updated_at)
+      VALUES (?, ?, ?, ?, ?, datetime('now'))
+  `);
+  const statusStmt = db.prepare(`
+    UPDATE ${entityType === 'insight' ? 'insights' : 'messages'}
+    SET embedding_status = 'computed'
+    WHERE id = ?
+  `);
+  const updateBatch = db.transaction((results: EmbeddingResult[]) => {
+    for (const r of results) {
+      metaStmt.run(r.id, entityType, r.model, r.dim, r.sourceText);
+      statusStmt.run(r.id);
+    }
+  });
 
+  // Embed and save in batches
   for (let i = 0; i < items.length; i += config.batchSize) {
     const batch = items.slice(i, i + config.batchSize);
     try {
       const results = await embedTexts(config, batch);
-      embeddingResults.push(...results);
+      
+      if (results.length > 0) {
+        insertEmbeddingsBatch(db, entityType, results);
+        updateBatch(results);
+        stats.computed += results.length;
+      }
     } catch (err) {
       // Mark the whole batch as failed
       const msg = err instanceof Error ? err.message : String(err);
       for (const item of batch) {
         stats.failed++;
         stats.errors.push({ id: item.id, error: msg });
-        // Update status to 'failed' so we don't retry forever
         updateStatus(db, entityType, item.id, 'failed');
       }
     }
-  }
 
-  // Store successful embeddings
-  if (embeddingResults.length > 0) {
-    insertEmbeddingsBatch(db, entityType, embeddingResults);
-
-    // Write metadata + update status in a transaction
-    const metaStmt = db.prepare(`
-      INSERT OR REPLACE INTO embedding_metadata (id, entity_type, model, dim, source_text, updated_at)
-        VALUES (?, ?, ?, ?, ?, datetime('now'))
-    `);
-    const statusStmt = db.prepare(`
-      UPDATE ${entityType === 'insight' ? 'insights' : 'messages'}
-      SET embedding_status = 'computed'
-      WHERE id = ?
-    `);
-    const updateBatch = db.transaction((results: EmbeddingResult[]) => {
-      for (const r of results) {
-        metaStmt.run(r.id, entityType, r.model, r.dim, r.sourceText);
-        statusStmt.run(r.id);
-      }
-    });
-    updateBatch(embeddingResults);
-    stats.computed = embeddingResults.length;
+    if (onProgress) {
+      onProgress(stats.computed + stats.failed, stats.total);
+    }
   }
 
   return stats;
@@ -155,8 +154,9 @@ function updateStatus(
  */
 export async function backfillAll(
   config: EmbeddingConfig,
+  onProgress?: (entity: string, computed: number, total: number) => void,
 ): Promise<{ insights: BackfillStats; messages: BackfillStats }> {
-  const insights = await backfillEmbeddings(config, 'insight');
-  const messages = await backfillEmbeddings(config, 'message');
+  const insights = await backfillEmbeddings(config, 'insight', (c, t) => onProgress?.('insight', c, t));
+  const messages = await backfillEmbeddings(config, 'message', (c, t) => onProgress?.('message', c, t));
   return { insights, messages };
 }

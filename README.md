@@ -69,7 +69,8 @@ code-insights dashboard       # Start visual dashboard at http://localhost:7890
 | `reflect` | Compile cross-session synthesis | `--week [YYYY-W##]` |
 | `stats` | Fast terminal analytics | `today`, `cost`, `projects` |
 | `optimize` | Tune insight prompts via `@ax-llm/ax` | `run`, `status`, `list`, `apply`, `compare` |
-| `embeddings` | Manage SQLite vector database | `backfill`, `status`, `recompute`, `search` |
+| `embeddings` | Manage SQLite vector database | `backfill`, `status`, `recompute` |
+| `search / vsearch / query` | Hybrid semantic search over messages | `--top-k` |
 
 ---
 
@@ -200,21 +201,27 @@ code-insights optimize compare
 
 ## Local Embeddings & Semantic Search
 
-Code Insights uses local vector search to match similar insights and find related messages.
+Code Insights uses local vector and hybrid search to match similar insights and find related messages from your history.
 
 ```bash
 # Index messages and insights with Ollama (embeddinggemma:latest)
-code-insights embeddings backfill
+code-insights embeddings backfill --entity messages
 
 # Verify coverage and storage stats
 code-insights embeddings status
 
-# Execute KNN query over SQLite vector indexes
-code-insights embeddings search "auth middleware refactor"
+# Execute fast keyword search via FTS5
+code-insights search "auth middleware refactor"
+
+# Execute KNN vector search via sqlite-vec
+code-insights vsearch "how to fix the deployment pipeline"
+
+# Execute full Hybrid search (BM25 + Vector + Reciprocal Rank Fusion)
+code-insights query "database migrations connection error"
 ```
 
 > [!NOTE]
-> Configured via `OLLAMA_BASE_URL` (default: `http://tinybot:11434`). It leverages `sqlite-vec` for native, lightning-fast in-database vector operations.
+> Embeddings are configured via `OLLAMA_BASE_URL` (default: `http://tinybot:11434`). It leverages `sqlite-vec` for native, lightning-fast in-database vector operations, and `FTS5` for BM25 keyword matching.
 
 ---
 
@@ -252,12 +259,12 @@ Session Sources (Claude, Cursor, Copilot, Gemini CLI, Hermes, OpenCode, Crush)
              │
              ▼
       ┌─────────────────────────────────────┐
-      │ SQLite DB (V11)                     │  ~/.code-insights/data.db
+      │ SQLite DB (V12)                     │  ~/.code-insights/data.db
       │  ┌──────────┐  ┌──────────────────┐ │
-      │  │ Tables   │  │ Vector Tables    │ │
+      │  │ Tables   │  │ Search Tables    │ │
       │  │ projects │  │ vec_insights     │ │
       │  │ sessions │  │ vec_messages     │ │
-      │  │ messages │  │ (sqlite-vec KNN) │ │
+      │  │ messages │  │ messages_fts     │ │
       │  │ insights │  └──────────────────┘ │
       │  └──────────┘                       │
       └──────┬──────────────────────────────┘

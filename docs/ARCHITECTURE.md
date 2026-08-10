@@ -114,7 +114,7 @@ Providers are registered in `providers/registry.ts`. To add a new source tool:
 - **Location:** `~/.code-insights/data.db`
 - **Mode:** WAL (concurrent reads during CLI sync)
 - **Driver:** better-sqlite3 (synchronous, fast, no async overhead)
-- **Schema:** Versioned migrations (V1–V9) applied on startup
+- **Schema:** Versioned migrations (V1–V12) applied on startup
 - **Timestamps:** ISO 8601 strings
 
 ### Tables
@@ -122,14 +122,16 @@ Providers are registered in `providers/registry.ts`. To add a new source tool:
 | Table | Purpose | Schema Version |
 |-------|---------|---------------|
 | `projects` | Project metadata (id = hash of git remote URL or path) | V1 |
-| `sessions` | Session metadata, titles, character classification, `deleted_at` soft-delete; V6 adds `compact_count INTEGER`, `auto_compact_count INTEGER`, `slash_commands TEXT` | V1, V5, V6 |
+| `sessions` | Session metadata, titles, character classification, `deleted_at` soft-delete; V6 adds `compact_count INTEGER`, `auto_compact_count INTEGER`, `slash_commands TEXT`; V10 adds `parent_session_id`, `agent_type` | V1, V5, V6, V10 |
 | `messages` | Full message content (stored during sync) | V1 |
-| `insights` | LLM-generated insights (5 types) | V1, V2 (index) |
+| `messages_fts` | SQLite FTS5 virtual table for lightning-fast keyword search (BM25) | V12 |
+| `insights` | LLM-generated insights (5 types) | V1, V2, V11 |
 | `usage_stats` | Global usage aggregation | V1 |
 | `session_facets` | Cross-session facet data (friction, patterns, workflow) | V3 |
 | `reflect_snapshots` | Cached synthesis results, composite PK `(period, project_id, source_tool)` | V4 |
 | `analysis_usage` | Per-session LLM analysis cost data, composite PK `(session_id, analysis_type)` | V7, V8 |
 | `analysis_queue` | Analysis job queue for background processing, PK `session_id`, status lifecycle: pending → processing → completed/failed with retry logic | V9 |
+| `embedding_metadata` | Provenance for computed embeddings (model, dim, source text) | V11 |
 | `schema_version` | Migration tracking | V1 |
 
 ---

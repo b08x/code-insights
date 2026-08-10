@@ -43,6 +43,8 @@ function statusRowToInt(row: { n?: number | string }): number {
   return row.n ?? 0;
 }
 
+import cliProgress from 'cli-progress';
+
 // ── embeddings backfill ───────────────────────────────────────────────────────
 
 export async function embeddingsBackfillCommand(opts: {
@@ -98,30 +100,46 @@ export async function embeddingsBackfillCommand(opts: {
     return;
   }
 
-  const spinner = ora({
-    text: chalk.dim('Computing embeddings...'),
-    color: 'cyan',
-  });
+  const multiBar = new cliProgress.MultiBar({
+    clearOnComplete: false,
+    hideCursor: true,
+    format: `  ${chalk.cyan('{bar}')} {percentage}% | {value}/{total} | {eta}s | {name}`,
+  }, cliProgress.Presets.shades_classic);
 
-  spinner.start();
+  let insightsBar: cliProgress.SingleBar | undefined;
+  let messagesBar: cliProgress.SingleBar | undefined;
+
   const t0 = Date.now();
 
   try {
     let statsInsights, statsMessages;
 
     if (entityFilter === 'insights') {
-      statsInsights = await backfillEmbeddings(config, 'insight');
+      insightsBar = multiBar.create(pendingInsights, 0, { name: 'Insights' });
+      statsInsights = await backfillEmbeddings(config, 'insight', (c, t) => {
+        if (!insightsBar) insightsBar = multiBar.create(t, 0, { name: 'Insights' });
+        insightsBar.update(c);
+      });
     } else if (entityFilter === 'messages') {
-      statsMessages = await backfillEmbeddings(config, 'message');
+      messagesBar = multiBar.create(pendingMessages, 0, { name: 'Messages' });
+      statsMessages = await backfillEmbeddings(config, 'message', (c, t) => {
+        if (!messagesBar) messagesBar = multiBar.create(t, 0, { name: 'Messages' });
+        messagesBar.update(c);
+      });
     } else {
-      const all = await backfillAll(config);
+      if (pendingInsights > 0) insightsBar = multiBar.create(pendingInsights, 0, { name: 'Insights' });
+      if (pendingMessages > 0) messagesBar = multiBar.create(pendingMessages, 0, { name: 'Messages' });
+      
+      const all = await backfillAll(config, (entity, c, t) => {
+        if (entity === 'insight' && insightsBar) insightsBar.update(c);
+        if (entity === 'message' && messagesBar) messagesBar.update(c);
+      });
       statsInsights = all.insights;
       statsMessages = all.messages;
     }
 
+    multiBar.stop();
     const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
-
-    spinner.stop();
 
     // Print results
     if (statsInsights) {
@@ -165,7 +183,7 @@ export async function embeddingsBackfillCommand(opts: {
       success: true,
     });
   } catch (error) {
-    spinner.stop();
+    multiBar.stop();
     const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
     const { error_type, error_message } = classifyError(error);
 
@@ -222,6 +240,7 @@ export async function embeddingsStatusCommand(opts: { quiet?: boolean }): Promis
     const messageStatuses = db.prepare(`
       SELECT embedding_status, COUNT(*) as n
       FROM messages
+      WHERE type = 'user' AND content != ''
       GROUP BY embedding_status
     `).all() as Array<{ embedding_status: string; n: number }>;
 
@@ -286,6 +305,7 @@ export async function embeddingsRecomputeCommand(opts: {
   sessionId?: string;
   projectId?: string;
   all?: boolean;
+  failed?: boolean;
 }): Promise<void> {
   const db = getDb();
   loadVectorExtension(db);
@@ -304,6 +324,16 @@ export async function embeddingsRecomputeCommand(opts: {
     `).run();
     affected = (iResult.changes ?? 0) + (mResult.changes ?? 0);
     console.log(chalk.gray(`  Marked ${affected} rows as pending (all entities).`));
+  } else if (opts.failed) {
+    // Mark only failed rows as pending
+    const iResult = db.prepare(`
+      UPDATE insights SET embedding_status = 'pending' WHERE embedding_status = 'failed'
+    `).run();
+    const mResult = db.prepare(`
+      UPDATE messages SET embedding_status = 'pending' WHERE embedding_status = 'failed'
+    `).run();
+    affected = (iResult.changes ?? 0) + (mResult.changes ?? 0);
+    console.log(chalk.gray(`  Marked ${affected} failed rows as pending to be retried.`));
   } else if (opts.sessionId) {
     // Mark insights + messages for a specific session
     const iResult = db.prepare(`
@@ -346,7 +376,7 @@ export async function embeddingsRecomputeCommand(opts: {
 
   trackEvent('cli_embeddings', {
     action: 'recompute',
-    scope: opts.all ? 'all' : opts.sessionId ? 'session' : 'project',
+    scope: opts.all ? 'all' : opts.failed ? 'failed' : opts.sessionId ? 'session' : 'project',
     affected,
     success: true,
   });
@@ -491,11 +521,13 @@ export function buildEmbeddingsCommand(): Command {
     .option('--session-id <id>', 'Recompute for a specific session')
     .option('--project-id <id>', 'Recompute for a specific project')
     .option('--all', 'Recompute all computed/stale entities')
+    .option('--failed', 'Recompute all failed entities')
     .action((opts) =>
       embeddingsRecomputeCommand({
         sessionId: opts.sessionId,
         projectId: opts.projectId,
         all: opts.all,
+        failed: opts.failed,
       }),
     );
 
