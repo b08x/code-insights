@@ -165,7 +165,7 @@ describe('Sessions routes', () => {
       expect(row.custom_title).toBe('My New Title');
     });
 
-    it('returns 400 when customTitle is missing from body', async () => {
+    it('returns 400 when fields are missing from body', async () => {
       seedProject('proj-1', 'alpha');
       seedSession('sess-1', 'proj-1');
 
@@ -177,7 +177,7 @@ describe('Sessions routes', () => {
       });
       expect(res.status).toBe(400);
       const body = await res.json();
-      expect(body.error).toBe('customTitle is required');
+      expect(body.error).toBe('No fields to update');
     });
 
     it('returns 404 when session does not exist', async () => {
@@ -293,6 +293,85 @@ describe('Sessions routes', () => {
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.count).toBe(1);
+    });
+  });
+
+  describe('POST /api/sessions/batch-update', () => {
+    it('updates project_name and git_remote_url in bulk', async () => {
+      seedProject('proj-1', 'alpha');
+      seedSession('sess-1', 'proj-1');
+      seedSession('sess-2', 'proj-1');
+
+      const app = createApp();
+      const res = await app.request('/api/sessions/batch-update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ids: ['sess-1', 'sess-2'],
+          projectName: 'Updated Project',
+          gitRemoteUrl: 'https://github.com/test/updated',
+        }),
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.ok).toBe(true);
+      expect(body.updatedCount).toBe(2);
+
+      // Verify db updates
+      const s1 = testDb.prepare('SELECT project_name, git_remote_url FROM sessions WHERE id = ?').get('sess-1') as any;
+      expect(s1.project_name).toBe('Updated Project');
+      expect(s1.git_remote_url).toBe('https://github.com/test/updated');
+
+      const s2 = testDb.prepare('SELECT project_name, git_remote_url FROM sessions WHERE id = ?').get('sess-2') as any;
+      expect(s2.project_name).toBe('Updated Project');
+      expect(s2.git_remote_url).toBe('https://github.com/test/updated');
+    });
+
+    it('returns 400 for empty or invalid ids array', async () => {
+      const app = createApp();
+      const res = await app.request('/api/sessions/batch-update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ids: [],
+          projectName: 'Broken',
+        }),
+      });
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toBe('ids must be a non-empty array of strings');
+    });
+  });
+
+  describe('POST /api/sessions/batch-delete', () => {
+    it('soft-deletes sessions in bulk', async () => {
+      seedProject('proj-1', 'alpha');
+      seedSession('sess-1', 'proj-1');
+      seedSession('sess-2', 'proj-1');
+      seedSession('sess-3', 'proj-1');
+
+      const app = createApp();
+      const res = await app.request('/api/sessions/batch-delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ids: ['sess-1', 'sess-2'],
+        }),
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.ok).toBe(true);
+      expect(body.deletedCount).toBe(2);
+
+      // Verify deleted_at is set for sess-1 and sess-2 but not sess-3
+      const s1 = testDb.prepare('SELECT deleted_at FROM sessions WHERE id = ?').get('sess-1') as any;
+      expect(s1.deleted_at).not.toBeNull();
+
+      const s2 = testDb.prepare('SELECT deleted_at FROM sessions WHERE id = ?').get('sess-2') as any;
+      expect(s2.deleted_at).not.toBeNull();
+
+      const s3 = testDb.prepare('SELECT deleted_at FROM sessions WHERE id = ?').get('sess-3') as any;
+      expect(s3.deleted_at).toBeNull();
     });
   });
 });

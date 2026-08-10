@@ -70,6 +70,70 @@ app.get('/', (c) => {
   return c.json({ sessions });
 });
 
+app.post('/batch-update', async (c) => {
+  const db = getDb();
+  const body = await c.req.json<{ ids?: string[], projectName?: string, gitRemoteUrl?: string }>();
+  const { ids, projectName, gitRemoteUrl } = body;
+
+  if (!ids || !Array.isArray(ids) || ids.length === 0) {
+    return c.json({ error: 'ids must be a non-empty array of strings' }, 400);
+  }
+
+  if (projectName === undefined && gitRemoteUrl === undefined) {
+    return c.json({ error: 'No fields to update' }, 400);
+  }
+
+  const updates: string[] = [];
+  const params: any[] = [];
+
+  if (projectName !== undefined) {
+    updates.push('project_name = ?');
+    params.push(projectName);
+  }
+  if (gitRemoteUrl !== undefined) {
+    updates.push('git_remote_url = ?');
+    params.push(gitRemoteUrl || null);
+  }
+
+  let updatedCount = 0;
+  db.transaction(() => {
+    const stmt = db.prepare(`
+      UPDATE sessions 
+      SET ${updates.join(', ')} 
+      WHERE id = ? AND deleted_at IS NULL
+    `);
+    for (const id of ids) {
+      const result = stmt.run(...params, id);
+      updatedCount += result.changes;
+    }
+  })();
+
+  return c.json({ ok: true, updatedCount });
+});
+
+app.post('/batch-delete', async (c) => {
+  const db = getDb();
+  const body = await c.req.json<{ ids?: string[] }>();
+  const { ids } = body;
+
+  if (!ids || !Array.isArray(ids) || ids.length === 0) {
+    return c.json({ error: 'ids must be a non-empty array of strings' }, 400);
+  }
+
+  let deletedCount = 0;
+  db.transaction(() => {
+    const stmt = db.prepare(
+      `UPDATE sessions SET deleted_at = datetime('now') WHERE id = ? AND deleted_at IS NULL`
+    );
+    for (const id of ids) {
+      const result = stmt.run(id);
+      deletedCount += result.changes;
+    }
+  })();
+
+  return c.json({ ok: true, deletedCount });
+});
+
 // GET /api/sessions/deleted/count — count of soft-deleted sessions for a project
 // IMPORTANT: registered before /:id so "deleted" isn't matched as a session ID
 app.get('/deleted/count', (c) => {

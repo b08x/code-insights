@@ -70,3 +70,6 @@ node-compile-cache/
 .graphifyignore
 
 tea_debug.log
+#.graphify_*
+
+.opencode/

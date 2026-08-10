@@ -146,6 +146,10 @@ export function ProjectNav({
             <SelectItem value="codex-cli">Codex CLI</SelectItem>
             <SelectItem value="copilot-cli">Copilot CLI</SelectItem>
             <SelectItem value="copilot">Copilot</SelectItem>
+            <SelectItem value="gemini-cli">Gemini CLI</SelectItem>
+            <SelectItem value="hermes-agent">Hermes Agent</SelectItem>
+            <SelectItem value="opencode">OpenCode</SelectItem>
+            <SelectItem value="crush">Crush</SelectItem>
           </SelectContent>
         </Select>
       </div>

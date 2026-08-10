@@ -73,6 +73,23 @@ export function deleteSession(id: string) {
   return request<{ ok: boolean }>(`/sessions/${id}`, { method: 'DELETE' });
 }
 
+export function batchUpdateSessions(
+  ids: string[],
+  body: { projectName?: string; gitRemoteUrl?: string }
+) {
+  return request<{ ok: boolean; updatedCount: number }>('/sessions/batch-update', {
+    method: 'POST',
+    body: JSON.stringify({ ids, ...body }),
+  });
+}
+
+export function batchDeleteSessions(ids: string[]) {
+  return request<{ ok: boolean; deletedCount: number }>('/sessions/batch-delete', {
+    method: 'POST',
+    body: JSON.stringify({ ids }),
+  });
+}
+
 export function fetchDeletedSessionCount(projectId?: string) {
   const q = projectId ? `?projectId=${encodeURIComponent(projectId)}` : '';
   return request<{ count: number }>(`/sessions/deleted/count${q}`);

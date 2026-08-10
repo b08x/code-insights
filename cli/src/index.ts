@@ -117,6 +117,8 @@ program
   .option('--no-sync', 'Skip automatic session sync before starting')
   .action(dashboardCommand);
 
+import { buildSearchCommands } from './commands/search.js';
+
 program.addCommand(resetCommand);
 program.addCommand(statsCommand);
 program.addCommand(configCommand);
@@ -125,6 +127,7 @@ program.addCommand(reflectCommand);
 program.addCommand(buildQueueCommand());
 program.addCommand(buildEmbeddingsCommand());
 program.addCommand(buildOptimizeCommand());
+buildSearchCommands().forEach(cmd => program.addCommand(cmd));
 
 program
   .command('session-end')

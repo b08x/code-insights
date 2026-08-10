@@ -5,6 +5,7 @@ import { formatDuration, getSessionTitle, cn } from '@/lib/utils';
 import { Sparkles, Target } from 'lucide-react';
 import type { Session } from '@/lib/types';
 import { getScoreTier } from '@/lib/score-utils';
+import { Checkbox } from '@/components/ui/checkbox';
 
 const SOURCE_LABELS: Record<string, string> = {
   'claude-code': 'Claude Code',
@@ -12,6 +13,10 @@ const SOURCE_LABELS: Record<string, string> = {
   'codex-cli': 'Codex CLI',
   'copilot-cli': 'Copilot CLI',
   copilot: 'Copilot',
+  'gemini-cli': 'Gemini CLI',
+  'hermes-agent': 'Hermes Agent',
+  opencode: 'OpenCode',
+  crush: 'Crush',
 };
 
 const SCORE_TEXT_COLORS: Record<string, string> = {
@@ -30,6 +35,9 @@ interface CompactSessionRowProps {
   promptQualityScore?: number;
   missingFacets?: boolean;
   onClick: () => void;
+  isSelectionMode?: boolean;
+  isSelected?: boolean;
+  onSelectToggle?: () => void;
 }
 
 export function CompactSessionRow({
@@ -41,6 +49,9 @@ export function CompactSessionRow({
   promptQualityScore,
   missingFacets,
   onClick,
+  isSelectionMode = false,
+  isSelected = false,
+  onSelectToggle,
 }: CompactSessionRowProps) {
   const startedAt = new Date(session.started_at);
   const endedAt = new Date(session.ended_at);
@@ -60,93 +71,112 @@ export function CompactSessionRow({
     : 0;
 
   return (
-    <button
-      onClick={onClick}
-      aria-current={isActive ? 'true' : undefined}
+    <div
       className={cn(
-        'w-full text-left px-3 py-2.5 transition-colors border-l-2',
+        'w-full flex items-start transition-colors border-l-2 relative group',
         isActive
           ? 'bg-accent/60 border-primary'
           : 'border-transparent hover:bg-accent/40'
       )}
     >
-      {/* Title */}
-      <p className="text-sm font-medium line-clamp-2 leading-snug">{title}</p>
-
-      {/* Badges */}
-      <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-        {outcome && OUTCOME_DOT[outcome] && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span className={cn('w-2 h-2 rounded-full shrink-0', OUTCOME_DOT[outcome].color)} />
-            </TooltipTrigger>
-            <TooltipContent side="right" className="text-xs">{OUTCOME_DOT[outcome].label}</TooltipContent>
-          </Tooltip>
-        )}
-        {session.session_character && characterColor && (
-          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 capitalize ${characterColor}`}>
-            {session.session_character.replace(/_/g, ' ')}
-          </Badge>
-        )}
-      </div>
-
-      {/* Metadata: source . messages . duration . cost . insights */}
-      <div className="flex items-center gap-1.5 mt-1.5 text-[11px] text-muted-foreground/70 flex-wrap">
-        {sourceLabel && (
-          <>
-            <span className="text-muted-foreground">{sourceLabel}</span>
-            <span className="text-muted-foreground/30">&middot;</span>
-          </>
-        )}
-        <span>{session.message_count} msgs</span>
-        <span className="text-muted-foreground/30">&middot;</span>
-        <span>{formatDuration(startedAt, endedAt)}</span>
-        {session.estimated_cost_usd != null && (
-          <>
-            <span className="text-muted-foreground/30">&middot;</span>
-            <span>${session.estimated_cost_usd.toFixed(2)}</span>
-          </>
-        )}
-        {insightTotal > 0 && (
-          <>
-            <span className="text-muted-foreground/30">&middot;</span>
-            {missingFacets ? (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span className="flex items-center gap-0.5 text-amber-500/80">
-                    <Sparkles className="h-2.5 w-2.5" />
-                    {insightTotal}
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent side="right" className="text-xs max-w-[200px]">
-                  Missing pattern data — re-analyze or run <code className="text-[10px]">reflect backfill</code>
-                </TooltipContent>
-              </Tooltip>
-            ) : (
-              <span className="flex items-center gap-0.5 text-purple-500/80">
-                <Sparkles className="h-2.5 w-2.5" />
-                {insightTotal}
-              </span>
-            )}
-          </>
-        )}
-        {promptQualityScore != null && (
-          <>
-            <span className="text-muted-foreground/30">&middot;</span>
-            <span className={cn('flex items-center gap-0.5', SCORE_TEXT_COLORS[getScoreTier(promptQualityScore)])}>
-              <Target className="h-2.5 w-2.5" />
-              {promptQualityScore}
-            </span>
-          </>
-        )}
-      </div>
-
-      {/* Project name (only when "All Projects" selected) */}
-      {showProject && (
-        <p className="text-[10px] text-muted-foreground/60 mt-1 truncate">
-          {session.project_name}
-        </p>
+      {isSelectionMode && (
+        <div className="flex items-center justify-center pl-3 pt-3.5 shrink-0">
+          <Checkbox
+            checked={isSelected}
+            onCheckedChange={onSelectToggle}
+          />
+        </div>
       )}
-    </button>
+      <button
+        onClick={(e) => {
+          if (isSelectionMode) {
+            e.preventDefault();
+            onSelectToggle?.();
+          } else {
+            onClick();
+          }
+        }}
+        aria-current={isActive ? 'true' : undefined}
+        className="flex-1 text-left px-3 py-2.5 outline-none"
+      >
+        {/* Title */}
+        <p className="text-sm font-medium line-clamp-2 leading-snug">{title}</p>
+
+        {/* Badges */}
+        <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+          {outcome && OUTCOME_DOT[outcome] && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className={cn('w-2 h-2 rounded-full shrink-0', OUTCOME_DOT[outcome].color)} />
+              </TooltipTrigger>
+              <TooltipContent side="right" className="text-xs">{OUTCOME_DOT[outcome].label}</TooltipContent>
+            </Tooltip>
+          )}
+          {session.session_character && characterColor && (
+            <Badge variant="outline" className={`text-[10px] px-1.5 py-0 capitalize ${characterColor}`}>
+              {session.session_character.replace(/_/g, ' ')}
+            </Badge>
+          )}
+        </div>
+
+        {/* Metadata: source . messages . duration . cost . insights */}
+        <div className="flex items-center gap-1.5 mt-1.5 text-[11px] text-muted-foreground/70 flex-wrap">
+          {sourceLabel && (
+            <>
+              <span className="text-muted-foreground">{sourceLabel}</span>
+              <span className="text-muted-foreground/30">&middot;</span>
+            </>
+          )}
+          <span>{session.message_count} msgs</span>
+          <span className="text-muted-foreground/30">&middot;</span>
+          <span>{formatDuration(startedAt, endedAt)}</span>
+          {session.estimated_cost_usd != null && (
+            <>
+              <span className="text-muted-foreground/30">&middot;</span>
+              <span>${session.estimated_cost_usd.toFixed(2)}</span>
+            </>
+          )}
+          {insightTotal > 0 && (
+            <>
+              <span className="text-muted-foreground/30">&middot;</span>
+              {missingFacets ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="flex items-center gap-0.5 text-amber-500/80">
+                      <Sparkles className="h-2.5 w-2.5" />
+                      {insightTotal}
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent side="right" className="text-xs max-w-[200px]">
+                    Missing pattern data — re-analyze or run <code className="text-[10px]">reflect backfill</code>
+                  </TooltipContent>
+                </Tooltip>
+              ) : (
+                <span className="flex items-center gap-0.5 text-purple-500/80">
+                  <Sparkles className="h-2.5 w-2.5" />
+                  {insightTotal}
+                </span>
+              )}
+            </>
+          )}
+          {promptQualityScore != null && (
+            <>
+              <span className="text-muted-foreground/30">&middot;</span>
+              <span className={cn('flex items-center gap-0.5', SCORE_TEXT_COLORS[getScoreTier(promptQualityScore)])}>
+                <Target className="h-2.5 w-2.5" />
+                {promptQualityScore}
+              </span>
+            </>
+          )}
+        </div>
+
+        {/* Project name (only when "All Projects" selected) */}
+        {showProject && (
+          <p className="text-[10px] text-muted-foreground/60 mt-1 truncate">
+            {session.project_name}
+          </p>
+        )}
+      </button>
+    </div>
   );
 }
