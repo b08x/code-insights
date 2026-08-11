@@ -73,3 +73,7 @@ tea_debug.log
 #.graphify_*
 
 .opencode/
+
+agent-debug.log
+
+test-*

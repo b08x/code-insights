@@ -17,6 +17,7 @@ const searchSessionsTool = fn('searchSessions')
   .arg('limit', f.number('Max results (default 10)').optional())
   .returns(f.string('JSON array of session metadata'))
   .handler(async ({ keyword, project, limit = 10 }) => {
+    console.log('[DEBUG] searchSessionsTool called', { keyword, project, limit });
     const db = getDb();
     const query = `
       SELECT id, project_name, custom_title, generated_title, summary, started_at, message_count
@@ -44,6 +45,7 @@ const getSessionTranscriptTool = fn('getSessionTranscript')
   .arg('sessionId', f.string('The exact ID of the session to read'))
   .returns(f.string('JSON array of messages (user, assistant, tool calls)'))
   .handler(async ({ sessionId }) => {
+    console.log('[DEBUG] getSessionTranscriptTool called', { sessionId });
     const db = getDb();
     const stmt = db.prepare(`SELECT type, content, timestamp, tool_calls FROM messages WHERE session_id = @sessionId ORDER BY timestamp ASC`);
     const results = stmt.all({ sessionId });
@@ -158,19 +160,49 @@ app.post('/', async (c) => {
   }
 
   try {
-    const streamResult = await insightAgent.streamingForward(llm, { userQuery: request, userClarification: answer });
+    const streamResult = (await insightAgent.streamingForward(llm, { userQuery: request, userClarification: answer })) as AsyncIterableIterator<any>;
     
+    // We must read the first chunk to catch any AxAgentClarificationError before sending HTTP 200 headers
+    // because once streamText is returned, headers are sent and we can't return a JSON response.
+    const iterator = streamResult[Symbol.asyncIterator]();
+    const firstResult = await iterator.next();
+    
+    if (firstResult.done) {
+      return c.text('');
+    }
+
     return streamText(c, async (stream) => {
+      let hasWrittenReply = false;
       try {
-        for await (const chunk of streamResult as any) {
-          fs.appendFileSync('agent-debug.log', JSON.stringify(chunk) + '\n');
-          if (chunk.reply) {
-            await stream.write(chunk.reply);
+        // Send the first chunk we already pulled
+        const firstChunk = firstResult.value;
+        fs.appendFileSync('agent-debug.log', 'FIRST CHUNK: ' + JSON.stringify(firstChunk) + '\n');
+        
+        const firstReply = firstChunk?.delta?.reply || firstChunk?.reply;
+        if (firstReply) {
+          hasWrittenReply = true;
+          await stream.write(firstReply);
+        }
+        
+        // Stream the rest
+        while (true) {
+          const { done, value: chunk } = await iterator.next();
+          if (done) break;
+          
+          fs.appendFileSync('agent-debug.log', 'CHUNK: ' + JSON.stringify(chunk) + '\n');
+          
+          const replyText = chunk?.delta?.reply || chunk?.reply;
+          if (replyText) {
+            hasWrittenReply = true;
+            await stream.write(replyText);
           }
+        }
+        
+        if (!hasWrittenReply) {
+          await stream.write("\n\n*The agent completed its process but did not return a valid reply. This often happens if the configured LLM does not strictly follow the required JSON output schema. Try using a more capable model (like gpt-4o or claude-3-5-sonnet).*");
         }
       } catch (err: any) {
         console.error('Error during streaming:', err);
-        fs.appendFileSync('agent-debug.log', 'ERROR: ' + err.message + '\n');
         await stream.write(`\n\n[Agent Error: ${err.message}]`);
       }
     });
