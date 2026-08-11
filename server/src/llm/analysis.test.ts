@@ -561,7 +561,7 @@ describe('analyzeSession with retrieval', () => {
     // Create vec_insights table
     const db = testDb;
     sqliteVec.load(db);
-    db.exec("CREATE VIRTUAL TABLE IF NOT EXISTS vec_insights USING vec0(id TEXT PRIMARY KEY, embedding float[768])");
+    db.exec("CREATE VIRTUAL TABLE IF NOT EXISTS vec_insights USING vec0(id TEXT PRIMARY KEY, embedding float[1024])");
 
     // Seed a past session so the FK constraint is satisfied
     db.prepare(
@@ -573,7 +573,7 @@ describe('analyzeSession with retrieval', () => {
     db.prepare('INSERT INTO insights (id, session_id, project_id, project_name, type, title, content, summary, bullets, confidence, source, metadata, timestamp, created_at, scope, analysis_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
       .run(pastInsightId, 'sess-past', 'proj-test', 'test-project', 'decision', 'Past Decision', 'Past content about testing', 'Past summary', '[]', 0.85, 'llm', null, '2025-06-14T10:00:00Z', '2025-06-14T10:00:00Z', 'session', '3.0.0');
 
-    const pastVec = new Float32Array(768).fill(0.5);
+    const pastVec = new Float32Array(1024).fill(0.5);
     const blob = Buffer.from(pastVec.buffer, pastVec.byteOffset, pastVec.byteLength);
     db.prepare('INSERT OR REPLACE INTO vec_insights (id, embedding) VALUES (?, ?)').run(pastInsightId, blob);
 

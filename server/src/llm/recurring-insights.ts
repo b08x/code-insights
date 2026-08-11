@@ -26,7 +26,7 @@ const SIMILARITY_THRESHOLD = 0.85;
 /**
  * Maximum number of nearest neighbors to fetch per insight from sqlite-vec.
  * Larger values catch more potential group members but increase query time.
- * For 15K insights with dim=768, K=50 is a reasonable default.
+ * For 15K insights with dim=1024, K=50 is a reasonable default.
  */
 const KNN_TOP_K = 50;
 
@@ -51,7 +51,7 @@ export interface InsightEmbedding {
   title: string;
   summary: string;
   type: string;
-  /** The embedding vector (dim=768 for embeddinggemma). */
+  /** The embedding vector (dim=1024 for qwen3-embedding). */
   vector: Float32Array;
 }
 

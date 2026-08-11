@@ -75,13 +75,13 @@ function makeInsightsDb(): Database.Database {
   db.exec(`
     CREATE VIRTUAL TABLE IF NOT EXISTS vec_insights USING vec0(
       id TEXT PRIMARY KEY,
-      embedding float[768]
+      embedding float[1024]
     )
   `);
   db.exec(`
     CREATE VIRTUAL TABLE IF NOT EXISTS vec_messages USING vec0(
       id TEXT PRIMARY KEY,
-      embedding float[768]
+      embedding float[1024]
     )
   `);
 
@@ -92,7 +92,7 @@ function makeInsightsDb(): Database.Database {
 // Identical texts → identical vectors (distance = 0).
 // Different texts → orthogonal-ish vectors.
 function mockEmbedFn(text: string): Float32Array {
-  const vec = new Float32Array(768);
+  const vec = new Float32Array(1024);
   // Simple hash-based vector generation for deterministic testing
   let hash = 0;
   for (let i = 0; i < text.length; i++) {
@@ -100,13 +100,13 @@ function mockEmbedFn(text: string): Float32Array {
   }
   // Use the hash to set a few positions, creating distinct but deterministic vectors
   const seed = Math.abs(hash);
-  vec[seed % 768] = 1.0;
-  vec[(seed + 1) % 768] = 0.5;
-  vec[(seed + 2) % 768] = 0.25;
+  vec[seed % 1024] = 1.0;
+  vec[(seed + 1) % 1024] = 0.5;
+  vec[(seed + 2) % 1024] = 0.25;
   // Normalize
   const norm = Math.sqrt(vec.reduce((sum, v) => sum + v * v, 0));
   if (norm > 0) {
-    for (let i = 0; i < 768; i++) vec[i] /= norm;
+    for (let i = 0; i < 1024; i++) vec[i] /= norm;
   }
   return vec;
 }
@@ -174,7 +174,7 @@ describe('findSimilar integration with dedup', () => {
     const db = makeInsightsDb();
 
     // Insert a vector
-    const vec = new Float32Array(768);
+    const vec = new Float32Array(1024);
     vec[0] = 1.0;
     insertEmbedding(db, 'insight', 'existing-1', vec);
 
@@ -202,12 +202,12 @@ describe('findSimilar integration with dedup', () => {
     const db = makeInsightsDb();
 
     // Insert a vector at position 0
-    const v1 = new Float32Array(768);
+    const v1 = new Float32Array(1024);
     v1[0] = 1.0;
     insertEmbedding(db, 'insight', 'orig-1', v1);
 
     // Query with orthogonal vector
-    const v2 = new Float32Array(768);
+    const v2 = new Float32Array(1024);
     v2[500] = 1.0;
 
     const results = findSimilar(db, 'insight', v2, 0.90, 5);
@@ -220,7 +220,7 @@ describe('findSimilar integration with dedup', () => {
     const db = makeInsightsDb();
 
     // Insert vector but NO insight row
-    const vec = new Float32Array(768);
+    const vec = new Float32Array(1024);
     vec[0] = 1.0;
     insertEmbedding(db, 'insight', 'orphan-1', vec);
 

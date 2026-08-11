@@ -9,7 +9,7 @@ import * as sqliteVec from 'sqlite-vec';
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
 
-function setupMockOllama(dim: number = 768) {
+function setupMockOllama(dim: number = 1024) {
   mockFetch.mockImplementation(async (url: string, opts: any) => {
     const body = JSON.parse(opts.body);
     const count = Array.isArray(body.input) ? body.input.length : 1;
@@ -45,9 +45,9 @@ import {
 } from '../store.js';
 
 const TEST_CONFIG: EmbeddingConfig = {
-  model: 'embeddinggemma:latest',
+  model: 'qwen3-embedding:0.6b',
   baseUrl: 'http://localhost:11434',
-  dim: 768,
+  dim: 1024,
   batchSize: 3,
   rateLimitPerMinute: 0,
 };
@@ -55,7 +55,7 @@ const TEST_CONFIG: EmbeddingConfig = {
 function freshDb(): Database.Database {
   const db = new Database(':memory:');
   loadVectorExtension(db);
-  createAllVectorTables(db, 768);
+  createAllVectorTables(db, 1024);
   return db;
 }
 
@@ -65,17 +65,17 @@ describe('ollama-client', () => {
   });
 
   it('embedOne returns a single embedding', async () => {
-    setupMockOllama(768);
+    setupMockOllama(1024);
     const result = await embedOne(TEST_CONFIG, 'test-1', 'hello world');
     expect(result.id).toBe('test-1');
     expect(result.vector).toBeInstanceOf(Float32Array);
-    expect(result.vector.length).toBe(768);
-    expect(result.model).toBe('embeddinggemma:latest');
+    expect(result.vector.length).toBe(1024);
+    expect(result.model).toBe('qwen3-embedding:0.6b');
     expect(result.sourceText).toBe('hello world');
   });
 
   it('embedTexts processes items in batches', async () => {
-    setupMockOllama(768);
+    setupMockOllama(1024);
     const items = Array.from({ length: 7 }, (_, i) => ({
       id: `item-${i}`,
       text: `text ${i}`,
@@ -138,7 +138,7 @@ describe('store', () => {
 
   it('insertEmbedding and countVectors work', () => {
     const db = freshDb();
-    const vec = new Float32Array(768);
+    const vec = new Float32Array(1024);
     vec[0] = 1.0;
     vec[1] = 2.0;
 
@@ -152,10 +152,10 @@ describe('store', () => {
     const db = freshDb();
     const embeddings = Array.from({ length: 100 }, (_, i) => ({
       id: `batch-${i}`,
-      vector: new Float32Array(768).fill(i),
+      vector: new Float32Array(1024).fill(i),
       sourceText: `text ${i}`,
       model: 'test',
-      dim: 768,
+      dim: 1024,
     }));
 
     insertEmbeddingsBatch(db, 'insight', embeddings);
@@ -168,13 +168,13 @@ describe('store', () => {
 
     // Insert 5 vectors where vector i has 1.0 at position i*10, rest 0
     for (let i = 0; i < 5; i++) {
-      const v = new Float32Array(768);
+      const v = new Float32Array(1024);
       v[i * 10] = 1.0;
       insertEmbedding(db, 'insight', `v${i}`, v);
     }
 
     // Query with vector closest to v2
-    const queryVec = new Float32Array(768);
+    const queryVec = new Float32Array(1024);
     queryVec[2 * 10] = 1.0;
 
     const results = querySimilar(db, 'insight', queryVec, 3);
@@ -188,12 +188,12 @@ describe('store', () => {
     const db = freshDb();
 
     for (let i = 0; i < 5; i++) {
-      const v = new Float32Array(768);
+      const v = new Float32Array(1024);
       v[i * 10] = 1.0;
       insertEmbedding(db, 'insight', `v${i}`, v);
     }
 
-    const queryVec = new Float32Array(768);
+    const queryVec = new Float32Array(1024);
     queryVec[2 * 10] = 1.0;
 
     const results = querySimilarExcluding(db, 'insight', queryVec, 3, 'v2');
@@ -234,7 +234,7 @@ describe('store', () => {
     const projB = 'proj-beta';
 
     for (let i = 0; i < 3; i++) {
-      const v = new Float32Array(768);
+      const v = new Float32Array(1024);
       v[i * 10] = 1.0;
       insertEmbedding(db, 'insight', `alpha-${i}`, v);
       db.prepare('INSERT INTO insights (id, session_id, project_id, project_name, type, title, content, summary, bullets, confidence, source, timestamp, created_at, scope, analysis_version, embedding_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
@@ -242,7 +242,7 @@ describe('store', () => {
     }
 
     for (let i = 0; i < 3; i++) {
-      const v = new Float32Array(768);
+      const v = new Float32Array(1024);
       v[i * 10] = 1.0;
       insertEmbedding(db, 'insight', `beta-${i}`, v);
       db.prepare('INSERT INTO insights (id, session_id, project_id, project_name, type, title, content, summary, bullets, confidence, source, timestamp, created_at, scope, analysis_version, embedding_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
@@ -250,7 +250,7 @@ describe('store', () => {
     }
 
     // Query with vector closest to alpha-1, filtered to project alpha
-    const queryVec = new Float32Array(768);
+    const queryVec = new Float32Array(1024);
     queryVec[1 * 10] = 1.0;
 
     const results = querySimilarFiltered(db, 'insight', queryVec, 5, projA);
@@ -279,13 +279,13 @@ describe('store', () => {
       )
     `);
 
-    const v = new Float32Array(768);
+    const v = new Float32Array(1024);
     v[0] = 1.0;
     insertEmbedding(db, 'insight', 'only-one', v);
     db.prepare('INSERT INTO insights (id, session_id, project_id, project_name, type, title, content, summary, bullets, confidence, source, timestamp, created_at, scope, analysis_version, embedding_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
       .run('only-one', 'sess-1', 'proj-exists', 'Exists', 'decision', 'Only', 'Content', 'Summary', '[]', 0.8, 'llm', '2025-01-01', '2025-01-01', 'session', '3.0.0', 'computed');
 
-    const queryVec = new Float32Array(768);
+    const queryVec = new Float32Array(1024);
     queryVec[0] = 1.0;
 
     // Query for a different project — should return empty
@@ -299,14 +299,14 @@ describe('store', () => {
     const db = freshDb();
 
     // Insert some data
-    insertEmbedding(db, 'insight', 'old-1', new Float32Array(768).fill(1));
+    insertEmbedding(db, 'insight', 'old-1', new Float32Array(1024).fill(1));
     expect(countVectors(db, 'insight')).toBe(1);
 
     // Rebuild with new data
     const newEmbeddings = [
-      { id: 'new-1', vector: new Float32Array(768).fill(2), sourceText: 'new', model: 'test', dim: 768 },
+      { id: 'new-1', vector: new Float32Array(1024).fill(2), sourceText: 'new', model: 'test', dim: 1024 },
     ];
-    rebuildVectorStore(db, 'insight', newEmbeddings, 768);
+    rebuildVectorStore(db, 'insight', newEmbeddings, 1024);
     expect(countVectors(db, 'insight')).toBe(1);
 
     const row = db.prepare('SELECT id FROM vec_insights').get() as { id: string };
@@ -354,7 +354,7 @@ describe('store', () => {
 
     // Insert 5 orthogonal vectors (each has 1.0 at a unique position)
     for (let i = 0; i < 5; i++) {
-      const v = new Float32Array(768);
+      const v = new Float32Array(1024);
       v[i * 10] = 1.0;
       insertEmbedding(db, 'insight', `v${i}`, v);
     }
@@ -373,7 +373,7 @@ describe('store', () => {
     }
 
     // Query with vector identical to v2 → should find v2 at distance ~0
-    const queryVec = new Float32Array(768);
+    const queryVec = new Float32Array(1024);
     queryVec[2 * 10] = 1.0;
 
     const results = findSimilar(db, 'insight', queryVec, 0.90, 3);
@@ -412,13 +412,13 @@ describe('store', () => {
 
     // Insert orthogonal vectors
     for (let i = 0; i < 3; i++) {
-      const v = new Float32Array(768);
+      const v = new Float32Array(1024);
       v[i * 10] = 1.0;
       insertEmbedding(db, 'insight', `v${i}`, v);
     }
 
     // Query with a vector that doesn't match any
-    const queryVec = new Float32Array(768);
+    const queryVec = new Float32Array(1024);
     queryVec[500] = 1.0;
 
     const results = findSimilar(db, 'insight', queryVec, 0.90, 5);
@@ -454,13 +454,13 @@ describe('store', () => {
 
     // Insert 10 nearly-identical vectors (all close to [1,0,0,...])
     for (let i = 0; i < 10; i++) {
-      const v = new Float32Array(768);
+      const v = new Float32Array(1024);
       v[0] = 1.0;
       v[1] = i * 0.01; // tiny variation
       insertEmbedding(db, 'insight', `near${i}`, v);
     }
 
-    const queryVec = new Float32Array(768);
+    const queryVec = new Float32Array(1024);
     queryVec[0] = 1.0;
 
     const results = findSimilar(db, 'insight', queryVec, 0.85, 3);
@@ -515,7 +515,7 @@ describe('store', () => {
 describe('backfill integration', () => {
   beforeEach(() => {
     mockFetch.mockClear();
-    setupMockOllama(768);
+    setupMockOllama(1024);
   });
 
   it('backfillEmbeddings skips when no pending rows', async () => {

@@ -37,7 +37,7 @@ const {
 // ─── Helpers ──────────────────────────────────────────────────────
 
 /** Create an in-memory DB with migrations + vec_insights virtual table. */
-function freshDb(dim: number = 768): Database.Database {
+function freshDb(dim: number = 1024): Database.Database {
   const db = new Database(':memory:');
   // Load sqlite-vec extension
   sqliteVec.load(db);
@@ -134,7 +134,7 @@ describe('findRecurringInsightsByVector', () => {
     testDb = db;
 
     const embeddings = [
-      { id: 'i1', sessionId: 's1', title: 'T1', summary: 'S1', type: 'pattern', vector: makeVector(768, 1) },
+      { id: 'i1', sessionId: 's1', title: 'T1', summary: 'S1', type: 'pattern', vector: makeVector(1024, 1) },
     ];
 
     const result = await findRecurringInsightsByVector(embeddings);
@@ -148,7 +148,7 @@ describe('findRecurringInsightsByVector', () => {
     testDb = db;
 
     const embeddings = [
-      { id: 'i1', sessionId: 's1', title: 'T1', summary: 'S1', type: 'pattern', vector: makeVector(768, 1) },
+      { id: 'i1', sessionId: 's1', title: 'T1', summary: 'S1', type: 'pattern', vector: makeVector(1024, 1) },
     ];
 
     const result = await findRecurringInsightsByVector(embeddings);
@@ -162,8 +162,8 @@ describe('findRecurringInsightsByVector', () => {
     testDb = db;
 
     // Insert two orthogonal vectors (cosine similarity = 0)
-    const v1 = oneHotVector(768, 0);
-    const v2 = oneHotVector(768, 1);
+    const v1 = oneHotVector(1024, 0);
+    const v2 = oneHotVector(1024, 1);
     insertInsightWithEmbedding(db, 'i1', 's1', 'pattern', 'T1', 'S1', v1);
     insertInsightWithEmbedding(db, 'i2', 's2', 'pattern', 'T2', 'S2', v2);
 
@@ -184,7 +184,7 @@ describe('findRecurringInsightsByVector', () => {
     testDb = db;
 
     // Same vector = cosine similarity = 1.0 (above 0.85 threshold)
-    const v1 = makeVector(768, 42);
+    const v1 = makeVector(1024, 42);
     insertInsightWithEmbedding(db, 'i1', 's1', 'pattern', 'Error handling', 'Use Result type', v1);
     insertInsightWithEmbedding(db, 'i2', 's2', 'pattern', 'Error wrapping', 'Wrap errors in Result', v1);
 
@@ -207,8 +207,8 @@ describe('findRecurringInsightsByVector', () => {
     testDb = db;
 
     // Three similar vectors, one orthogonal
-    const vSimilar = makeVector(768, 100);
-    const vDifferent = oneHotVector(768, 500); // orthogonal to everything
+    const vSimilar = makeVector(1024, 100);
+    const vDifferent = oneHotVector(1024, 500); // orthogonal to everything
 
     insertInsightWithEmbedding(db, 'i1', 's1', 'pattern', 'T1', 'S1', vSimilar);
     insertInsightWithEmbedding(db, 'i2', 's2', 'pattern', 'T2', 'S2', vSimilar);
@@ -234,8 +234,8 @@ describe('findRecurringInsightsByVector', () => {
     const db = freshDb();
     testDb = db;
 
-    const v1 = makeVector(768, 100);
-    const v2 = oneHotVector(768, 500);
+    const v1 = makeVector(1024, 100);
+    const v2 = oneHotVector(1024, 500);
 
     insertInsightWithEmbedding(db, 'i1', 's1', 'pattern', 'T1', 'S1', v1);
     insertInsightWithEmbedding(db, 'i2', 's2', 'pattern', 'T2', 'S2', v1);
@@ -259,7 +259,7 @@ describe('findRecurringInsightsByVector', () => {
     const db = freshDb();
     testDb = db;
 
-    const v1 = makeVector(768, 77);
+    const v1 = makeVector(1024, 77);
     insertInsightWithEmbedding(db, 'i1', 's1', 'pattern', 'T1', 'S1', v1);
     insertInsightWithEmbedding(db, 'i2', 's2', 'pattern', 'T2', 'S2', v1);
 
@@ -285,9 +285,9 @@ describe('findRecurringInsightsByVector', () => {
     testDb = db;
 
     // Cluster A: similar vectors at positions 0-9
-    const vA = oneHotVector(768, 0);
+    const vA = oneHotVector(1024, 0);
     // Cluster B: similar vectors at positions 100-109
-    const vB = oneHotVector(768, 100);
+    const vB = oneHotVector(1024, 100);
 
     insertInsightWithEmbedding(db, 'a1', 's1', 'pattern', 'Auth token', 'JWT validation', vA);
     insertInsightWithEmbedding(db, 'a2', 's2', 'pattern', 'Auth check', 'Verify JWT', vA);
@@ -322,7 +322,7 @@ describe('findRecurringInsightsByVector', () => {
     // Create vectors with cosine similarity ~0.5 (below 0.85 threshold)
     // For unit vectors: cos_sim = dot product
     // We need two vectors where dot = 0.5
-    const dim = 768;
+    const dim = 1024;
     const v1 = new Float32Array(dim);
     v1[0] = 1.0; // unit vector along axis 0
     v1[1] = 0.0;
@@ -351,7 +351,7 @@ describe('findRecurringInsightsByVector', () => {
     testDb = db;
 
     // Don't insert any embeddings into vec_insights
-    const v1 = makeVector(768, 1);
+    const v1 = makeVector(1024, 1);
     db.prepare(`
       INSERT INTO insights (id, session_id, project_id, project_name, type, title, summary, content, confidence, timestamp)
       VALUES ('i1', 's1', 'proj-1', 'test-project', 'pattern', 'T1', 'S1', '', 0.9, datetime('now'))
@@ -439,7 +439,7 @@ describe('vector math helpers (internal)', () => {
   });
 
   it('identical unit vectors have cosine similarity 1.0', () => {
-    const v = oneHotVector(768, 0);
+    const v = oneHotVector(1024, 0);
     // cos_sim(v, v) = dot(v,v) / (|v|*|v|) = 1 / (1*1) = 1
     let dot = 0;
     let norm = 0;
@@ -452,8 +452,8 @@ describe('vector math helpers (internal)', () => {
   });
 
   it('orthogonal unit vectors have cosine similarity 0', () => {
-    const v1 = oneHotVector(768, 0);
-    const v2 = oneHotVector(768, 1);
+    const v1 = oneHotVector(1024, 0);
+    const v2 = oneHotVector(1024, 1);
     let dot = 0;
     for (let i = 0; i < v1.length; i++) {
       dot += v1[i] * v2[i];

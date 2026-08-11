@@ -110,7 +110,7 @@ describe('runMigrations — V11 embedding schema', () => {
     expect(() => {
       db.prepare(`
         INSERT INTO embedding_metadata (id, entity_type, model, dim, source_text)
-          VALUES ('em1', 'invalid', 'test-model', 768, 'test')
+          VALUES ('em1', 'invalid', 'test-model', 1024, 'test')
       `).run();
     }).toThrow();
     db.close();
@@ -122,7 +122,7 @@ describe('runMigrations — V11 embedding schema', () => {
 
     const insert = db.prepare(`
       INSERT INTO embedding_metadata (id, entity_type, model, dim, source_text)
-        VALUES (?, ?, ?, 768, 'test')
+        VALUES (?, ?, ?, 1024, 'test')
     `);
     expect(() => insert.run('em1', 'insight', 'test-model')).not.toThrow();
     expect(() => insert.run('em2', 'message', 'test-model')).not.toThrow();
