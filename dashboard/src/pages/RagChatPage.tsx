@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Bot, Send, Paperclip, Mic, Plus, Sparkles, BookOpen, FileText, Database, Loader2 } from 'lucide-react';
+import { Bot, Send, Paperclip, Mic, Plus, Sparkles, BookOpen, FileText, Database, Loader2, Copy, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import ReactMarkdown from 'react-markdown';
 
@@ -18,6 +18,7 @@ export default function RagChatPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [savedState, setSavedState] = useState<any>(null);
   const [clarification, setClarification] = useState<any>(null);
+  const [copiedMessageIndex, setCopiedMessageIndex] = useState<number | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -181,13 +182,40 @@ export default function RagChatPage() {
                   <Sparkles className="w-4 h-4 text-primary" />
                 </div>
               )}
-              <div className={cn(
-                "px-5 py-4 shadow-sm max-w-[95%] md:max-w-[85%] space-y-3 prose dark:prose-invert prose-sm",
-                msg.role === 'user' 
-                  ? "bg-primary text-primary-foreground rounded-2xl rounded-tr-sm" 
-                  : "bg-card border rounded-2xl rounded-tl-sm text-card-foreground"
-              )}>
-                <ReactMarkdown>{msg.content}</ReactMarkdown>
+              <div className="group relative max-w-[95%] md:max-w-[85%] flex flex-col gap-1 w-full">
+                <div className={cn(
+                  "px-5 py-4 shadow-sm space-y-3 prose dark:prose-invert prose-sm w-full",
+                  msg.role === 'user' 
+                    ? "bg-primary text-primary-foreground rounded-2xl rounded-tr-sm ml-auto" 
+                    : "bg-card border rounded-2xl rounded-tl-sm text-card-foreground mr-auto"
+                )}>
+                  <ReactMarkdown>{msg.content}</ReactMarkdown>
+                </div>
+                {msg.role === 'assistant' && (
+                  <div className="flex justify-start opacity-0 group-hover:opacity-100 transition-opacity -mt-1 mb-1">
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(msg.content);
+                        setCopiedMessageIndex(index);
+                        setTimeout(() => setCopiedMessageIndex(null), 2000);
+                      }}
+                      className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors"
+                      title="Copy as Markdown"
+                    >
+                      {copiedMessageIndex === index ? (
+                        <>
+                          <Check className="w-3.5 h-3.5 text-emerald-500" />
+                          <span className="text-emerald-500">Copied</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3.5 h-3.5" />
+                          <span>Copy Markdown</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           ))}
