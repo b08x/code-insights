@@ -2,103 +2,19 @@ import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { useLlmConfig, useSaveLlmConfig } from '@/hooks/useConfig';
 import { useUserProfile, normalizeGithubUsername } from '@/hooks/useUserProfile';
-import { fetchLlmModels, fetchOllamaModels, testLlmConfig } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible';
 import {
-  CheckCircle,
-  XCircle,
-  Cpu,
-  Loader2,
-  ChevronDown,
-  ChevronRight,
+  User,
   Check,
   Minus,
-  User,
+  Cpu,
+  Bot,
+  Database,
+  Loader2,
 } from 'lucide-react';
-
-type LLMProvider = 'openai' | 'anthropic' | 'gemini' | 'ollama' | 'openrouter' | 'mistral';
-
-interface ProviderInfo {
-  id: LLMProvider;
-  name: string;
-  requiresApiKey: boolean;
-  apiKeyLink?: string;
-  models: Array<{ id: string; name: string; description?: string }>;
-}
-
-const PROVIDERS: ProviderInfo[] = [
-  {
-    id: 'openai',
-    name: 'OpenAI',
-    requiresApiKey: true,
-    apiKeyLink: 'https://platform.openai.com/api-keys',
-    models: [
-      { id: 'gpt-4.1', name: 'GPT-4.1', description: 'Best' },
-      { id: 'gpt-4.1-mini', name: 'GPT-4.1 Mini', description: 'Fast & cheap' },
-      { id: 'gpt-4o', name: 'GPT-4o', description: 'Fallback' },
-    ],
-  },
-  {
-    id: 'anthropic',
-    name: 'Anthropic',
-    requiresApiKey: true,
-    apiKeyLink: 'https://console.anthropic.com/settings/keys',
-    models: [
-      { id: 'claude-opus-4-6', name: 'Claude Opus 4.6', description: 'Most capable' },
-      { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6', description: 'Best balance' },
-      { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5', description: 'Fast & cheap' },
-    ],
-  },
-  {
-    id: 'gemini',
-    name: 'Google Gemini',
-    requiresApiKey: true,
-    apiKeyLink: 'https://aistudio.google.com/app/apikey',
-    models: [
-      { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', description: 'Fast' },
-      { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', description: 'Capable' },
-    ],
-  },
-  {
-    id: 'ollama',
-    name: 'Ollama (Local)',
-    requiresApiKey: false,
-    models: [
-      { id: 'llama3.3', name: 'Llama 3.3' },
-      { id: 'qwen3:14b', name: 'Qwen3 14B' },
-      { id: 'mistral', name: 'Mistral' },
-      { id: 'qwen2.5-coder', name: 'Qwen 2.5 Coder' },
-    ],
-  },
-  {
-    id: 'openrouter',
-    name: 'OpenRouter',
-    requiresApiKey: true,
-    apiKeyLink: 'https://openrouter.ai/settings/keys',
-    models: [
-      { id: 'openrouter/auto', name: 'OpenRouter Auto (Default)' },
-      { id: 'anthropic/claude-3.5-sonnet', name: 'Claude 3.5 Sonnet' },
-      { id: 'openai/gpt-4o', name: 'GPT-4o' },
-      { id: 'meta-llama/llama-3.3-70b-instruct', name: 'Llama 3.3 70B' },
-    ],
-  },
-  {
-    id: 'mistral',
-    name: 'Mistral',
-    requiresApiKey: true,
-    apiKeyLink: 'https://console.mistral.ai/api-keys/',
-    models: [
-      { id: 'mistral-large-latest', name: 'Mistral Large' },
-      { id: 'mistral-small-latest', name: 'Mistral Small' },
-      { id: 'codestral-latest', name: 'Codestral' },
-    ],
-  },
-];
+import { LlmProviderCard } from '@/components/settings/LlmProviderCard';
 
 export default function SettingsPage() {
   const { data: llmConfig, isLoading: configLoading } = useLlmConfig();
@@ -110,7 +26,6 @@ export default function SettingsPage() {
   const [profileGithubUsername, setProfileGithubUsername] = useState(profile?.githubUsername ?? '');
   const [profileAvatarError, setProfileAvatarError] = useState(false);
 
-  // Sync profile fields when profile loads from localStorage
   useEffect(() => {
     setProfileName(profile?.name ?? '');
     setProfileGithubUsername(profile?.githubUsername ?? '');
@@ -127,151 +42,10 @@ export default function SettingsPage() {
     toast.success('Profile saved');
   };
 
-  const [llmProvider, setLlmProvider] = useState<LLMProvider>('openai');
-  const [llmModel, setLlmModel] = useState('');
-  const [customModel, setCustomModel] = useState('');
-  const [llmApiKey, setLlmApiKey] = useState('');
-  const [llmBaseUrl, setLlmBaseUrl] = useState('');
-  const [llmConfigured, setLlmConfigured] = useState(false);
-  const [llmTesting, setLlmTesting] = useState(false);
-  const [llmTestError, setLlmTestError] = useState<string | null>(null);
-  const [ollamaDiscoveredModels, setOllamaDiscoveredModels] = useState<string[]>([]);
-  const [cloudDiscoveredModels, setCloudDiscoveredModels] = useState<Array<{ id: string; name: string }>>([]);
-  const [ollamaCorsOpen, setOllamaCorsOpen] = useState(false);
-
-  // Populate form from loaded config
-  useEffect(() => {
-    if (!llmConfig) return;
-    if (llmConfig.provider) {
-      setLlmProvider(llmConfig.provider);
-      setLlmConfigured(true);
-    }
-    if (llmConfig.model) {
-      // If saved model doesn't match any preset, populate the custom input instead
-      const providerInfo = PROVIDERS.find((p) => p.id === (llmConfig.provider ?? llmProvider));
-      const isPreset = providerInfo?.models.some((m) => m.id === llmConfig.model);
-      if (isPreset) {
-        setLlmModel(llmConfig.model);
-        setCustomModel('');
-      } else {
-        setCustomModel(llmConfig.model);
-        setLlmModel(providerInfo?.models[0]?.id ?? '');
-      }
-    }
-    // apiKey is masked by server — leave blank for re-entry
-    if (llmConfig.baseUrl) setLlmBaseUrl(llmConfig.baseUrl);
-  }, [llmConfig]);
-
-  // Default model when provider changes
-  useEffect(() => {
-    const providerInfo = PROVIDERS.find((p) => p.id === llmProvider);
-    if (providerInfo?.models[0] && !llmModel) {
-      setLlmModel(providerInfo.models[0].id);
-    }
-  }, [llmProvider, llmModel]);
-
-  // Discover Ollama models
-  useEffect(() => {
-    if (llmProvider !== 'ollama') return;
-    fetchOllamaModels(llmBaseUrl || undefined)
-      .then((r) => setOllamaDiscoveredModels(r.models.map((m) => m.name)))
-      .catch(() => {});
-  }, [llmProvider, llmBaseUrl]);
-
-  // Discover cloud models when configured
-  useEffect(() => {
-    if (!llmConfigured || llmProvider === 'ollama') return;
-    
-    // Clear previous if provider changed
-    setCloudDiscoveredModels([]);
-    
-    fetchLlmModels({ 
-      provider: llmProvider, 
-      apiKey: llmApiKey || undefined, 
-      baseUrl: llmBaseUrl || undefined 
-    })
-      .then((r) => {
-        if (r.models && r.models.length > 0) {
-          setCloudDiscoveredModels(r.models);
-        }
-      })
-      .catch(() => {});
-  }, [llmConfigured, llmProvider, llmApiKey, llmBaseUrl]);
-
-  const handleProviderChange = (provider: LLMProvider) => {
-    setLlmProvider(provider);
-    setLlmConfigured(false);
-    setLlmTestError(null);
-    setLlmApiKey('');
-    setCustomModel('');
-    const providerInfo = PROVIDERS.find((p) => p.id === provider);
-    setLlmModel(providerInfo?.models[0]?.id ?? '');
-  };
-
-  const handleSaveLLMConfig = async () => {
-    const providerInfo = PROVIDERS.find((p) => p.id === llmProvider);
-    if (!providerInfo) return;
-
-    // Custom model input overrides the dropdown selection for cloud providers
-    const effectiveModel = customModel.trim() || llmModel;
-
-    if (providerInfo.requiresApiKey && !llmApiKey) {
-      setLlmTestError('API key is required');
-      return;
-    }
-    if (!effectiveModel) {
-      setLlmTestError('Please select a model');
-      return;
-    }
-
-    setLlmTesting(true);
-    setLlmTestError(null);
-
-    try {
-      const testResult = await testLlmConfig({
-        provider: llmProvider,
-        model: effectiveModel,
-        apiKey: llmApiKey || undefined,
-        baseUrl: llmBaseUrl || undefined,
-      });
-
-      if (testResult.success) {
-        await saveMutation.mutateAsync({
-          provider: llmProvider,
-          model: effectiveModel,
-          apiKey: llmApiKey || undefined,
-          baseUrl: llmBaseUrl || undefined,
-        });
-        setLlmConfigured(true);
-        setLlmTestError(null);
-        toast.success('AI provider configured successfully');
-      } else {
-        setLlmTestError(testResult.error || 'Failed to connect');
-      }
-    } catch (err) {
-      setLlmTestError(err instanceof Error ? err.message : 'Failed to save configuration');
-    } finally {
-      setLlmTesting(false);
-    }
-  };
-
-  const handleClearLLMConfig = async () => {
-    try {
-      await saveMutation.mutateAsync({ provider: undefined, model: undefined, apiKey: undefined });
-      setLlmConfigured(false);
-      setLlmApiKey('');
-      setCustomModel('');
-      setLlmTestError(null);
-      toast.success('AI provider configuration cleared');
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to clear configuration';
-      setLlmTestError(msg);
-      toast.error(msg);
-    }
-  };
-
   const progressItems = [
-    { label: 'AI Provider', done: llmConfigured, required: true },
+    { label: 'AI Provider', done: !!llmConfig?.provider, required: true },
+    { label: 'Knowledge Agent', done: !!llmConfig?.agent?.provider, required: false },
+    { label: 'Embeddings', done: !!llmConfig?.embedding?.provider, required: false },
   ];
   const requiredDone = progressItems.filter((p) => p.required && p.done).length;
   const requiredTotal = progressItems.filter((p) => p.required).length;
@@ -309,7 +83,6 @@ export default function SettingsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {/* Live avatar preview */}
           <div className="flex items-center gap-3">
             <div className="h-12 w-12 rounded-full overflow-hidden bg-muted border border-border shrink-0 flex items-center justify-center">
               {profileAvatarUrl && !profileAvatarError ? (
@@ -392,240 +165,67 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* LLM Provider Configuration */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Cpu className="h-5 w-5" />
-              <CardTitle className="text-base">AI Analysis Provider</CardTitle>
-            </div>
-            {llmConfigured ? (
-              <Badge variant="outline" className="text-green-600 border-green-600">
-                <CheckCircle className="mr-1 h-3 w-3" />
-                Connected
-              </Badge>
-            ) : (
-              <Badge variant="outline" className="text-amber-600 border-amber-600">
-                <XCircle className="mr-1 h-3 w-3" />
-                Not Configured
-              </Badge>
-            )}
-          </div>
-          <CardDescription>
-            Configure an LLM provider to analyze sessions and generate insights
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {/* Provider Selection */}
-          <div>
-            <label className="text-sm font-medium">Provider</label>
-            <Select
-              value={llmProvider}
-              onValueChange={(v) => handleProviderChange(v as LLMProvider)}
-            >
-              <SelectTrigger className="mt-1">
-                <SelectValue placeholder="Select provider" />
-              </SelectTrigger>
-              <SelectContent>
-                {PROVIDERS.map((provider) => (
-                  <SelectItem key={provider.id} value={provider.id}>
-                    {provider.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+      <LlmProviderCard
+        title="Background Analysis Provider"
+        description="Configure the main LLM provider to analyze sessions and auto-generate insights in the background queue."
+        icon={<Cpu className="h-5 w-5" />}
+        config={{
+          provider: llmConfig?.provider,
+          model: llmConfig?.model,
+          baseUrl: llmConfig?.baseUrl,
+        }}
+        onSave={async (config) => {
+          await saveMutation.mutateAsync({
+            provider: config.provider,
+            model: config.model,
+            apiKey: config.apiKey,
+            baseUrl: config.baseUrl,
+          });
+        }}
+      />
 
-          {/* Model Selection */}
-          <div>
-            <label className="text-sm font-medium">Model</label>
-            {llmProvider === 'ollama' ? (
-              <div className="mt-1 space-y-2">
-                <Input
-                  value={llmModel}
-                  onChange={(e) => setLlmModel(e.target.value)}
-                  placeholder="Type any model name (e.g. llama3.3)"
-                />
-                {(() => {
-                  const hardcoded =
-                    PROVIDERS.find((p) => p.id === 'ollama')?.models.map((m) => m.id) ?? [];
-                  const suggestions = [...new Set([...hardcoded, ...ollamaDiscoveredModels])];
-                  return suggestions.length > 0 ? (
-                    <div>
-                      <p className="text-xs text-muted-foreground mb-1.5">Suggestions:</p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {suggestions.map((name) => (
-                          <button
-                            key={name}
-                            type="button"
-                            onClick={() => setLlmModel(name)}
-                            className="text-xs px-2 py-0.5 rounded-md border border-border bg-muted hover:bg-accent hover:text-accent-foreground transition-colors"
-                          >
-                            {name}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null;
-                })()}
-              </div>
-            ) : (
-              <div className="mt-1 space-y-2">
-                <Select value={llmModel} onValueChange={setLlmModel}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select model" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(cloudDiscoveredModels.length > 0
-                      ? cloudDiscoveredModels
-                      : PROVIDERS.find((p) => p.id === llmProvider)?.models || []
-                    ).map((model) => (
-                      <SelectItem key={model.id} value={model.id}>
-                        <div className="flex items-center justify-between gap-2">
-                          <span>{model.name}</span>
-                          {'description' in model && (model as any).description && (
-                            <span className="text-xs text-muted-foreground">
-                              {(model as any).description}
-                            </span>
-                          )}
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <div>
-                  <label className="text-xs text-muted-foreground">Or enter a custom model ID</label>
-                  <Input
-                    value={customModel}
-                    onChange={(e) => setCustomModel(e.target.value)}
-                    placeholder="e.g. gpt-4.1-nano, claude-opus-4-6"
-                    className="mt-1"
-                  />
-                  {customModel.trim() && (
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Custom model <span className="font-mono">{customModel.trim()}</span> will be used instead of the dropdown selection.
-                    </p>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
+      <LlmProviderCard
+        title="Interactive Knowledge Agent"
+        description="Configure the LLM provider for the conversational RAG agent (Dashboard Chat)."
+        icon={<Bot className="h-5 w-5" />}
+        config={{
+          provider: llmConfig?.agent?.provider,
+          model: llmConfig?.agent?.model,
+          baseUrl: llmConfig?.agent?.baseUrl,
+        }}
+        onSave={async (config) => {
+          await saveMutation.mutateAsync({
+            agent: config,
+          });
+        }}
+        onClear={async () => {
+          await saveMutation.mutateAsync({
+            agent: {}, // Empty object will be treated as clear in our API handler
+          });
+        }}
+      />
 
-          {/* API Key (if required) */}
-          {PROVIDERS.find((p) => p.id === llmProvider)?.requiresApiKey && (
-            <div>
-              <label className="text-sm font-medium">API Key</label>
-              <Input
-                type="password"
-                value={llmApiKey}
-                onChange={(e) => {
-                  setLlmApiKey(e.target.value);
-                  setLlmConfigured(false);
-                }}
-                placeholder={
-                  llmConfigured
-                    ? 'Leave blank to keep existing key'
-                    : llmProvider === 'openai'
-                      ? 'sk-...'
-                      : llmProvider === 'anthropic'
-                        ? 'sk-ant-...'
-                        : 'AIza...'
-                }
-                className="mt-1"
-              />
-              <p className="text-xs text-muted-foreground mt-1">
-                Get your API key from{' '}
-                <a
-                  href={PROVIDERS.find((p) => p.id === llmProvider)?.apiKeyLink}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="underline"
-                >
-                  {PROVIDERS.find((p) => p.id === llmProvider)?.name}
-                </a>
-              </p>
-            </div>
-          )}
-
-          {/* Ollama: Base URL + collapsible CORS instructions */}
-          {llmProvider === 'ollama' && (
-            <>
-              <div>
-                <label className="text-sm font-medium">Base URL (optional)</label>
-                <Input
-                  value={llmBaseUrl}
-                  onChange={(e) => setLlmBaseUrl(e.target.value)}
-                  placeholder="http://localhost:11434"
-                  className="mt-1"
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Leave empty for default (localhost:11434)
-                </p>
-              </div>
-
-              {/* Collapsible CORS instructions */}
-              <Collapsible open={ollamaCorsOpen} onOpenChange={setOllamaCorsOpen}>
-                <CollapsibleTrigger asChild>
-                  <button
-                    type="button"
-                    className="flex items-center gap-2 text-xs font-medium text-amber-700 dark:text-amber-300 hover:text-amber-800 dark:hover:text-amber-200 transition-colors"
-                  >
-                    {ollamaCorsOpen ? (
-                      <ChevronDown className="h-3.5 w-3.5" />
-                    ) : (
-                      <ChevronRight className="h-3.5 w-3.5" />
-                    )}
-                    Ollama connection notes
-                  </button>
-                </CollapsibleTrigger>
-                <CollapsibleContent>
-                  <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30 p-3 space-y-2">
-                    <p className="text-xs text-amber-700 dark:text-amber-300">
-                      Ollama runs locally on your machine. The dashboard connects to it via the
-                      Hono server at localhost:7890, so no CORS configuration is required.
-                    </p>
-                    <p className="text-xs text-amber-700 dark:text-amber-300">
-                      Ensure Ollama is running before testing:{' '}
-                      <code className="bg-amber-100 dark:bg-amber-950/50 px-0.5 rounded">
-                        ollama serve
-                      </code>
-                    </p>
-                  </div>
-                </CollapsibleContent>
-              </Collapsible>
-            </>
-          )}
-
-          {/* Error message */}
-          {llmTestError && <p className="text-sm text-red-500">{llmTestError}</p>}
-
-          {/* Action buttons */}
-          <div className="flex gap-2">
-            <Button onClick={handleSaveLLMConfig} disabled={llmTesting || saveMutation.isPending}>
-              {llmTesting ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Testing...
-                </>
-              ) : llmConfigured ? (
-                'Update Configuration'
-              ) : (
-                'Save & Test'
-              )}
-            </Button>
-            {llmConfigured && (
-              <Button
-                variant="outline"
-                onClick={handleClearLLMConfig}
-                disabled={saveMutation.isPending}
-              >
-                Clear
-              </Button>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+      <LlmProviderCard
+        title="Embeddings Provider"
+        description="Configure the model used for vector search and RAG distance metrics. Recommended: Ollama (nomic-embed-text) or OpenAI (text-embedding-3-small)."
+        icon={<Database className="h-5 w-5" />}
+        isEmbedding={true}
+        config={{
+          provider: llmConfig?.embedding?.provider,
+          model: llmConfig?.embedding?.model,
+          baseUrl: llmConfig?.embedding?.baseUrl,
+        }}
+        onSave={async (config) => {
+          await saveMutation.mutateAsync({
+            embedding: config,
+          });
+        }}
+        onClear={async () => {
+          await saveMutation.mutateAsync({
+            embedding: {},
+          });
+        }}
+      />
 
       {/* CLI Setup */}
       <Card>
