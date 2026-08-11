@@ -27,6 +27,7 @@ import { cn } from '@/lib/utils';
 
 const NAV_ITEMS = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, exact: true },
+  { href: '/chat', label: 'Agent Chat', icon: MessageSquare, exact: false },
   { href: '/sessions', label: 'Sessions', icon: MessageSquare, exact: false },
   { href: '/insights', label: 'Insights', icon: Lightbulb, exact: false },
   { href: '/analytics', label: 'Analytics', icon: BarChart3, exact: false },

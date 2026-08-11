@@ -151,6 +151,9 @@ importers:
 
   server:
     dependencies:
+      '@ax-llm/ax':
+        specifier: ^22.0.2
+        version: 22.0.2(zod@4.4.3)
       '@code-insights/cli':
         specifier: workspace:*
         version: link:../cli
