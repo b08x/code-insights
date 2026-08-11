@@ -189,6 +189,18 @@ export function saveLlmConfig(body: {
   model?: string;
   apiKey?: string;
   baseUrl?: string;
+  agent?: {
+    provider?: string;
+    model?: string;
+    apiKey?: string;
+    baseUrl?: string;
+  };
+  embedding?: {
+    provider?: string;
+    model?: string;
+    apiKey?: string;
+    baseUrl?: string;
+  };
 }) {
   return request<{ ok: boolean }>('/config/llm', {
     method: 'PUT',
@@ -201,6 +213,7 @@ export function testLlmConfig(body?: {
   model?: string;
   apiKey?: string;
   baseUrl?: string;
+  isEmbedding?: boolean;
 }) {
   return request<{ success: boolean; error?: string }>('/config/llm/test', {
     method: 'POST',

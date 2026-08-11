@@ -36,6 +36,8 @@ function describeApiKeySource(provider: string, storedKey?: string): 'env' | 'st
 app.get('/llm', (c) => {
   const config = loadConfig();
   const llm = config?.dashboard?.llm;
+  const agent = config?.dashboard?.agent;
+  const embedding = config?.dashboard?.embedding;
 
   return c.json({
     dashboardPort: config?.dashboard?.port ?? 7890,
@@ -44,10 +46,22 @@ app.get('/llm', (c) => {
     apiKey: maskApiKey(llm?.apiKey),
     apiKeySource: llm ? describeApiKeySource(llm.provider, llm.apiKey) : 'none',
     baseUrl: llm?.baseUrl,
+    agent: agent ? {
+      provider: agent.provider,
+      model: agent.model,
+      apiKey: maskApiKey(agent.apiKey),
+      baseUrl: agent.baseUrl,
+    } : undefined,
+    embedding: embedding ? {
+      provider: embedding.provider,
+      model: embedding.model,
+      apiKey: maskApiKey(embedding.apiKey),
+      baseUrl: embedding.baseUrl,
+    } : undefined,
   });
 });
 
-// PUT /api/config/llm — update dashboard port and/or LLM config
+// PUT /api/config/llm — update dashboard port and/or configs
 app.put('/llm', async (c) => {
   const body = await c.req.json<{
     dashboardPort?: number;
@@ -55,6 +69,8 @@ app.put('/llm', async (c) => {
     model?: string;
     apiKey?: string;
     baseUrl?: string;
+    agent?: Partial<LLMProviderConfig>;
+    embedding?: Partial<LLMProviderConfig>;
   }>();
 
   const config: ClaudeInsightConfig = loadConfig() ?? {
@@ -73,7 +89,7 @@ app.put('/llm', async (c) => {
     changed = true;
   }
 
-  // Update LLM config if any LLM field is provided
+  // Update background analysis LLM config if fields are provided
   const hasLLMField = body.provider !== undefined || body.model !== undefined ||
     body.apiKey !== undefined || body.baseUrl !== undefined;
 
@@ -87,7 +103,6 @@ app.put('/llm', async (c) => {
     const updatedLlm: LLMProviderConfig = {
       provider: (body.provider as LLMProviderConfig['provider']) ?? existingLlm.provider ?? 'ollama',
       model: body.model ?? existingLlm.model ?? '',
-      // Preserve existing API key if not provided in update
       ...(body.apiKey !== undefined
         ? { apiKey: body.apiKey || undefined }
         : existingLlm.apiKey !== undefined ? { apiKey: existingLlm.apiKey } : {}),
@@ -104,6 +119,61 @@ app.put('/llm', async (c) => {
     changed = true;
   }
 
+  // Update agent config
+  if (body.agent !== undefined) {
+    if (body.agent.provider && !VALID_PROVIDERS.includes(body.agent.provider as typeof VALID_PROVIDERS[number])) {
+      return c.json({ error: `agent provider must be one of: ${VALID_PROVIDERS.join(', ')}` }, 400);
+    }
+    const existingAgent = config.dashboard?.agent ?? {} as Partial<LLMProviderConfig>;
+    
+    // Check if we are clearing the agent config
+    if (body.agent.provider === undefined && body.agent.model === undefined && body.agent.apiKey === undefined && body.agent.baseUrl === undefined && Object.keys(body.agent).length > 0) {
+        // Just clearing specific fields, handled below
+    }
+
+    if (Object.keys(body.agent).length === 0) {
+        config.dashboard = { ...config.dashboard, agent: undefined };
+    } else {
+        const updatedAgent: LLMProviderConfig = {
+            provider: body.agent.provider ?? existingAgent.provider ?? 'openai',
+            model: body.agent.model ?? existingAgent.model ?? '',
+            ...(body.agent.apiKey !== undefined
+              ? { apiKey: body.agent.apiKey || undefined }
+              : existingAgent.apiKey !== undefined ? { apiKey: existingAgent.apiKey } : {}),
+            ...(body.agent.baseUrl !== undefined
+              ? { baseUrl: body.agent.baseUrl || undefined }
+              : existingAgent.baseUrl !== undefined ? { baseUrl: existingAgent.baseUrl } : {}),
+        };
+        config.dashboard = { ...config.dashboard, agent: updatedAgent };
+    }
+    changed = true;
+  }
+
+  // Update embedding config
+  if (body.embedding !== undefined) {
+    if (body.embedding.provider && !VALID_PROVIDERS.includes(body.embedding.provider as typeof VALID_PROVIDERS[number])) {
+      return c.json({ error: `embedding provider must be one of: ${VALID_PROVIDERS.join(', ')}` }, 400);
+    }
+    const existingEmbedding = config.dashboard?.embedding ?? {} as Partial<LLMProviderConfig>;
+
+    if (Object.keys(body.embedding).length === 0) {
+        config.dashboard = { ...config.dashboard, embedding: undefined };
+    } else {
+        const updatedEmbedding: LLMProviderConfig = {
+            provider: body.embedding.provider ?? existingEmbedding.provider ?? 'ollama',
+            model: body.embedding.model ?? existingEmbedding.model ?? '',
+            ...(body.embedding.apiKey !== undefined
+              ? { apiKey: body.embedding.apiKey || undefined }
+              : existingEmbedding.apiKey !== undefined ? { apiKey: existingEmbedding.apiKey } : {}),
+            ...(body.embedding.baseUrl !== undefined
+              ? { baseUrl: body.embedding.baseUrl || undefined }
+              : existingEmbedding.baseUrl !== undefined ? { baseUrl: existingEmbedding.baseUrl } : {}),
+        };
+        config.dashboard = { ...config.dashboard, embedding: updatedEmbedding };
+    }
+    changed = true;
+  }
+
   if (!changed) {
     return c.json({ ok: true });
   }
@@ -116,12 +186,14 @@ app.put('/llm', async (c) => {
 app.post('/llm/test', async (c) => {
   // Allow testing with body config or existing saved config
   let testConfig: LLMProviderConfig | null = null;
+  let isEmbedding = false;
 
   try {
-    const body = await c.req.json<Partial<LLMProviderConfig>>();
+    const body = await c.req.json<Partial<LLMProviderConfig> & { isEmbedding?: boolean }>();
+    isEmbedding = !!body.isEmbedding;
     if (body.provider && body.model) {
       testConfig = {
-        provider: body.provider,
+        provider: body.provider as any,
         model: body.model,
         ...(body.apiKey ? { apiKey: body.apiKey } : {}),
         ...(body.baseUrl ? { baseUrl: body.baseUrl } : {}),
@@ -138,8 +210,47 @@ app.post('/llm/test', async (c) => {
   if (!testConfig) {
     return c.json({
       success: false,
-      error: 'No LLM config found. Run `code-insights config llm` or provide config in request body.',
+      error: 'No LLM config found. Provide config in request body.',
     }, 400);
+  }
+
+  if (isEmbedding) {
+    try {
+      const { ai } = await import('@ax-llm/ax');
+      const isOllama = testConfig.provider === 'ollama';
+      
+      let axProviderName = testConfig.provider as string;
+      if (testConfig.provider === 'gemini') axProviderName = 'google-gemini';
+      if (testConfig.provider === 'ollama' || testConfig.provider === 'openrouter') axProviderName = 'openai';
+
+      const aiOptions: any = { name: axProviderName };
+      if (testConfig.apiKey) aiOptions.apiKey = testConfig.apiKey;
+      // Provide a dummy key if none is set to prevent instantiation errors on some providers
+      if (!testConfig.apiKey && isOllama) aiOptions.apiKey = 'ollama';
+      else if (!testConfig.apiKey) aiOptions.apiKey = 'dummy';
+      
+      aiOptions.config = { model: testConfig.model, embedModel: testConfig.model };
+      if (testConfig.baseUrl) {
+        // Strip trailing slash before checking/appending
+        const cleanUrl = testConfig.baseUrl.replace(/\/+$/, '');
+        aiOptions.apiURL = isOllama 
+          ? (cleanUrl.endsWith('/v1') ? cleanUrl : `${cleanUrl}/v1`)
+          : cleanUrl;
+      } else if (isOllama) {
+        aiOptions.apiURL = 'http://localhost:11434/v1';
+      } else if (testConfig.provider === 'openrouter') {
+        aiOptions.apiURL = 'https://openrouter.ai/api/v1';
+      }
+
+      const llm = ai(aiOptions);
+      await llm.embed({ texts: ['test'] });
+      return c.json({ success: true }, 200);
+    } catch (error) {
+      return c.json({
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown embedding error',
+      }, 422);
+    }
   }
 
   const result = await testLLMConfig(testConfig);

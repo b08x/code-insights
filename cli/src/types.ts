@@ -365,7 +365,9 @@ export interface ClaudeInsightConfig {
   };
   dashboard?: {
     port?: number;
-    llm?: LLMProviderConfig;
+    llm?: LLMProviderConfig; // used for background analysis
+    agent?: LLMProviderConfig; // used for the interactive RAG agent
+    embedding?: LLMProviderConfig; // used for generating embeddings
     analysis?: {
       retrieval?: {
         enabled?: boolean;

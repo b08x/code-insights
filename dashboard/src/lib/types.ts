@@ -247,11 +247,22 @@ export interface InsightMetadata {
   potentialMessageReduction?: number;
 }
 
-// LLM config from /api/config/llm
 export interface LLMConfig {
   dashboardPort: number;
-  provider?: 'openai' | 'anthropic' | 'gemini' | 'ollama';
+  provider?: 'openai' | 'anthropic' | 'gemini' | 'ollama' | 'openrouter' | 'mistral';
   model?: string;
   apiKey?: string;      // masked by server before returning (first4...last4)
   baseUrl?: string;
+  agent?: {
+    provider?: 'openai' | 'anthropic' | 'gemini' | 'ollama' | 'openrouter' | 'mistral';
+    model?: string;
+    apiKey?: string;
+    baseUrl?: string;
+  };
+  embedding?: {
+    provider?: 'openai' | 'anthropic' | 'gemini' | 'ollama' | 'openrouter' | 'mistral';
+    model?: string;
+    apiKey?: string;
+    baseUrl?: string;
+  };
 }

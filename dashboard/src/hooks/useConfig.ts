@@ -17,6 +17,18 @@ export function useSaveLlmConfig() {
       model?: string;
       apiKey?: string;
       baseUrl?: string;
+      agent?: {
+        provider?: string;
+        model?: string;
+        apiKey?: string;
+        baseUrl?: string;
+      };
+      embedding?: {
+        provider?: string;
+        model?: string;
+        apiKey?: string;
+        baseUrl?: string;
+      };
     }) => saveLlmConfig(body),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['config', 'llm'] });
