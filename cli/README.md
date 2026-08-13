@@ -52,6 +52,7 @@ code-insights init                     # customize settings (optional)
 | **Codex CLI** | `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` |
 | **Copilot CLI** | `~/.copilot/session-state/{id}/events.jsonl` |
 | **VS Code Copilot Chat** | Platform-specific Copilot Chat storage |
+| **Pi** | `~/.pi/agent/sessions/--<path>--/*.jsonl` |
 
 Sessions from all tools are discovered automatically during sync.
 

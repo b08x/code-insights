@@ -9,6 +9,7 @@ import { OpenCodeProvider } from './opencode.js';
 import { CrushProvider } from './crush.js';
 import { AntigravityProvider } from './antigravity.js';
 import { MistralVibeProvider } from './mistral-vibe.js';
+import { PiProvider } from './pi.js';
 
 const providers = new Map<string, SessionProvider>();
 
@@ -42,6 +43,9 @@ providers.set(antigravity.getProviderName(), antigravity);
 
 const mistralVibe = new MistralVibeProvider();
 providers.set(mistralVibe.getProviderName(), mistralVibe);
+
+const pi = new PiProvider();
+providers.set(pi.getProviderName(), pi);
 
 /**
  * Get a provider by name
