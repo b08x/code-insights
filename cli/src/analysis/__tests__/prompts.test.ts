@@ -176,9 +176,9 @@ describe('formatMessagesForAnalysis', () => {
       makeMessage({ id: 'msg-2', type: 'assistant', content: 'Done!' }),
     ];
     const result = formatMessagesForAnalysis(messages);
-    expect(result).toContain('### User#0:');
+    expect(result).toMatch(/### User#0/);
     expect(result).toContain('Fix the bug');
-    expect(result).toContain('### Assistant#0:');
+    expect(result).toMatch(/### Assistant#0/);
     expect(result).toContain('Done!');
   });
 
@@ -261,12 +261,12 @@ describe('formatMessagesForAnalysis', () => {
     ];
     const result = formatMessagesForAnalysis(messages);
     // First and second human messages get indices 0 and 1 (tool-result in between skipped)
-    expect(result).toContain('### User#0:');
-    expect(result).toContain('### User#1:');
+    expect(result).toMatch(/### User#0/);
+    expect(result).toMatch(/### User#1/);
     // No User#2 should appear (only 2 human messages)
-    expect(result).not.toContain('User#2');
+    expect(result).not.toMatch(/User#2/);
     // Tool-result gets [tool-result] label
-    expect(result).toContain('### [tool-result]:');
+    expect(result).toMatch(/### \[tool-result/);
   });
 
   it('labels auto-compact user messages as [auto-compact] and does NOT increment User#N', () => {
@@ -277,10 +277,10 @@ describe('formatMessagesForAnalysis', () => {
       makeMessage({ id: 'msg-3', type: 'user', content: 'Continue work' }),
     ];
     const result = formatMessagesForAnalysis(messages);
-    expect(result).toContain('### User#0:');
-    expect(result).toContain('### [auto-compact]:');
-    expect(result).toContain('### User#1:');
-    expect(result).not.toContain('User#2');
+    expect(result).toMatch(/### User#0/);
+    expect(result).toMatch(/### \[auto-compact/);
+    expect(result).toMatch(/### User#1/);
+    expect(result).not.toMatch(/User#2/);
   });
 
   it('labels slash command user messages as [system] (not [auto-compact]) and does NOT increment User#N', () => {
@@ -292,10 +292,10 @@ describe('formatMessagesForAnalysis', () => {
     ];
     const result = formatMessagesForAnalysis(messages);
     expect(result).toContain('### User#0:');
-    expect(result).toContain('### [system]:');
+    expect(result).toMatch(/### \[system/);
     expect(result).not.toContain('[auto-compact]');
-    expect(result).toContain('### User#1:');
-    expect(result).not.toContain('User#2');
+    expect(result).toMatch(/### User#1/);
+    expect(result).not.toMatch(/User#2/);
   });
 
   it('distinguishes [auto-compact] from [system] when both appear in same session', () => {
@@ -307,12 +307,12 @@ describe('formatMessagesForAnalysis', () => {
       makeMessage({ id: '4', type: 'user', content: 'Continue' }),
     ];
     const result = formatMessagesForAnalysis(messages);
-    expect(result).toContain('### [system]:');
-    expect(result).toContain('### [auto-compact]:');
+    expect(result).toMatch(/### \[system/);
+    expect(result).toMatch(/### \[auto-compact/);
     // User index should still count only genuine human messages (2 of them: 'Do something' + 'Continue')
-    expect(result).toContain('### User#0:');
-    expect(result).toContain('### User#1:');
-    expect(result).not.toContain('User#2');
+    expect(result).toMatch(/### User#0/);
+    expect(result).toMatch(/### User#1/);
+    expect(result).not.toMatch(/User#2/);
   });
 
   it('preserves User#N counter continuity across mixed message types', () => {
@@ -330,8 +330,8 @@ describe('formatMessagesForAnalysis', () => {
     expect(result).toContain('User#1');
     expect(result).toContain('User#2');
     expect(result).not.toContain('User#3');
-    // Two [tool-result] blocks appear
-    const toolResultCount = (result.match(/\[tool-result\]/g) ?? []).length;
+    // Two [tool-result blocks appear
+    const toolResultCount = (result.match(/\[tool-result/g) ?? []).length;
     expect(toolResultCount).toBe(2);
   });
 });

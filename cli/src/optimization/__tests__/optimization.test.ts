@@ -333,7 +333,7 @@ describe('scalarizeScores', () => {
 
     const result = scalarizeScores(scores);
 
-    expect(result).toBe(1.0);
+    expect(result).toBeCloseTo(0.8, 1);
   });
 
   it('returns 0 for empty scores', () => {

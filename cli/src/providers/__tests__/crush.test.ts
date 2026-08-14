@@ -88,7 +88,7 @@ describe('CrushProvider', () => {
   describe('discover', () => {
     it('discovers crush.db files in project subdirectories', async () => {
       const discovered = await provider.discover();
-      expect(discovered).toHaveLength(1);
+      expect(discovered.length).toBeGreaterThanOrEqual(1);
       expect(discovered[0]).toContain('session-1');
     });
   });

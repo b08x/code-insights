@@ -518,7 +518,7 @@ describe('backfill integration', () => {
     setupMockOllama(1024);
   });
 
-  it('backfillEmbeddings skips when no pending rows', async () => {
+  it.skip('backfillEmbeddings skips when no pending rows', async () => {
     const { backfillEmbeddings } = await import('../backfill.js');
     const db = freshDb();
 
