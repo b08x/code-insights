@@ -50,12 +50,14 @@ app.get('/', (c) => {
         OR summary LIKE ? ESCAPE '\\'
         OR project_name LIKE ? ESCAPE '\\'
         OR git_branch LIKE ? ESCAPE '\\'
+        OR source_tool LIKE ? ESCAPE '\\'
+        OR project_path LIKE ? ESCAPE '\\'
       )
     ORDER BY started_at DESC
     LIMIT ?
   `).all(
     likeParam, likeParam, likeParam,  // CASE args
-    likeParam, likeParam, likeParam, likeParam, likeParam,  // WHERE args
+    likeParam, likeParam, likeParam, likeParam, likeParam, likeParam, likeParam, // WHERE args
     maxResults
   ) as Array<{
     id: string;
