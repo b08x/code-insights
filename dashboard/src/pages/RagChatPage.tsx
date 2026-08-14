@@ -18,6 +18,7 @@ export default function RagChatPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [savedState, setSavedState] = useState<any>(null);
   const [clarification, setClarification] = useState<any>(null);
+  const [liveMetrics, setLiveMetrics] = useState<any[]>([]);
   const [copiedMessageIndex, setCopiedMessageIndex] = useState<number | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -38,11 +39,17 @@ export default function RagChatPage() {
     setMessages((prev) => [...prev, userMessage]);
     setInput('');
     setIsLoading(true);
+    setLiveMetrics([]);
 
     try {
+      // Filter out the initial greeting
+      const history = messages
+        .filter(m => m.content !== 'Hello! I can analyze your local code-insights sessions to extract SFL-compliant insights. What would you like to know?')
+        .map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`);
+      
       const payload = clarification 
-        ? { answer: text, savedState } 
-        : { request: text };
+        ? { answer: text, savedState, chatHistory: history, request: clarification.originalRequest } 
+        : { request: text, chatHistory: history };
 
       // Clear clarification state if we are answering one
       if (clarification) {
@@ -68,7 +75,8 @@ export default function RagChatPage() {
         if (data.type === 'clarification') {
           setClarification({
             question: data.question,
-            details: data.clarificationDetails
+            details: data.clarificationDetails,
+            originalRequest: text
           });
           setSavedState(data.savedState);
           setIsLoading(false);
@@ -84,18 +92,37 @@ export default function RagChatPage() {
       
       setMessages((prev) => [...prev, { role: 'assistant', content: '' }]);
 
+      let buffer = '';
+
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
         
-        const chunk = decoder.decode(value, { stream: true });
+        buffer += decoder.decode(value, { stream: true });
         
-        setMessages((prev) => {
-          const newMessages = [...prev];
-          const lastIndex = newMessages.length - 1;
-          newMessages[lastIndex].content += chunk;
-          return newMessages;
-        });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || ''; // Keep the incomplete line in the buffer
+        
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          
+          try {
+            const parsed = JSON.parse(line);
+            
+            if (parsed.type === 'chunk') {
+              setMessages((prev) => {
+                const newMessages = [...prev];
+                const lastIndex = newMessages.length - 1;
+                newMessages[lastIndex].content += parsed.text;
+                return newMessages;
+              });
+            } else if (parsed.type === 'metric') {
+              setLiveMetrics((prev) => [...prev, parsed]);
+            }
+          } catch (e) {
+            console.error('Failed to parse NDJSON line:', line, e);
+          }
+        }
       }
     } catch (error) {
       console.error('Failed to fetch:', error);
@@ -329,9 +356,25 @@ export default function RagChatPage() {
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          <div className="text-xs text-muted-foreground italic mb-2">
-            Metadata and context visualization will appear here during active tool usage.
-          </div>
+          {liveMetrics.length === 0 ? (
+            <div className="text-xs text-muted-foreground italic mb-2">
+              Metadata and context visualization will appear here during active tool usage.
+            </div>
+          ) : (
+            liveMetrics.map((metric, index) => (
+              <div key={index} className="bg-background rounded-lg border p-3 shadow-sm text-xs">
+                <div className="font-semibold text-primary mb-1 flex items-center gap-1">
+                  <Database className="w-3 h-3" />
+                  {metric.tool}
+                </div>
+                <div className="text-muted-foreground whitespace-pre-wrap font-mono text-[10px] break-all">
+                  {typeof metric.args === 'string' 
+                    ? metric.args 
+                    : JSON.stringify(metric.args, null, 2)}
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </aside>
     </div>

@@ -197,8 +197,11 @@ const getCodeSnippetTool = fn('getCodeSnippet')
 
 // System prompt enforcing SFL constraints
 const systemPrompt = `
-You are the Code Insights Knowledge Agent. Your task is to extract targeted insights from session transcripts.
+You are the Code Insights Knowledge Agent, an intelligent conversational assistant designed exclusively to analyze local AI coding sessions.
+If a user's request is vague or conversational (e.g., "review the last 24 hours", "what did I do today?"), ALWAYS assume they are referring to their code-insights sessions or codebase. Use your database tools (like searchSessionsTool) to find relevant recent sessions, and never fall back to asking about general tasks like emails, calendar events, or non-coding activities.
+
 You also have access to the live codebase graph. If asked about the current project structure or codebase, use the codebase tools (start by checking if it's indexed).
+
 Follow strict SFL constraints:
 1. ANTI-SLOP: Eliminate conversational padding.
 2. NO MECHANICAL LISTS: Strictly forbid mechanical file listing.
@@ -206,7 +209,7 @@ Follow strict SFL constraints:
 4. RAGE LOOP DETECTION: Identify temporal loops.
 5. DIMENSION SCORING: Score from 0-100.
 
-When finalizing your response, format EXACTLY as:
+When finalizing an insight or responding to a session query, format EXACTLY as:
 # [Insight Title]
 **Dimension Score:** [0-100] - [Brief justification]
 ## Methodological Narrative
@@ -220,7 +223,7 @@ When finalizing your response, format EXACTLY as:
 `;
 
 // 2. Define Agent Factory
-const insightAgent = agent('userQuery:string, userClarification?:string -> reply:string', {
+const insightAgent = agent('userQuery:string, chatHistory?:string[], userClarification?:string -> reply:string', {
   agentIdentity: {
     name: 'KnowledgeAgent',
     description: systemPrompt,
@@ -243,6 +246,7 @@ app.post('/', async (c) => {
   const request = body.request;
   const answer = body.answer;
   const savedState = body.savedState;
+  const chatHistory = body.chatHistory;
 
   // Load the agent configuration
   const config = loadConfig();
@@ -311,7 +315,7 @@ app.post('/', async (c) => {
   }
 
   try {
-    const streamResult = (await insightAgent.streamingForward(llm, { userQuery: request, userClarification: answer })) as AsyncIterableIterator<any>;
+    const streamResult = (await insightAgent.streamingForward(llm, { userQuery: request, chatHistory: chatHistory, userClarification: answer })) as AsyncIterableIterator<any>;
     
     // We must read the first chunk to catch any AxAgentClarificationError before sending HTTP 200 headers
     // because once streamText is returned, headers are sent and we can't return a JSON response.
@@ -332,7 +336,18 @@ app.post('/', async (c) => {
         const firstReply = firstChunk?.delta?.reply || firstChunk?.reply;
         if (firstReply) {
           hasWrittenReply = true;
-          await stream.write(firstReply);
+          await stream.write(JSON.stringify({ type: 'chunk', text: firstReply }) + '\n');
+        }
+        
+        const firstFunctionCalls = firstChunk?.delta?.functionCalls || firstChunk?.functionCalls;
+        if (firstFunctionCalls && Array.isArray(firstFunctionCalls) && firstFunctionCalls.length > 0) {
+          for (const fc of firstFunctionCalls) {
+            await stream.write(JSON.stringify({
+              type: 'metric',
+              tool: fc.name || fc.function?.name,
+              args: fc.arguments || fc.function?.arguments
+            }) + '\n');
+          }
         }
         
         // Stream the rest
@@ -342,19 +357,32 @@ app.post('/', async (c) => {
           
           fs.appendFileSync('agent-debug.log', 'CHUNK: ' + JSON.stringify(chunk) + '\n');
           
+          // Emit Text
           const replyText = chunk?.delta?.reply || chunk?.reply;
           if (replyText) {
             hasWrittenReply = true;
-            await stream.write(replyText);
+            await stream.write(JSON.stringify({ type: 'chunk', text: replyText }) + '\n');
+          }
+          
+          // Emit Tools (live metrics)
+          const functionCalls = chunk?.delta?.functionCalls || chunk?.functionCalls;
+          if (functionCalls && Array.isArray(functionCalls) && functionCalls.length > 0) {
+            for (const fc of functionCalls) {
+              await stream.write(JSON.stringify({
+                type: 'metric',
+                tool: fc.name || fc.function?.name,
+                args: fc.arguments || fc.function?.arguments
+              }) + '\n');
+            }
           }
         }
         
         if (!hasWrittenReply) {
-          await stream.write("\n\n*The agent completed its process but did not return a valid reply. This often happens if the configured LLM does not strictly follow the required JSON output schema. Try using a more capable model (like gpt-4o or claude-3-5-sonnet).*");
+          await stream.write(JSON.stringify({ type: 'chunk', text: "\n\n*The agent completed its process but did not return a valid reply. This often happens if the configured LLM does not strictly follow the required JSON output schema. Try using a more capable model (like gpt-4o or claude-3-5-sonnet).*" }) + '\n');
         }
       } catch (err: any) {
         console.error('Error during streaming:', err);
-        await stream.write(`\n\n[Agent Error: ${err.message}]`);
+        await stream.write(JSON.stringify({ type: 'chunk', text: `\n\n[Agent Error: ${err.message}]` }) + '\n');
       }
     });
 
