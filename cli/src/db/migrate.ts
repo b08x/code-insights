@@ -9,6 +9,7 @@ export interface MigrationResult {
   v10Applied: boolean;
   v11Applied: boolean;
   v12Applied: boolean;
+  v13Applied: boolean;
 }
 
 /**
@@ -102,7 +103,13 @@ export function runMigrations(db: Database.Database): MigrationResult {
     v12Applied = true;
   }
 
-  return { v6Applied, v7Applied, v8Applied, v9Applied, v10Applied, v11Applied, v12Applied };
+  let v13Applied = false;
+  if (currentVersion < 13) {
+    applyV13(db);
+    v13Applied = true;
+  }
+
+  return { v6Applied, v7Applied, v8Applied, v9Applied, v10Applied, v11Applied, v12Applied, v13Applied };
 }
 
 function getCurrentVersion(db: Database.Database): number {
@@ -307,4 +314,46 @@ function applyV12(db: Database.Database): void {
   `);
 
   db.prepare('INSERT OR IGNORE INTO schema_version (version) VALUES (?)').run(12);
+}
+
+function applyV13(db: Database.Database): void {
+  // Drop the old FTS5 virtual table for messages and its triggers
+  db.exec(`
+    DROP TRIGGER IF EXISTS messages_ai;
+    DROP TRIGGER IF EXISTS messages_ad;
+    DROP TRIGGER IF EXISTS messages_au;
+    DROP TABLE IF EXISTS messages_fts;
+  `);
+
+  // Recreate FTS5 virtual table for messages including tool_calls and tool_results
+  db.exec(`
+    CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
+      content,
+      tool_calls,
+      tool_results,
+      content='messages',
+      content_rowid='rowid'
+    );
+  `);
+  
+  // Triggers to keep FTS table in sync
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS messages_ai AFTER INSERT ON messages BEGIN
+      INSERT INTO messages_fts(rowid, content, tool_calls, tool_results) VALUES (new.rowid, new.content, new.tool_calls, new.tool_results);
+    END;
+    CREATE TRIGGER IF NOT EXISTS messages_ad AFTER DELETE ON messages BEGIN
+      INSERT INTO messages_fts(messages_fts, rowid, content, tool_calls, tool_results) VALUES ('delete', old.rowid, old.content, old.tool_calls, old.tool_results);
+    END;
+    CREATE TRIGGER IF NOT EXISTS messages_au AFTER UPDATE ON messages BEGIN
+      INSERT INTO messages_fts(messages_fts, rowid, content, tool_calls, tool_results) VALUES ('delete', old.rowid, old.content, old.tool_calls, old.tool_results);
+      INSERT INTO messages_fts(rowid, content, tool_calls, tool_results) VALUES (new.rowid, new.content, new.tool_calls, new.tool_results);
+    END;
+  `);
+
+  // Backfill existing messages into FTS
+  db.exec(`
+    INSERT INTO messages_fts(messages_fts) VALUES('rebuild');
+  `);
+
+  db.prepare('INSERT OR IGNORE INTO schema_version (version) VALUES (?)').run(13);
 }

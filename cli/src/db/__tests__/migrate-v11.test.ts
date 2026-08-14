@@ -8,8 +8,8 @@ function freshDb(): Database.Database {
 }
 
 describe('runMigrations — V11 embedding schema', () => {
-  it('CURRENT_SCHEMA_VERSION is 11', () => {
-    expect(CURRENT_SCHEMA_VERSION).toBe(11);
+  it('CURRENT_SCHEMA_VERSION is >= 11', () => {
+    expect(CURRENT_SCHEMA_VERSION).toBeGreaterThanOrEqual(11);
   });
 
   it('sets v11Applied on fresh database', () => {
