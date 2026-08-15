@@ -474,6 +474,14 @@ function extractSessionId(filePath: string): string | null {
   const filename = path.basename(filePath);
   if (!filename) return null;
 
+  // Handle Claude Desktop local agent mode format (e.g. .../local_123.../audit.jsonl)
+  if (filename === 'audit.jsonl') {
+    const parentDir = path.basename(path.dirname(filePath));
+    if (parentDir.startsWith('local_')) {
+      return parentDir;
+    }
+  }
+
   // Handle both UUID.jsonl and agent-*.jsonl formats
   const match = filename.match(/^([a-f0-9-]+|agent-[a-f0-9]+)\.jsonl$/);
   return match ? match[1] : null;

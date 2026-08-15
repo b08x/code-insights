@@ -79,3 +79,5 @@ test-*
 logs/
 
 repomix-output.xml
+
+docs/zread/

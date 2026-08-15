@@ -1,5 +1,6 @@
 import type { SessionProvider } from './types.js';
 import { ClaudeCodeProvider } from './claude-code.js';
+import { ClaudeDesktopProvider } from './claude-desktop.js';
 import { CursorProvider } from './cursor.js';
 import { CodexProvider } from './codex.js';
 import { CopilotCliProvider } from './copilot-cli.js';
@@ -16,6 +17,9 @@ const providers = new Map<string, SessionProvider>();
 // Register built-in providers
 const claudeCode = new ClaudeCodeProvider();
 providers.set(claudeCode.getProviderName(), claudeCode);
+
+const claudeDesktop = new ClaudeDesktopProvider();
+providers.set(claudeDesktop.getProviderName(), claudeDesktop);
 
 const cursor = new CursorProvider();
 providers.set(cursor.getProviderName(), cursor);

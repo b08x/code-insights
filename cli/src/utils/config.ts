@@ -169,3 +169,15 @@ export function getConfigDir(): string {
 export function getSyncStatePath(): string {
   return SYNC_STATE_FILE;
 }
+
+/**
+ * Get Claude Desktop local agent mode directory
+ */
+export function getClaudeDesktopDir(): string {
+  if (process.platform === 'darwin') {
+    return path.join(os.homedir(), 'Library', 'Application Support', 'Claude', 'local-agent-mode-sessions');
+  } else if (process.platform === 'win32') {
+    return path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'Claude', 'local-agent-mode-sessions');
+  }
+  return path.join(os.homedir(), '.config', 'Claude', 'local-agent-mode-sessions');
+}
