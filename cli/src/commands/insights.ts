@@ -269,7 +269,24 @@ export async function runInsightsCommand(options: InsightsCommandOptions): Promi
     sessionMeta,
     loopSignal,
   );
-  const sessionUserPrompt = `${buildCacheableConversationBlock(formattedMessages).text}\n${sessionInstructions}`;
+
+  let architectureContext = '';
+  try {
+    const { execFileSync } = await import('child_process');
+    const stdout = execFileSync('codebase-memory-mcp', ['cli', 'get_architecture'], {
+      input: JSON.stringify({ project: session.project_name }),
+      encoding: 'utf-8',
+      timeout: 15000,
+      stdio: ['pipe', 'pipe', 'ignore']
+    });
+    if (stdout && stdout.trim()) {
+      architectureContext = `\n\n<project_architecture>\n${stdout.trim()}\n</project_architecture>\n`;
+    }
+  } catch (err) {
+    // Ignore: tool missing, project not indexed, or timeout
+  }
+
+  const sessionUserPrompt = `${buildCacheableConversationBlock(formattedMessages).text}${architectureContext}\n${sessionInstructions}`;
 
   const sessionResult = await performAnalysis({
     systemPrompt: SHARED_ANALYST_SYSTEM_PROMPT,
@@ -320,7 +337,7 @@ export async function runInsightsCommand(options: InsightsCommandOptions): Promi
     { humanMessageCount, assistantMessageCount, toolExchangeCount },
     sessionMeta,
   );
-  const pqUserPrompt = `${buildCacheableConversationBlock(formattedMessages).text}\n${pqInstructions}`;
+  const pqUserPrompt = `${buildCacheableConversationBlock(formattedMessages).text}${architectureContext}\n${pqInstructions}`;
 
   const pqResult = await performAnalysis({
     systemPrompt: SHARED_ANALYST_SYSTEM_PROMPT,

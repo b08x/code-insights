@@ -140,7 +140,8 @@ const getSessionTranscriptTool = fn('getSessionTranscript')
 // MCP Integration Tools
 function execMcpCli(toolName: string, args: Record<string, any>): string {
   try {
-    const stdout = execFileSync('codebase-memory-mcp', ['cli', toolName, JSON.stringify(args)], {
+    const stdout = execFileSync('codebase-memory-mcp', ['cli', toolName], {
+      input: JSON.stringify(args),
       encoding: 'utf-8',
       timeout: 120000 // Extended timeout for indexing
     });
@@ -171,7 +172,7 @@ const indexRepositoryTool = fn('indexRepository')
 const getArchitectureTool = fn('getArchitecture')
   .description('Codebase overview: languages, packages, routes, hotspots. Call after verifying the project is indexed.')
   .namespace('codebase')
-  .arg('project', f.string('Name of the indexed project').optional())
+  .arg('project', f.string('Name of the indexed project'))
   .returns(f.string('Architecture summary'))
   .handler(async (args) => execMcpCli('get_architecture', args))
   .build();
@@ -179,7 +180,7 @@ const getArchitectureTool = fn('getArchitecture')
 const searchGraphTool = fn('searchGraph')
   .description('Structured search by label, name pattern, file pattern.')
   .namespace('codebase')
-  .arg('project', f.string('Name of the indexed project').optional())
+  .arg('project', f.string('Name of the indexed project'))
   .arg('name_pattern', f.string('Regex pattern for symbol name').optional())
   .arg('label', f.string('Graph label (e.g. Function, Class)').optional())
   .returns(f.string('Matching graph nodes'))
@@ -189,10 +190,37 @@ const searchGraphTool = fn('searchGraph')
 const getCodeSnippetTool = fn('getCodeSnippet')
   .description('Read source code for a function or symbol by qualified name.')
   .namespace('codebase')
-  .arg('project', f.string('Name of the indexed project').optional())
+  .arg('project', f.string('Name of the indexed project'))
   .arg('qualified_name', f.string('The fully qualified name of the symbol'))
   .returns(f.string('Source code snippet'))
   .handler(async (args) => execMcpCli('get_code_snippet', args))
+  .build();
+
+const tracePathTool = fn('tracePath')
+  .description('Trace paths through the code graph. Use for callers, dependencies, impact analysis, or data flow tracing.')
+  .namespace('codebase')
+  .arg('project', f.string('Name of the indexed project'))
+  .arg('function_name', f.string('Name of the function/class to trace'))
+  .arg('direction', f.string('Direction: inbound, outbound, or both').optional())
+  .arg('mode', f.string('Mode: calls, data_flow, or cross_service').optional())
+  .arg('depth', f.number('Depth limit (default 3)').optional())
+  .returns(f.string('Trace paths'))
+  .handler(async (args) => execMcpCli('trace_path', args))
+  .build();
+
+const checkIndexCoverageTool = fn('checkIndexCoverage')
+  .description('Check authoritative indexing-coverage metadata for exact paths or path scopes. Use this before negative/exhaustive claims.')
+  .namespace('codebase')
+  .arg('project', f.string('Name of the indexed project'))
+  .arg('paths', f.string('Comma-separated list of repository-relative paths to check exactly').optional())
+  .arg('scopes', f.string('Comma-separated list of repository-relative path prefixes (e.g. ".")').optional())
+  .returns(f.string('Index coverage status'))
+  .handler(async (args) => {
+    const payload: any = { project: args.project };
+    if (args.paths) payload.paths = args.paths.split(',').map((s: string) => s.trim());
+    if (args.scopes) payload.scopes = args.scopes.split(',').map((s: string) => s.trim());
+    return execMcpCli('check_index_coverage', payload);
+  })
   .build();
 
 // System prompt enforcing SFL constraints
@@ -201,6 +229,7 @@ You are the Code Insights Knowledge Agent, an intelligent conversational assista
 If a user's request is vague or conversational (e.g., "review the last 24 hours", "what did I do today?"), ALWAYS assume they are referring to their code-insights sessions or codebase. Use your database tools (like searchSessionsTool) to find relevant recent sessions, and never fall back to asking about general tasks like emails, calendar events, or non-coding activities.
 
 You also have access to the live codebase graph. If asked about the current project structure or codebase, use the codebase tools (start by checking if it's indexed).
+You MUST run checkIndexCoverageTool before making exhaustive or negative claims about the codebase structure to ensure you aren't hallucinating on partially indexed code.
 
 Follow strict SFL constraints:
 1. ANTI-SLOP: Eliminate conversational padding.
@@ -235,7 +264,9 @@ const insightAgent = agent('userQuery:string, chatHistory?:string[], userClarifi
     indexRepositoryTool,
     getArchitectureTool,
     searchGraphTool,
-    getCodeSnippetTool
+    getCodeSnippetTool,
+    tracePathTool,
+    checkIndexCoverageTool
   ],
   contextFields: [],
 });
@@ -328,6 +359,21 @@ app.post('/', async (c) => {
 
     return streamText(c, async (stream) => {
       let hasWrittenReply = false;
+      const citedSessions = new Set<string>();
+
+      const captureCitation = (fc: any) => {
+        const toolName = fc.name || fc.function?.name;
+        if (toolName !== 'getSessionTranscript') return;
+        
+        const args = fc.arguments || fc.function?.arguments;
+        if (typeof args === 'string') {
+          const match = args.match(/"sessionId"\s*:\s*"([^"]+)"/);
+          if (match) citedSessions.add(match[1]);
+        } else if (args && typeof args === 'object' && args.sessionId) {
+          citedSessions.add(args.sessionId);
+        }
+      };
+
       try {
         // Send the first chunk we already pulled
         const firstChunk = firstResult.value;
@@ -342,6 +388,7 @@ app.post('/', async (c) => {
         const firstFunctionCalls = firstChunk?.delta?.functionCalls || firstChunk?.functionCalls;
         if (firstFunctionCalls && Array.isArray(firstFunctionCalls) && firstFunctionCalls.length > 0) {
           for (const fc of firstFunctionCalls) {
+            captureCitation(fc);
             await stream.write(JSON.stringify({
               type: 'metric',
               tool: fc.name || fc.function?.name,
@@ -368,6 +415,7 @@ app.post('/', async (c) => {
           const functionCalls = chunk?.delta?.functionCalls || chunk?.functionCalls;
           if (functionCalls && Array.isArray(functionCalls) && functionCalls.length > 0) {
             for (const fc of functionCalls) {
+              captureCitation(fc);
               await stream.write(JSON.stringify({
                 type: 'metric',
                 tool: fc.name || fc.function?.name,
@@ -380,6 +428,16 @@ app.post('/', async (c) => {
         if (!hasWrittenReply) {
           await stream.write(JSON.stringify({ type: 'chunk', text: "\n\n*The agent completed its process but did not return a valid reply. This often happens if the configured LLM does not strictly follow the required JSON output schema. Try using a more capable model (like gpt-4o or claude-3-5-sonnet).*" }) + '\n');
         }
+
+        // Append citations at the end of the stream
+        if (citedSessions.size > 0) {
+          let citationMd = '\n\n---\n**Sources Consulted:**\n';
+          for (const sessionId of citedSessions) {
+            citationMd += `- [Session ${sessionId.substring(0, 8)}](/sessions/${sessionId})\n`;
+          }
+          await stream.write(JSON.stringify({ type: 'chunk', text: citationMd }) + '\n');
+        }
+
       } catch (err: any) {
         console.error('Error during streaming:', err);
         await stream.write(JSON.stringify({ type: 'chunk', text: `\n\n[Agent Error: ${err.message}]` }) + '\n');
