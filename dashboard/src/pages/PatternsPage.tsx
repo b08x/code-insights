@@ -22,6 +22,13 @@ import {
 } from 'lucide-react';
 import { LlmNudgeBanner } from '@/components/LlmNudgeBanner';
 
+/**
+ * The Patterns Page component.
+ * 
+ * Responsible for displaying and generating cross-session insights (Patterns).
+ * It visualizes aggregated facets (friction, patterns, character distribution)
+ * and uses SSE to stream the LLM generation of "reflections" (working style, rules).
+ */
 export default function PatternsPage() {
   const [currentWeek, setCurrentWeek] = useState<string>(() => getCurrentIsoWeek());
   const [selectedProject, setSelectedProject] = useState<string | undefined>(undefined);
@@ -62,9 +69,12 @@ export default function PatternsPage() {
     };
   }, []);
 
-  // On initial load, jump to the most recent week that has a snapshot.
-  // This avoids showing the current week with no data when reflections exist for recent weeks.
-  // Only runs once (when weeks first loads) — tracked by whether currentWeek is still the computed default.
+  /**
+   * Auto-jump heuristic:
+   * On initial load, jump to the most recent week that has a snapshot.
+   * This avoids showing the current week with no data when reflections exist for recent weeks.
+   * Only runs once (when weeks first loads) — tracked by whether currentWeek is still the computed default.
+   */
   const initialWeekRef = useRef<string>(getCurrentIsoWeek());
   useEffect(() => {
     if (!weeksData?.weeks.length) return;
@@ -73,13 +83,17 @@ export default function PatternsPage() {
     if (mostRecentWithSnapshot && mostRecentWithSnapshot.week !== currentWeek) {
       handleWeekChange(mostRecentWithSnapshot.week);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   // Intentional: handleWeekChange is stable (useCallback with no deps) and initialWeekRef
   // is a ref — neither should trigger re-runs. Re-running on every render would break the
   // "jump to most recent snapshot only on initial load" logic.
   }, [weeksData]);
 
-  // Auto-load cached snapshot when it arrives and no local results exist yet
+  /**
+   * State sync:
+   * Auto-load the cached reflection snapshot when it arrives from the query and no local results exist yet.
+   * This ensures the UI accurately reflects previously generated insights without requiring manual regeneration.
+   */
   useEffect(() => {
     if (snapshotData?.snapshot?.results && !reflectResults && !generating) {
       setReflectResults(snapshotData.snapshot.results);
@@ -101,6 +115,12 @@ export default function PatternsPage() {
     initialWeekRef.current = getCurrentIsoWeek();
   }, []);
 
+  /**
+   * Generates a new reflection via Server-Sent Events (SSE) lifecycle.
+   * - Aborts any in-flight requests.
+   * - Sets generating state and handles the streaming response.
+   * - Parses `progress`, `complete`, and `error` events to update UI incrementally.
+   */
   const handleGenerate = useCallback(async () => {
     abortRef.current?.abort();
     const controller = new AbortController();

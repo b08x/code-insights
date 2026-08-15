@@ -10,12 +10,24 @@ import { Link } from 'react-router';
 import { ErrorCard } from '@/components/ErrorCard';
 import type { Insight } from '@/lib/types';
 
+/**
+ * Generates a consistent week key (YYYY-MM-DD of Monday) for grouping insights.
+ * 
+ * @param dateStr - The ISO date string of the insight.
+ * @returns The start-of-week date formatted as YYYY-MM-DD.
+ */
 function getWeekKey(dateStr: string): string {
   const date = new Date(dateStr);
   const start = startOfWeek(date, { weekStartsOn: 1 });
   return format(start, 'yyyy-MM-dd');
 }
 
+/**
+ * Formats a week key into a human-readable label (e.g., "This Week", "Last Week", or specific date).
+ * 
+ * @param weekKey - The YYYY-MM-DD string representing the start of the week.
+ * @returns A formatted, human-friendly label for the week.
+ */
 function getWeekLabel(weekKey: string): string {
   const start = new Date(weekKey + 'T00:00:00');
   const end = endOfWeek(start, { weekStartsOn: 1 });
@@ -32,6 +44,14 @@ function getWeekLabel(weekKey: string): string {
   return `Week of ${format(start, 'MMMM d, yyyy')}`;
 }
 
+/**
+ * The Knowledge Journal page component.
+ * 
+ * Provides a chronological timeline of extracted learnings and decisions from analyzed sessions.
+ * The view is split into two tabs:
+ * - Timeline: A vertical list of learnings and decisions, grouped by week.
+ * - Patterns: A dedicated tab for AI-driven pattern synthesis across the knowledge base.
+ */
 export default function JournalPage() {
   const { data: insights = [], isLoading, isError, refetch } = useInsights();
   const { data: llmConfig } = useLlmConfig();
@@ -224,7 +244,7 @@ export default function JournalPage() {
                   </p>
                   <p className="text-sm">
                     Pattern analysis uses the session analysis feature. Go to a session and click
-                    "Analyze" to generate insights, then check back here for timeline trends.
+                    &quot;Analyze&quot; to generate insights, then check back here for timeline trends.
                   </p>
                   <Link
                     to="/sessions"

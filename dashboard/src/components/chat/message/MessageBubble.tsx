@@ -15,12 +15,21 @@ import { RawMessageBlock } from './RawMessageBlock';
 import { ContextBreakDivider } from '../conversation/ContextBreakDivider';
 import { InlineEventChip } from '../conversation/InlineEventChip';
 
+/**
+ * Props for the MessageBubble component.
+ */
 interface MessageBubbleProps {
+  /** The message object containing content, type, tool calls/results, etc. */
   message: Message;
+  /** Whether to show the header with avatar, name, and timestamp. Defaults to true. */
   showHeader?: boolean;
+  /** Tool results from the next message, used to render tool outputs for the current tool calls. */
   nextToolResults?: ToolResult[];
+  /** The source tool that generated the message (e.g., 'claude-code', 'cursor'). */
   sourceTool?: string;
+  /** Active search query to highlight in the message content. */
   searchQuery?: string;
+  /** Whether to show raw, unprocessed messages (e.g., exit commands, skill loads). Defaults to false. */
   showRawMessages?: boolean;
 }
 
@@ -74,17 +83,23 @@ export function MessageBubble({ message, showHeader = true, nextToolResults = []
     () => (isUser && hasContent) ? parseAgentMessage(message.content) : null,
     [isUser, hasContent, message.content]
   );
-  if (agentMessage) {
-    return <AgentMessageBubble parsed={agentMessage} timestamp={message.timestamp} />;
-  }
 
-  // Classify user messages to route to the correct renderer.
-  // Must run on RAW content before preprocessUserContent strips XML tags.
-  // Only 'human' kind flows to UserMarkdown — all others bypass preprocessing.
+  /**
+   * Classify user messages to route to the correct renderer.
+   * 
+   * This classification must run on RAW content before `preprocessUserContent` 
+   * strips XML tags or structure. It distinguishes between standard human input
+   * and structural markers like context breaks or tool commands.
+   * Only the 'human' kind flows to UserMarkdown — all others bypass normal text rendering.
+   */
   const userMessageClass = useMemo(
     () => (isUser && hasContent) ? classifyUserMessage(message.content) : null,
     [isUser, hasContent, message.content]
   );
+
+  if (agentMessage) {
+    return <AgentMessageBubble parsed={agentMessage} timestamp={message.timestamp} />;
+  }
 
   if (isSystem) {
     return (

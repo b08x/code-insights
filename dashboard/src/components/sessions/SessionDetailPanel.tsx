@@ -66,11 +66,23 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 
+/**
+ * Props for the SessionDetailPanel component.
+ */
 interface SessionDetailPanelProps {
+  /** The unique identifier of the session to display. */
   sessionId: string;
+  /** Optional callback fired when the session is successfully hidden/deleted. */
   onDelete?: () => void;
 }
 
+/**
+ * A comprehensive detail view for a single AI coding session.
+ * 
+ * Displays session metadata, synthesized insights (learnings, decisions),
+ * prompt quality analysis, and the full interactive chat conversation.
+ * Manages its own data fetching, analysis triggering, and export functionality.
+ */
 export function SessionDetailPanel({ sessionId, onDelete }: SessionDetailPanelProps) {
   const { data: session, isLoading: loading, error } = useSession(sessionId);
   const { data: insights = [] } = useInsights({ sessionId });
@@ -117,6 +129,13 @@ export function SessionDetailPanel({ sessionId, onDelete }: SessionDetailPanelPr
   const loadingMore = messagesQuery.isFetchingNextPage;
   const hasMore = messagesQuery.hasNextPage ?? false;
 
+  /**
+   * Eagerly fetches all remaining pages of the conversation history.
+   * 
+   * Useful when performing client-side operations that require the complete
+   * message history, such as searching through the conversation.
+   * Caps out at 50 pages to prevent runaway requests on massive sessions.
+   */
   const fetchAllMessages = useCallback(async () => {
     if (loadingAllMessages || !messagesQuery.hasNextPage) return;
     setLoadingAllMessages(true);
@@ -234,6 +253,11 @@ export function SessionDetailPanel({ sessionId, onDelete }: SessionDetailPanelPr
     ? SESSION_CHARACTER_LABELS[session.session_character]
     : null;
 
+  /**
+   * Exports the current session data (messages, insights, summary) to the user's filesystem.
+   * 
+   * @param format - The target export format ('plain' for standard Markdown, 'obsidian', or 'notion').
+   */
   function handleExport(format: 'plain' | 'obsidian' | 'notion') {
     exportSession(session!, insights, summaryText, format);
     toast.success(`Exported as ${format === 'plain' ? 'Markdown' : format}`);
@@ -536,7 +560,7 @@ export function SessionDetailPanel({ sessionId, onDelete }: SessionDetailPanelPr
             <div className="rounded-lg border border-dashed">
               <div className="flex flex-col items-center justify-center py-12 text-center space-y-3">
                 <BarChart2 className="h-8 w-8 text-muted-foreground" />
-                <p className="font-medium text-sm">This session hasn't been analyzed yet</p>
+                <p className="font-medium text-sm">This session hasn&apos;t been analyzed yet</p>
                 <p className="text-xs text-muted-foreground">
                   Generate AI insights to extract learnings, decisions, and a session summary.
                 </p>
