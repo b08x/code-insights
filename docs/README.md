@@ -84,12 +84,12 @@ The codebase is organized into 101 communities (modules). Top-level communities 
 
 1. **aggregation.ts** (92 nodes) - Insight aggregation and statistics
 2. **Database Migration and Sync** (38 nodes) - Database operations and sync
-3. **MessageBubble.tsx** (40 nodes) - Chat message UI components
+3. **MessageBubble.tsx** (40 nodes) - Chat message UI components (Chat Subsystem / /api/agent responses)
 4. **LlmProviderCard.tsx** (39 nodes) - LLM provider configuration UI
 5. **Agent Rules and Metadata** (33 nodes) - Agent configuration parsing
 6. **cli/src/index.ts** (29 nodes) - CLI entry point and commands
-7. **share-card-utils.ts** (41 nodes) - Social sharing functionality
-8. **SessionDetailPanel.tsx** (36 nodes) - Session detail view
+7. **share-card-utils.ts** (41 nodes) - Social sharing functionality (WeekAtAGlanceStrip)
+8. **SessionDetailPanel.tsx** (36 nodes) - Session detail view (VitalsStrip, AnalysisCostLine)
 9. **copilot-cli.ts** (9 nodes) - Copilot CLI integration
 10. **Prompt Optimization Engine** (34 nodes) - Prompt optimization logic
 
@@ -118,6 +118,7 @@ None detected. The codebase has no circular dependencies.
 - [Data Flow](data-flow.md) - Sequence diagram of primary operations
 - [Decisions](decisions.md) - Design rationale and trade-offs
 - [Modules](./modules/) - Per-module documentation
+  - [Dashboard Architecture](./modules/dashboard.md) - UI Components, Chat Subsystem, and State Management
 
 ---
 

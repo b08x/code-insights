@@ -98,10 +98,10 @@ Cross-session pattern detection and synthesis, powered by session facets:
 - `code-insights reflect backfill` — Backfill facets for sessions analyzed before facet support
 - `code-insights stats patterns` — View pattern summary in the terminal
 
-**Dashboard Patterns Page** — Three synthesis sections:
-- **Friction & Wins** — Top friction categories ranked by frequency, effective patterns that worked
-- **Rules & Skills** — Auto-generated agent rules, skill recommendations, and hook suggestions
-- **Working Style** — Workflow distribution, outcome trends, session character analysis
+**Dashboard Patterns Page** — Three synthesis sections with built-in threshold gates (requires a minimum of 8 sessions, displaying coverage warnings if < 50% are analyzed):
+- **Working Style** — LLM-generated narrative describing your developer archetype, workflow distribution, and outcome trends.
+- **Rules & Skills** — Copyable `CLAUDE.md` / `.cursorrules` configurations, skill recommendations, and hook suggestions derived directly from your session history.
+- **Friction & Wins** — Top friction categories ranked by frequency, and effective patterns that worked.
 
 **Technical details:**
 - Dedicated `session_facets` SQLite table (Schema V3) with indexed scalar columns and JSON arrays
@@ -145,24 +145,24 @@ Running `code-insights` with no arguments works immediately — auto-creates the
 
 ### Knowledge Journal
 
-The Journal page (`/journal`) provides a chronological view of learnings and decisions extracted from sessions:
+The Journal page (`/journal`) provides a structured 2-tab layout for extracting insights over time:
 
-- **Timeline tab** — Weeks grouped by ISO week with visual timeline dots (yellow for learnings, blue for decisions). Week headers show learning/decision counts. Newest-first within each week.
-- **Patterns tab** — Links to LLM analysis workflow for pattern discovery across sessions.
+- **Timeline Tab** — Chronological view grouped by ISO week with visual indicators (yellow dots for learnings, blue for decisions). Includes week headers showing total counts, newest-first ordering, and guided empty states when no data exists.
+- **Patterns Tab** — LLM-powered pattern synthesis revealing recurring behaviors, with guided navigation to trigger cross-session analysis.
 
 ### Chat View Enhancements
 
-Session detail chat view includes system event rendering:
-- **Context break dividers** — Visual markers where conversation context was reset (compacts)
-- **Inline event chips** — Slash commands displayed as inline chips (e.g., `/grep`, `/read`)
-- **Raw message toggle** — Switch between filtered and full conversation view
-- **Agent message rendering** — Task notifications (amber) and teammate messages (colored border)
+Session detail chat view includes robust system event rendering across 7 user message kinds:
+- **Message Kind Classification** — Distinct rendering for `human` (text input), `auto-compact` & `user-compact` (context break dividers), `slash-command` & `exit-command` (inline event chips), `skill-load` (tooling alerts), and `command-frame` (system execution boundaries).
+- **Multi-Provider Avatars** — Distinct user and AI avatars based on the source tool (Claude, Cursor, Copilot, etc.).
+- **Raw Message Toggle** — Seamlessly switch between the filtered human-readable view and the complete, raw conversation data.
+- **Agent Message Rendering** — Task notifications (amber) and teammate messages (colored border).
 
 ### Dashboard Views
 
 - **Dashboard** — Overview with activity charts
 - **Sessions** — Session list with source, project, date, character filters
-- **Session Detail** — Full session with analyze button, cost tracking, chat view enhancements
+- **Session Detail** — Full session view featuring Rage Loop alerts and remediation suggestions, conversation search & pagination, structured exports, missing facet backfilling, cost tracking, and chat view enhancements.
 - **Insights** — Browse and search generated insights
 - **Analytics** — Charts showing effort distribution, cost, models, projects
 - **Patterns** — Cross-session pattern synthesis (Friction & Wins, Rules & Skills, Working Style) + Share Card download + Week-at-a-Glance strip with streak, session count, AI Fluency Score

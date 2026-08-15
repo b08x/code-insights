@@ -54,8 +54,11 @@ flowchart TD
     UI[("Dashboard")] -->|App.tsx| MainApp
     UI -->|SessionsPage.tsx| SessionsView
     UI -->|SessionDetailPanel.tsx| SessionDetail
+    SessionDetail -->|VitalsStrip| Vitals
+    SessionDetail -->|AnalysisCostLine| CostLine
     UI -->|AnalyticsPage.tsx| AnalyticsView
     UI -->|PatternsPage.tsx| PatternsView
+    PatternsView -->|WeekAtAGlanceStrip| WeekStrip
     UI -->|ChatConversation.tsx| ChatView
     UI -->|PromptQualityCard.tsx| QualityView
     

@@ -17,8 +17,8 @@
 │           ▼                         ▼                         ▼             │
 │  ┌─────────────────┐      ┌──────────────────────┐      ┌────────────────┐ │
 │  │   NDJSON        │      │   ax-llm Agent        │      │   SQLite DB    │ │
-│  │   Streaming     │◀─────│   (insightAgent)      │◀─────│   + FTS5       │ │
-│  │   Response      │      │   + 7 Tools           │      │   + vec_insights│ │
+│  │   Streaming     │◀─────│   + AxJSRuntime       │◀─────│   + FTS5       │ │
+│  │   Response      │      │   + Checkpointed      │      │   + vec_insights│ │
 │  └─────────────────┘      └──────────────────────┘      └────────────────┘ │
 │                                                                              │
 └─────────────────────────────────────────────────────────────────────────────┘
@@ -84,19 +84,22 @@ handleSubmit(textToSubmit?)
 
 **Agent Initialization:**
 ```typescript
-const insightAgent = agent('userQuery:string, userClarification?:string -> reply:string', {
+const insightAgent = agent('chatHistory:Message[], userQuery:string, userClarification?:string -> reply:string', {
   agentIdentity: {
     name: 'KnowledgeAgent',
     description: systemPrompt,  // SFL constraints
   },
+  contextPolicy: 'checkpointed',
+  runtime: new AxJSRuntime(),
   functions: [
-    searchSessionsTool,      // Hybrid search (BM25 + vector)
-    getSessionTranscriptTool, // Session transcript retrieval
+    onMemoriesSearch,        // Hybrid search (BM25 + vector, extract top-2 sessions)
     listProjectsTool,        // MCP: list indexed projects
     indexRepositoryTool,     // MCP: index repository
     getArchitectureTool,     // MCP: architecture overview
     searchGraphTool,         // MCP: graph search
     getCodeSnippetTool,      // MCP: code snippets
+    tracePathTool,           // MCP: trace logical paths
+    checkIndexCoverageTool,  // MCP: check graph index coverage
   ],
 });
 ```
@@ -122,9 +125,9 @@ POST /
 
 ## 3. Tool Layer — Hybrid Search & Retrieval
 
-### 3.1 `searchSessionsTool`
+### 3.1 `onMemoriesSearch`
 
-**Hybrid Search Pipeline:**
+**Hybrid Search & Memory Extraction Pipeline:**
 ```
 User Query
     │
@@ -151,7 +154,7 @@ User Query
 │  ┌─────────────────────────────────────────┐ │
 │  │  RRF Score = Σ 1/(k + rank + 1)        │ │
 │  │  Sort by score DESC                     │ │
-│  │  Return top-K sessions                  │ │
+│  │  Extract top-2 session transcripts      │ │
 │  └─────────────────────────────────────────┘ │
 │                                               │
 └───────────────────────────────────────────────┘
@@ -167,14 +170,6 @@ ORDER BY rank ASC
 LIMIT 50
 ```
 
-**SQL LIKE Fallback:**
-```sql
-SELECT id FROM sessions 
-WHERE (summary LIKE ? OR generated_title LIKE ? OR custom_title LIKE ? 
-       OR source_tool LIKE ? OR project_path LIKE ?)
-LIMIT 50
-```
-
 **Vector Search:**
 ```typescript
 loadVectorExtension(db);
@@ -182,27 +177,33 @@ const embedding = await embedOne(DEFAULT_EMBEDDING_CONFIG, 'query', keyword);
 const vecInsights = querySimilar(db, 'insight', embedding.vector, 20);
 ```
 
-**RRF Score Calculation:**
+**RRF Score Calculation & Transcript Extraction:**
 ```typescript
 const k = 60;
 const sessionScores = new Map<string, number>();
 
+// Aggregate RRF scores
 ftsRows.forEach((row, idx) => {
   const rrf = 1.0 / (k + idx + 1);
   sessionScores.set(row.session_id, 
     (sessionScores.get(row.session_id) || 0) + rrf);
 });
-```
 
-### 3.2 `getSessionTranscriptTool`
+// Extract top 2 sessions based on RRF score
+const topSessions = Array.from(sessionScores.entries())
+  .sort((a, b) => b[1] - a[1])
+  .slice(0, 2);
 
-**Retrieval:**
-```typescript
-SELECT type, content, timestamp, tool_calls 
-FROM messages 
-WHERE session_id = @sessionId 
-ORDER BY timestamp ASC
-LIMIT 50  // Prevent context explosion
+// Fetch transcript for top sessions
+const transcripts = topSessions.map(([sessionId]) => {
+  return db.prepare(`
+    SELECT type, content, timestamp, tool_calls 
+    FROM messages 
+    WHERE session_id = ? 
+    ORDER BY timestamp ASC
+    LIMIT 50
+  `).all(sessionId);
+});
 ```
 
 ### 3.3 MCP Tools (Codebase Integration)
@@ -223,6 +224,8 @@ function execMcpCli(toolName: string, args: Record<string, any>): string {
 - `get_architecture` → Architecture overview
 - `search_graph` → Structured graph search
 - `get_code_snippet` → Read source code
+- `trace_path` → Trace logical paths between files/components
+- `check_index_coverage` → Check graph index coverage
 
 ---
 
@@ -520,27 +523,29 @@ User Query
     ▼
 ┌─────────────────────────────────────────────────────────────┐
 │ 3. Tool Execution (LLM decides which tools to call)         │
-│    ├─ searchSessionsTool                                    │
+│    ├─ onMemoriesSearch                                      │
 │    │   ├─ BM25 FTS5 search on messages_fts                 │
-│    │   ├─ SQL LIKE on sessions table                        │
 │    │   ├─ Vector search on vec_insights                     │
-│    │   └─ RRF fusion of results                             │
-│    ├─ getSessionTranscriptTool                              │
-│    │   └─ SELECT from messages WHERE session_id = ?         │
+│    │   ├─ RRF fusion of results                             │
+│    │   └─ Extract top-2 session transcripts                 │
 │    └─ MCP Tools (codebase-memory-mcp CLI)                   │
 │        ├─ list_projects                                     │
 │        ├─ index_repository                                  │
 │        ├─ get_architecture                                  │
 │        ├─ search_graph                                      │
-│        └─ get_code_snippet                                  │
+│        ├─ get_code_snippet                                  │
+│        ├─ trace_path                                        │
+│        └─ check_index_coverage                              │
 └─────────────────────────────────────────────────────────────┘
     │
     ▼
 ┌─────────────────────────────────────────────────────────────┐
-│ 4. Response Generation                                      │
+│ 4. Response Generation & Citation Tracking                  │
 │    ├─ LLM generates reply with tool results                 │
+│    ├─ onUsedMemories callback handles citation tracking     │
 │    ├─ ax-llm handles clarification if needed                │
 │    └─ Streaming: { type: 'chunk', text } + { type: 'metric' }│
+│       └─ Stream Appendix: Send citations at end of stream   │
 └─────────────────────────────────────────────────────────────┘
     │
     ▼
@@ -560,8 +565,8 @@ User Query
 |-----------|------|---------|
 | `RagChatPage` | `dashboard/src/pages/RagChatPage.tsx` | Frontend chat UI |
 | `agent.ts` | `server/src/routes/agent.ts` | API endpoint + agent |
-| `searchSessionsTool` | `server/src/routes/agent.ts:21-135` | Hybrid search |
-| `getSessionTranscriptTool` | `server/src/routes/agent.ts:137-148` | Transcript retrieval |
+| `onMemoriesSearch` | `server/src/routes/agent.ts:21-135` | Hybrid search & transcript extraction |
+| `onUsedMemories` | `server/src/routes/agent.ts:137-148` | Citation tracking |
 | `embedOne` | `cli/src/embeddings/ollama-client.ts:149-156` | Single embedding |
 | `querySimilar` | `cli/src/embeddings/store.ts:84-96` | KNN vector search |
 | `retrieveRelatedInsights` | `server/src/llm/analysis.ts:322-393` | RAG context injection |

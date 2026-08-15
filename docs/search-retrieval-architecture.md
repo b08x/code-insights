@@ -14,6 +14,7 @@ Code Insights implements a multi-strategy search system combining keyword-based 
 | Embedding Search | Insights | sqlite-vec KNN | `cli/src/commands/embeddings.ts:embeddingsSearchCommand` |
 | API Search | Sessions + Insights | SQL LIKE | `server/src/routes/search.ts` |
 | Analysis Retrieval | Insights | Vector similarity | `server/src/llm/analysis.ts:getRetrievalConfig` |
+| Agent RAG Memory | Messages + Transcripts | Hybrid RRF (BM25 + KNN) | `server/src/routes/agent.ts:onMemoriesSearch` |
 
 ---
 
@@ -111,6 +112,23 @@ HTTP GET /api/search?q=<query>&limit=20
 - **Searches across:** sessions (5 columns) + insights (3 columns)
 - **Snippet extraction:** Centers a 120-char window on the first match
 - **Response:** `{ sessions: SearchSession[], insights: SearchInsight[] }`
+
+### Agent RAG Memory Search (onMemoriesSearch)
+
+```
+User Query ─┬─→ BM25 messages_fts (top 50) → rank list ─┐
+            │                                            │
+            └─→ KNN vec_insights (top 20) → rank list ─┼─→ RRF merge → sort
+                                                         │
+                                        extract top-2 sessions
+                                                         │
+                                      fetch full session transcripts
+                                      (up to 50 messages each)
+```
+
+- **Algorithm:** Reciprocal Rank Fusion (k=60)
+- **Transcripts Extracted:** Extracts the complete conversational transcript for the top-2 scoring sessions to provide the agent with deep context rather than fragmented snippets.
+- **Citation Tracking:** Triggered subsequently by `onUsedMemories` if the LLM uses the information.
 
 ---
 

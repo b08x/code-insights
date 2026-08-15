@@ -18,6 +18,8 @@
 ## Key Capabilities
 
 - **Automated Session Discovery** — Automatically parse history from Claude Code, Cursor, Codex, Copilot, Gemini CLI, Hermes, OpenCode, and Crush.
+- **Knowledge Journal** — Chronological timeline of learnings and decisions, grouped by ISO week with pattern indicators.
+- **Weekly Pattern Synthesis & Configuration Artifacts** — Synthesize cross-session behaviors into shareable rules and agent instructions.
 - **Self-Optimizing Prompts (GEPA)** — Automate prompt engineering using Gradient-free Evolutionary Prompt Adaptation powered by `@ax-llm/ax`.
 - **Rage Loop & Friction Detection** — Identify temporal looping and context stasis ("Sunk Cost Alerts") via SFL (Systemic Functional Linguistics) criteria.
 - **AI Fluency Scoring** — Evaluate your prompts using multi-dimensional prompt quality metrics.
@@ -57,7 +59,7 @@ Start Code Insights and launch the dashboard in a few commands:
 ```bash
 code-insights install-hook    # Zero-latency hook for Claude Code
 code-insights sync            # Scan and import new session history
-code-insights reflect         # Synthesize cross-session weekly patterns
+code-insights reflect         # Synthesize cross-session weekly patterns & configuration artifacts
 code-insights dashboard       # Start visual dashboard at http://localhost:7890
 ```
 

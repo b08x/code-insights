@@ -218,6 +218,7 @@ Both friction points and effective patterns use canonical category taxonomies wi
 | `/api/analysis/prompt-quality/stream` | GET | SSE streaming for PQ analysis |
 | `/api/analysis/recurring` | POST | Find recurring insight patterns |
 | `/api/analysis/queue` | GET | Analysis queue status for dashboard polling |
+| `/api/agent` | POST | Chat subsystem interaction (schema validation, RLM responses) |
 
 ### Export
 
@@ -308,6 +309,21 @@ Both friction points and effective patterns use canonical category taxonomies wi
 - Real-time progress tracking during LLM generation
 - Format selection: markdown, JSON, Notion, Obsidian
 - Depth controls with insight count previews
+
+**Patterns Integration:**
+- `PatternsPage` — Features a 2-tab view (Friction & Wins vs Rules & Skills)
+- Implements threshold gates to require minimum session data before analysis
+- Uses SSE streaming for real-time pattern generation and UI updates
+
+**Journal Components:**
+- `JournalPage` — Chronological timeline by ISO week
+- Powered by `useInsights` hook and `date-fns` for timeline groupings
+- Supports advanced filtering
+
+**Chat Subsystem Architecture:**
+- `POST /api/agent` — Backend route with strict schema validation; returns standardized RLM responses
+- `preprocess.ts` — Preprocesses chat messages for the LLM
+- `MessageBubble.tsx` — Renders structured message responses and tool calls in the UI
 
 ---
 
