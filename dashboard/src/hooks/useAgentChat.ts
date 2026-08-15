@@ -95,7 +95,7 @@ export function useAgentChat() {
           setClarification({
             question: data.question,
             details: data.clarificationDetails,
-            originalRequest: text
+            originalRequest: clarification ? clarification.originalRequest : text
           });
           setSavedState(data.savedState);
           setIsLoading(false);

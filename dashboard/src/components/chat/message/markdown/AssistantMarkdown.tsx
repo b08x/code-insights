@@ -57,7 +57,7 @@ export function AssistantMarkdown({ content, codeStyle, searchQuery }: Assistant
         </td>
       );
     },
-    code(props: { children?: React.ReactNode; className?: string; [key: string]: unknown }) {
+    code(props: any) {
       const { children, className, ...rest } = props;
       const langMatch = /language-(\w+)/.exec(className || '');
       const isBlock = !!langMatch;
