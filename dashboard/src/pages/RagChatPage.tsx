@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Bot, Send, Paperclip, Mic, Sparkles, BookOpen } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAgentChat } from '@/hooks/useAgentChat';
 import { ChatSidebar } from '@/components/chat/agent/ChatSidebar';
 import { ChatContextPanel } from '@/components/chat/agent/ChatContextPanel';
 import { ChatMainArea } from '@/components/chat/agent/ChatMainArea';
+import { useSessions } from '@/hooks/useSessions';
 
 export default function RagChatPage() {
   const {
@@ -20,6 +21,30 @@ export default function RagChatPage() {
 
   const [activeSession, setActiveSession] = useState(1);
   const [showContext, setShowContext] = useState(true);
+
+  const { data: sessions } = useSessions({ limit: 5 });
+
+  const suggestedPrompts = useMemo(() => {
+    if (!sessions || sessions.length === 0) {
+      return ['Summarize my recent sessions', 'Find bugs from last week'];
+    }
+    
+    const prompts: string[] = [];
+    
+    const recentSession = sessions[0];
+    const title = recentSession.custom_title || recentSession.generated_title || recentSession.project_name || 'my recent work';
+    prompts.push(`Summarize my work on "${title}"`);
+    
+    if (sessions.length > 1) {
+      const secondSession = sessions[1];
+      const secondTitle = secondSession.custom_title || secondSession.generated_title || secondSession.project_name || 'recent changes';
+      prompts.push(`What did I do in "${secondTitle}"?`);
+    } else {
+      prompts.push('Find bugs from last week');
+    }
+    
+    return prompts;
+  }, [sessions]);
 
   const handleSubmit = (e?: React.FormEvent, textToSubmit?: string) => {
     e?.preventDefault();
@@ -75,8 +100,11 @@ export default function RagChatPage() {
         />
 
         {/* Input Area */}
-        <div className="p-4 bg-background/80 backdrop-blur-xl border-t z-10">
-          <form onSubmit={handleSubmit} className="max-w-3xl mx-auto relative group">
+        <div className="p-4 bg-background/80 backdrop-blur-xl border-t z-20">
+          <form 
+            onSubmit={handleSubmit}
+            className="max-w-3xl mx-auto relative group"
+          >
             <div className="absolute -inset-0.5 bg-gradient-to-r from-primary to-blue-500 rounded-xl blur opacity-20 group-focus-within:opacity-40 transition duration-500" />
             <div className="relative flex items-center bg-card border shadow-sm rounded-xl px-2 py-2">
               <button type="button" className="p-2 text-muted-foreground hover:text-foreground transition-colors rounded-lg hover:bg-muted">
@@ -108,7 +136,7 @@ export default function RagChatPage() {
             </div>
           </form>
           <div className="max-w-3xl mx-auto flex gap-2 mt-3 overflow-x-auto scrollbar-none pb-2">
-            {['Summarize my React sessions', 'Find bugs from last week'].map(prompt => (
+            {suggestedPrompts.map((prompt: string) => (
               <button 
                 key={prompt} 
                 onClick={() => handleSubmit(undefined, prompt)}

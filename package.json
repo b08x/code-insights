@@ -4,6 +4,7 @@
   "scripts": {
     "build": "pnpm --filter @code-insights/cli build && pnpm --filter @code-insights/server build && pnpm --filter @code-insights/dashboard build",
     "dev": "pnpm --filter @code-insights/cli dev",
+    "lint": "pnpm --filter @code-insights/dashboard lint",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"
