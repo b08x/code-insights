@@ -1,5 +1,5 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
-import { useSession, useSessionMutation, useDeleteSession } from '@/hooks/useSessions';
+import { useState, useMemo, useCallback } from 'react';
+import { useSession, useDeleteSession } from '@/hooks/useSessions';
 import { useInsights } from '@/hooks/useInsights';
 import { useMessages } from '@/hooks/useMessages';
 import {
@@ -10,7 +10,7 @@ import {
 import { SESSION_CHARACTER_COLORS, SESSION_CHARACTER_LABELS, SOURCE_TOOL_COLORS, OUTCOME_DOT } from '@/lib/constants/colors';
 import { parseJsonField } from '@/lib/types';
 import { getScoreTier, extractPQScore } from '@/lib/score-utils';
-import type { Insight, InsightMetadata, Session } from '@/lib/types';
+import type { InsightMetadata } from '@/lib/types';
 import { Badge } from '@/components/ui/badge';
 import { ErrorCard } from '@/components/ErrorCard';
 import { Button } from '@/components/ui/button';
@@ -39,7 +39,6 @@ import { AnalyzeDropdown } from '@/components/analysis/AnalyzeDropdown';
 import { AnalyzeButton } from '@/components/analysis/AnalyzeButton';
 import { useAnalysis } from '@/components/analysis/AnalysisContext';
 import { useMissingFacets, useBackfillFacets } from '@/hooks/useFacets';
-import { ExportGenerateRequest, exportGenerateStream } from '@/lib/api';
 import { exportSession } from '@/lib/export-session';
 import { CollapsibleInsightItem } from '@/components/sessions/CollapsibleInsightItem';
 import { PromptQualityAnalyzeButton } from '@/components/sessions/PromptQualityAnalyzeButton';
@@ -87,7 +86,6 @@ export function SessionDetailPanel({ sessionId, onDelete }: SessionDetailPanelPr
   const { data: session, isLoading: loading, error } = useSession(sessionId);
   const { data: insights = [] } = useInsights({ sessionId });
   const messagesQuery = useMessages(sessionId);
-  const sessionMutation = useSessionMutation();
   const deleteMutation = useDeleteSession();
   const [renameOpen, setRenameOpen] = useState(false);
   const [searchHighlightId, setSearchHighlightId] = useState<string | null>(null);
@@ -124,7 +122,7 @@ export function SessionDetailPanel({ sessionId, onDelete }: SessionDetailPanelPr
     }
   }, [session?.facets?.friction_points]);
 
-  const messages = messagesQuery.data?.pages.flat() ?? [];
+  const messages = useMemo(() => messagesQuery.data?.pages.flat() ?? [], [messagesQuery.data]);
   const loadingMessages = messagesQuery.isLoading;
   const loadingMore = messagesQuery.isFetchingNextPage;
   const hasMore = messagesQuery.hasNextPage ?? false;
@@ -157,7 +155,7 @@ export function SessionDetailPanel({ sessionId, onDelete }: SessionDetailPanelPr
       }
     }
     return [...linkSet];
-  }, [messagesQuery.data]);
+  }, [messages]);
 
   if (loading) {
     return (
@@ -245,7 +243,6 @@ export function SessionDetailPanel({ sessionId, onDelete }: SessionDetailPanelPr
 
   const startedAt = new Date(session.started_at);
   const endedAt = new Date(session.ended_at);
-  const durationMinutes = Math.round((endedAt.getTime() - startedAt.getTime()) / 60000);
   const characterColor = session.session_character
     ? SESSION_CHARACTER_COLORS[session.session_character]
     : null;

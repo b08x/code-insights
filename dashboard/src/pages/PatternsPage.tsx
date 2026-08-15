@@ -87,7 +87,7 @@ export default function PatternsPage() {
   // Intentional: handleWeekChange is stable (useCallback with no deps) and initialWeekRef
   // is a ref — neither should trigger re-runs. Re-running on every render would break the
   // "jump to most recent snapshot only on initial load" logic.
-  }, [weeksData]);
+  }, [weeksData, currentWeek, handleWeekChange]);
 
   /**
    * State sync:
