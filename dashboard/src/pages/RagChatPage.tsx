@@ -1,170 +1,38 @@
-import { useState, useRef, useEffect } from 'react';
-import { Bot, Send, Paperclip, Mic, Plus, Sparkles, BookOpen, FileText, Database, Loader2, Copy, Check } from 'lucide-react';
+import { useState } from 'react';
+import { Bot, Send, Paperclip, Mic, Sparkles, BookOpen } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import ReactMarkdown from 'react-markdown';
-
-interface Message {
-  role: 'user' | 'assistant';
-  content: string;
-}
+import { useAgentChat } from '@/hooks/useAgentChat';
+import { ChatSidebar } from '@/components/chat/agent/ChatSidebar';
+import { ChatContextPanel } from '@/components/chat/agent/ChatContextPanel';
+import { ChatMainArea } from '@/components/chat/agent/ChatMainArea';
 
 export default function RagChatPage() {
-  const [input, setInput] = useState('');
-  const [messages, setMessages] = useState<Message[]>([
-    { role: 'assistant', content: 'Hello! I can analyze your local code-insights sessions to extract SFL-compliant insights. What would you like to know?' }
-  ]);
+  const {
+    input,
+    setInput,
+    messages,
+    isLoading,
+    clarification,
+    liveMetrics,
+    sendMessage,
+    clearMessages,
+  } = useAgentChat();
+
   const [activeSession, setActiveSession] = useState(1);
   const [showContext, setShowContext] = useState(true);
-  const [isLoading, setIsLoading] = useState(false);
-  const [savedState, setSavedState] = useState<any>(null);
-  const [clarification, setClarification] = useState<any>(null);
-  const [liveMetrics, setLiveMetrics] = useState<any[]>([]);
-  const [copiedMessageIndex, setCopiedMessageIndex] = useState<number | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
-
-  const handleSubmit = async (e?: React.FormEvent, textToSubmit?: string) => {
+  const handleSubmit = (e?: React.FormEvent, textToSubmit?: string) => {
     e?.preventDefault();
-    const text = textToSubmit || input;
-    if (!text.trim() && !clarification) return;
-
-    const userMessage = { role: 'user' as const, content: text };
-    setMessages((prev) => [...prev, userMessage]);
-    setInput('');
-    setIsLoading(true);
-    setLiveMetrics([]);
-
-    try {
-      // Filter out the initial greeting
-      const history = messages
-        .filter(m => m.content !== 'Hello! I can analyze your local code-insights sessions to extract SFL-compliant insights. What would you like to know?')
-        .map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`);
-      
-      const payload = clarification 
-        ? { answer: text, savedState, chatHistory: history, request: clarification.originalRequest } 
-        : { request: text, chatHistory: history };
-
-      // Clear clarification state if we are answering one
-      if (clarification) {
-        setClarification(null);
-        setSavedState(null);
-      }
-
-      const response = await fetch('/api/agent', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        throw new Error('Network response was not ok');
-      }
-
-      const contentType = response.headers.get('content-type');
-      
-      if (contentType && contentType.includes('application/json')) {
-        // We received a clarification JSON object
-        const data = await response.json();
-        if (data.type === 'clarification') {
-          setClarification({
-            question: data.question,
-            details: data.clarificationDetails,
-            originalRequest: text
-          });
-          setSavedState(data.savedState);
-          setIsLoading(false);
-          return; // Wait for user to answer
-        }
-      }
-
-      // Handle streaming text
-      const reader = response.body?.getReader();
-      const decoder = new TextDecoder('utf-8');
-      
-      if (!reader) throw new Error('No reader available');
-      
-      setMessages((prev) => [...prev, { role: 'assistant', content: '' }]);
-
-      let buffer = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        
-        buffer += decoder.decode(value, { stream: true });
-        
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || ''; // Keep the incomplete line in the buffer
-        
-        for (const line of lines) {
-          if (!line.trim()) continue;
-          
-          try {
-            const parsed = JSON.parse(line);
-            
-            if (parsed.type === 'chunk') {
-              setMessages((prev) => {
-                const newMessages = [...prev];
-                const lastIndex = newMessages.length - 1;
-                newMessages[lastIndex].content += parsed.text;
-                return newMessages;
-              });
-            } else if (parsed.type === 'metric') {
-              setLiveMetrics((prev) => [...prev, parsed]);
-            }
-          } catch (e) {
-            console.error('Failed to parse NDJSON line:', line, e);
-          }
-        }
-      }
-    } catch (error) {
-      console.error('Failed to fetch:', error);
-      setMessages((prev) => [...prev, { role: 'assistant', content: 'An error occurred while communicating with the agent. Check the console and server logs.' }]);
-    } finally {
-      setIsLoading(false);
-    }
+    sendMessage(textToSubmit);
   };
 
   return (
     <div className="flex h-[calc(100vh-3.5rem)] w-full overflow-hidden bg-background">
-      {/* LEFT SIDEBAR - Sessions */}
-      <aside className="w-64 flex-shrink-0 border-r bg-muted/30 backdrop-blur-xl flex flex-col h-full transition-all duration-300 relative overflow-hidden hidden md:flex">
-        <div className="absolute top-0 left-0 right-0 h-32 bg-gradient-to-b from-primary/10 to-transparent pointer-events-none" />
-        <div className="p-4 z-10">
-          <button onClick={() => setMessages([])} className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-primary to-blue-600 hover:from-primary/90 hover:to-blue-600/90 text-primary-foreground py-2.5 px-4 rounded-xl font-medium shadow-md shadow-primary/20 transition-all active:scale-95 group">
-            <Plus className="w-4 h-4 group-hover:rotate-90 transition-transform duration-300" />
-            New Chat
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-3 py-2 space-y-1 z-10 scrollbar-thin">
-          <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 px-2">Recent Sessions</div>
-          {[
-            { id: 1, title: 'Contextual Query #4', time: 'Just now' },
-          ].map((session) => (
-            <button
-              key={session.id}
-              onClick={() => setActiveSession(session.id)}
-              className={cn(
-                "w-full flex flex-col items-start px-3 py-2.5 rounded-lg text-sm transition-all duration-200 text-left border border-transparent",
-                activeSession === session.id 
-                  ? "bg-background shadow-sm border-border/50 text-foreground" 
-                  : "hover:bg-muted text-muted-foreground hover:text-foreground"
-              )}
-            >
-              <span className="font-medium truncate w-full">{session.title}</span>
-              <span className="text-[10px] opacity-70 mt-1">{session.time}</span>
-            </button>
-          ))}
-        </div>
-      </aside>
+      <ChatSidebar 
+        activeSession={activeSession} 
+        setActiveSession={setActiveSession} 
+        onNewChat={clearMessages} 
+      />
 
       {/* CENTER - Chat Area */}
       <main className="flex-1 flex flex-col relative bg-gradient-to-b from-background to-muted/20">
@@ -197,100 +65,14 @@ export default function RagChatPage() {
         </header>
 
         {/* Chat History */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 z-10 scroll-smooth pb-24 md:pb-6">
-          
-          {messages.map((msg, index) => (
-            <div key={index} className={cn(
-              "flex gap-4 max-w-3xl mx-auto w-full animate-in fade-in slide-in-from-bottom-2",
-              msg.role === 'user' ? "justify-end" : ""
-            )}>
-              {msg.role === 'assistant' && (
-                <div className="w-8 h-8 rounded-full bg-muted border flex items-center justify-center flex-shrink-0 mt-1 hidden sm:flex">
-                  <Sparkles className="w-4 h-4 text-primary" />
-                </div>
-              )}
-              <div className="group relative max-w-[95%] md:max-w-[85%] flex flex-col gap-1 w-full">
-                <div className={cn(
-                  "px-5 py-4 shadow-sm space-y-3 prose dark:prose-invert prose-sm w-full",
-                  msg.role === 'user' 
-                    ? "bg-primary text-primary-foreground rounded-2xl rounded-tr-sm ml-auto" 
-                    : "bg-card border rounded-2xl rounded-tl-sm text-card-foreground mr-auto"
-                )}>
-                  <ReactMarkdown>{msg.content}</ReactMarkdown>
-                </div>
-                {msg.role === 'assistant' && (
-                  <div className="flex justify-start opacity-0 group-hover:opacity-100 transition-opacity -mt-1 mb-1">
-                    <button
-                      onClick={() => {
-                        navigator.clipboard.writeText(msg.content);
-                        setCopiedMessageIndex(index);
-                        setTimeout(() => setCopiedMessageIndex(null), 2000);
-                      }}
-                      className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors"
-                      title="Copy as Markdown"
-                    >
-                      {copiedMessageIndex === index ? (
-                        <>
-                          <Check className="w-3.5 h-3.5 text-emerald-500" />
-                          <span className="text-emerald-500">Copied</span>
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="w-3.5 h-3.5" />
-                          <span>Copy Markdown</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
-
-          {isLoading && (
-            <div className="flex gap-4 max-w-3xl mx-auto w-full animate-in fade-in">
-              <div className="w-8 h-8 rounded-full bg-muted border flex items-center justify-center flex-shrink-0 mt-1">
-                <Loader2 className="w-4 h-4 text-primary animate-spin" />
-              </div>
-              <div className="bg-card border shadow-sm px-5 py-4 rounded-2xl rounded-tl-sm text-sm text-muted-foreground flex items-center gap-2">
-                Analyzing session database...
-              </div>
-            </div>
-          )}
-          
-          {/* Clarification prompt */}
-          {clarification && (
-            <div className="flex gap-4 max-w-3xl mx-auto w-full animate-in fade-in">
-              <div className="w-8 h-8 rounded-full bg-orange-100 border-orange-200 flex items-center justify-center flex-shrink-0 mt-1">
-                <Bot className="w-4 h-4 text-orange-600" />
-              </div>
-              <div className="bg-orange-50/50 dark:bg-orange-950/20 border border-orange-200 dark:border-orange-800 shadow-sm px-5 py-4 rounded-2xl rounded-tl-sm text-sm flex flex-col gap-3 max-w-[85%]">
-                <p className="font-medium text-orange-800 dark:text-orange-300">
-                  {clarification.question}
-                </p>
-                {clarification.details?.type === 'single_choice' && clarification.details.choices && (
-                  <div className="flex flex-wrap gap-2 mt-2">
-                    {clarification.details.choices.map((choice: any, idx: number) => {
-                      const label = typeof choice === 'string' ? choice : choice.label;
-                      const value = typeof choice === 'string' ? choice : choice.value;
-                      return (
-                        <button
-                          key={idx}
-                          onClick={() => handleSubmit(undefined, value)}
-                          className="bg-background border shadow-sm px-3 py-1.5 rounded-lg hover:bg-orange-100 hover:text-orange-900 transition-colors"
-                        >
-                          {label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          <div ref={messagesEndRef} />
-        </div>
+        <ChatMainArea 
+          input={input}
+          setInput={setInput}
+          messages={messages}
+          isLoading={isLoading}
+          clarification={clarification}
+          sendMessage={sendMessage}
+        />
 
         {/* Input Area */}
         <div className="p-4 bg-background/80 backdrop-blur-xl border-t z-10">
@@ -340,43 +122,7 @@ export default function RagChatPage() {
         </div>
       </main>
 
-      {/* RIGHT SIDEBAR - Context & Metadata */}
-      <aside className={cn(
-        "flex-shrink-0 border-l bg-card/50 backdrop-blur-xl flex flex-col h-full transition-all duration-300 overflow-hidden relative absolute md:relative right-0 z-20",
-        showContext ? "w-full md:w-80 opacity-100 translate-x-0" : "w-0 opacity-0 translate-x-full border-none"
-      )}>
-        <div className="p-4 border-b bg-background/50 flex items-center justify-between sticky top-0 z-10">
-          <h3 className="font-semibold text-sm flex items-center gap-2">
-            <Database className="w-4 h-4 text-primary" />
-            Live Metrics
-          </h3>
-          <span className="text-[10px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded-full font-medium border border-emerald-500/20">
-            Agent Online
-          </span>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {liveMetrics.length === 0 ? (
-            <div className="text-xs text-muted-foreground italic mb-2">
-              Metadata and context visualization will appear here during active tool usage.
-            </div>
-          ) : (
-            liveMetrics.map((metric, index) => (
-              <div key={index} className="bg-background rounded-lg border p-3 shadow-sm text-xs">
-                <div className="font-semibold text-primary mb-1 flex items-center gap-1">
-                  <Database className="w-3 h-3" />
-                  {metric.tool}
-                </div>
-                <div className="text-muted-foreground whitespace-pre-wrap font-mono text-[10px] break-all">
-                  {typeof metric.args === 'string' 
-                    ? metric.args 
-                    : JSON.stringify(metric.args, null, 2)}
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      </aside>
+      <ChatContextPanel showContext={showContext} liveMetrics={liveMetrics} />
     </div>
   );
 }
