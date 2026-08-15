@@ -4,7 +4,7 @@ import * as fs from 'fs';
 import { getDb } from '@code-insights/cli/db/client';
 import { embedOne, DEFAULT_EMBEDDING_CONFIG } from '@code-insights/cli/embeddings/client';
 import { loadVectorExtension, querySimilar } from '@code-insights/cli/embeddings/store';
-import { agent, ai, f, fn, AxAgentClarificationError } from '@ax-llm/ax';
+import { agent, ai, f, fn, AxAgentClarificationError, AxJSRuntime } from '@ax-llm/ax';
 import { loadConfig } from '@code-insights/cli/utils/config';
 import { loadLLMConfig } from '../llm/client.js';
 import { execFileSync } from 'child_process';
@@ -17,127 +17,135 @@ function buildSafeFtsQuery(query: string): string {
   return terms.map(t => `"${t.replace(/"/g, '""')}"`).join(' ');
 }
 
-// 1. Define Tools
-const searchSessionsTool = fn('searchSessions')
-  .description('Find past coding sessions by keyword, concept, or project name. Uses hybrid search (semantic + keyword) for high accuracy.')
-  .namespace('kb')
-  .arg('keyword', f.string('Keyword or concept to search for').optional())
-  .arg('project', f.string('Project name filter').optional())
-  .arg('limit', f.number('Max results (default 10)').optional())
-  .returns(f.string('JSON array of session metadata'))
-  .handler(async ({ keyword, project, limit = 10 }) => {
-    console.log('[DEBUG] searchSessionsTool called', { keyword, project, limit });
-    const db = getDb();
-    
-    // RRF (Reciprocal Rank Fusion) state
-    const k = 60;
-    const sessionScores = new Map<string, number>();
-    
-    if (!keyword && !project) {
-        return JSON.stringify(db.prepare(`SELECT id, project_name, project_path, custom_title, generated_title, summary, started_at, message_count FROM sessions ORDER BY started_at DESC LIMIT ?`).all(limit));
-    }
+import type { AxAgentMemoriesSearchFn } from '@ax-llm/ax';
 
-    if (keyword) {
-      // 1. BM25 Keyword Search via FTS5 (messages_fts)
-      try {
-        const safeFtsQuery = buildSafeFtsQuery(keyword);
+/**
+ * 3-stage hybrid search for Agent Memory.
+ * 
+ * Executes semantic and keyword queries against local sessions:
+ * 1. BM25 Keyword Search: FTS5 matching on session messages.
+ * 2. Fallback SQL LIKE: Match summary, title, or project.
+ * 3. Vector Semantic Search: Semantic similarity against embedded insights.
+ * 
+ * Combines results using Reciprocal Rank Fusion (RRF) and caps at the top 2 sessions per query
+ * to prevent context window bloat.
+ */
+const onMemoriesSearch: AxAgentMemoriesSearchFn = async (searches, alreadyLoaded) => {
+  console.log('[DEBUG] onMemoriesSearch called', { searches });
+  const db = getDb();
+  const skip = new Set(alreadyLoaded.map(m => m.id));
+  const results: {id: string, content: string}[] = [];
+  const k = 60;
+  
+  for (const keyword of searches) {
+    const sessionScores = new Map<string, number>();
+
+    // 1. BM25 Keyword Search via FTS5 (messages_fts)
+    try {
+      const safeFtsQuery = buildSafeFtsQuery(keyword);
+      if (safeFtsQuery) {
         const ftsRows = db.prepare(`
           SELECT m.session_id, bm25(messages_fts) as rank
           FROM messages_fts f
           JOIN messages m ON f.rowid = m.rowid
           WHERE messages_fts MATCH ?
           ORDER BY rank ASC
-          LIMIT 50
+          LIMIT 20
         `).all(safeFtsQuery) as { session_id: string, rank: number }[];
         
         ftsRows.forEach((row, idx) => {
           const rrf = 1.0 / (k + idx + 1);
           sessionScores.set(row.session_id, (sessionScores.get(row.session_id) || 0) + rrf);
         });
-      } catch (e) {
-        console.error('[DEBUG] FTS search failed', e);
       }
-      
-      // Fallback/Additive SQL LIKE on sessions (includes source_tool and project_path)
-      const terms = keyword.split(/\s+/).filter(t => t.length > 1);
-      if (terms.length > 0) {
-        let sqlWhere = [];
-        let sqlParams = [];
-        for (const t of terms) {
-          sqlWhere.push(`(summary LIKE ? OR generated_title LIKE ? OR custom_title LIKE ? OR source_tool LIKE ? OR project_path LIKE ?)`);
-          const p = `%${t}%`;
-          sqlParams.push(p, p, p, p, p);
-        }
-        const likeRows = db.prepare(`
-          SELECT id FROM sessions WHERE ${sqlWhere.join(' AND ')} LIMIT 50
-        `).all(...sqlParams) as { id: string }[];
-        likeRows.forEach((row, idx) => {
-          const rrf = 1.0 / (k + idx + 1);
-          sessionScores.set(row.id, (sessionScores.get(row.id) || 0) + rrf);
+    } catch (e) {
+      console.error('[DEBUG] FTS search failed', e);
+    }
+    
+    // Fallback/Additive SQL LIKE on sessions
+    const terms = keyword.split(/\s+/).filter(t => t.length > 1);
+    if (terms.length > 0) {
+      let sqlWhere = [];
+      let sqlParams = [];
+      for (const t of terms) {
+        sqlWhere.push(`(summary LIKE ? OR generated_title LIKE ? OR custom_title LIKE ? OR source_tool LIKE ? OR project_path LIKE ?)`);
+        const p = `%${t}%`;
+        sqlParams.push(p, p, p, p, p);
+      }
+      const likeRows = db.prepare(`
+        SELECT id FROM sessions WHERE ${sqlWhere.join(' AND ')} LIMIT 20
+      `).all(...sqlParams) as { id: string }[];
+      likeRows.forEach((row, idx) => {
+        const rrf = 1.0 / (k + idx + 1);
+        sessionScores.set(row.id, (sessionScores.get(row.id) || 0) + rrf);
+      });
+    }
+    
+    // 2. Vector Semantic Search
+    try {
+      loadVectorExtension(db);
+      const embedding = await embedOne(DEFAULT_EMBEDDING_CONFIG, 'query', keyword);
+      const vecInsights = querySimilar(db, 'insight', embedding.vector, 10);
+      if (vecInsights.length > 0) {
+        const insightIds = vecInsights.map(v => v.id);
+        const placeholders = insightIds.map(() => '?').join(',');
+        const insights = db.prepare(`SELECT id, session_id FROM insights WHERE id IN (${placeholders})`).all(...insightIds) as { id: string, session_id: string }[];
+        const insightToSession = new Map(insights.map(i => [i.id, i.session_id]));
+        
+        vecInsights.forEach((v, idx) => {
+          const sid = insightToSession.get(v.id);
+          if (sid) {
+            const rrf = 1.0 / (k + idx + 1);
+            sessionScores.set(sid, (sessionScores.get(sid) || 0) + rrf);
+          }
         });
       }
-      
-      // 2. Vector Semantic Search
-      try {
-        loadVectorExtension(db);
-        const embedding = await embedOne(DEFAULT_EMBEDDING_CONFIG, 'query', keyword);
-        const vecInsights = querySimilar(db, 'insight', embedding.vector, 20);
-        if (vecInsights.length > 0) {
-          const insightIds = vecInsights.map(v => v.id);
-          const placeholders = insightIds.map(() => '?').join(',');
-          const insights = db.prepare(`SELECT id, session_id FROM insights WHERE id IN (${placeholders})`).all(...insightIds) as { id: string, session_id: string }[];
-          const insightToSession = new Map(insights.map(i => [i.id, i.session_id]));
-          
-          vecInsights.forEach((v, idx) => {
-            const sid = insightToSession.get(v.id);
-            if (sid) {
-              const rrf = 1.0 / (k + idx + 1);
-              sessionScores.set(sid, (sessionScores.get(sid) || 0) + rrf);
-            }
-          });
-        }
-      } catch (e) {
-        console.error('[DEBUG] Vector search failed', e);
-      }
+    } catch (e) {
+      console.error('[DEBUG] Vector search failed', e);
     }
-    
-    let finalSessions: any[] = [];
-    if (sessionScores.size > 0) {
-      // Sort by RRF score
-      const sortedIds = Array.from(sessionScores.entries())
-        .sort((a, b) => b[1] - a[1])
-        .map(e => e[0]);
+
+    // Sort by RRF score and pick top 2 sessions per search query to avoid massive context bloat
+    const sortedIds = Array.from(sessionScores.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(e => e[0]);
+
+    for (const sid of sortedIds.slice(0, 2)) {
+      if (!skip.has(sid)) {
+        // Fetch session metadata and transcript
+        const session = db.prepare(`SELECT project_name, custom_title, generated_title, summary FROM sessions WHERE id = ?`).get(sid) as any;
+        const messages = db.prepare(`SELECT type, content FROM messages WHERE session_id = ? ORDER BY timestamp ASC LIMIT 50`).all(sid) as any[];
         
-      for (const sid of sortedIds) {
-        if (finalSessions.length >= limit) break;
-        const row = db.prepare(`SELECT id, project_name, project_path, custom_title, generated_title, summary, started_at, message_count FROM sessions WHERE id = ? ${project ? "AND project_name LIKE ?" : ""}`).get(project ? [sid, `%${project}%`] : [sid]);
-        if (row) {
-          finalSessions.push(row);
+        if (session) {
+          const contentStr = `
+Project: ${session.project_name}
+Title: ${session.custom_title || session.generated_title}
+Summary: ${session.summary}
+
+Transcript:
+${messages.map(m => `[${m.type}]: ${m.content}`).join('\n\n')}
+          `.trim();
+
+          results.push({ id: sid, content: contentStr });
+          skip.add(sid); // don't add again in subsequent searches
         }
       }
-    } else if (project) {
-      finalSessions = db.prepare(`SELECT id, project_name, project_path, custom_title, generated_title, summary, started_at, message_count FROM sessions WHERE project_name LIKE ? ORDER BY started_at DESC LIMIT ?`).all(`%${project}%`, limit) as any[];
     }
-    
-    return JSON.stringify(finalSessions.slice(0, limit));
-  })
-  .build();
+  }
 
-const getSessionTranscriptTool = fn('getSessionTranscript')
-  .description('Retrieve the full conversation transcript for a specific session ID. Use this to read the actual prompts and code before extracting an insight.')
-  .namespace('kb')
-  .arg('sessionId', f.string('The exact ID of the session to read'))
-  .returns(f.string('JSON array of messages (user, assistant, tool calls)'))
-  .handler(async ({ sessionId }) => {
-    console.log('[DEBUG] getSessionTranscriptTool called', { sessionId });
-    const db = getDb();
-    const stmt = db.prepare(`SELECT type, content, timestamp, tool_calls FROM messages WHERE session_id = @sessionId ORDER BY timestamp ASC`);
-    const results = stmt.all({ sessionId });
-    return JSON.stringify(results.slice(0, 50)); // Limit to prevent context explosion
-  })
-  .build();
+  return results;
+};
 
-// MCP Integration Tools
+/**
+ * MCP Integration Tools
+ * Executes a codebase-memory-mcp tool synchronously.
+ * 
+ * Acts as the bridge between the internal Ax LLM agent and the external MCP server
+ * which provides codebase navigation and indexing capabilities.
+ *
+ * @param toolName - The name of the MCP tool to execute.
+ * @param args - JSON serializable arguments for the tool.
+ * @returns The stdout of the executed tool.
+ */
 function execMcpCli(toolName: string, args: Record<string, any>): string {
   try {
     const stdout = execFileSync('codebase-memory-mcp', ['cli', toolName], {
@@ -251,15 +259,22 @@ When finalizing an insight or responding to a session query, format EXACTLY as:
 [details]
 `;
 
+const runtime = new AxJSRuntime();
+
 // 2. Define Agent Factory
 const insightAgent = agent('userQuery:string, chatHistory?:string[], userClarification?:string -> reply:string', {
   agentIdentity: {
     name: 'KnowledgeAgent',
     description: systemPrompt,
   },
+  runtime,
+  maxRuntimeChars: 4000,
+  contextPolicy: {
+    preset: 'checkpointed',
+    budget: 'balanced',
+  },
+  onMemoriesSearch,
   functions: [
-    searchSessionsTool, 
-    getSessionTranscriptTool,
     listProjectsTool,
     indexRepositoryTool,
     getArchitectureTool,
@@ -346,7 +361,25 @@ app.post('/', async (c) => {
   }
 
   try {
-    const streamResult = (await insightAgent.streamingForward(llm, { userQuery: request, chatHistory: chatHistory, userClarification: answer })) as AsyncIterableIterator<any>;
+    const citedSessions = new Set<string>();
+
+    /**
+     * Executes the Ax Agent in streaming mode (streamingForward route logic).
+     * 
+     * The agent may emit internal actions, tool calls, or requests for user clarification.
+     * We capture memory usage (citedSessions) to append citations to the final output.
+     */
+    const streamResult = (await insightAgent.streamingForward(
+      llm, 
+      { userQuery: request, chatHistory: chatHistory, userClarification: answer },
+      {
+        onUsedMemories: (items) => {
+          for (const item of items) {
+             citedSessions.add(item.id);
+          }
+        }
+      }
+    )) as AsyncIterableIterator<any>;
     
     // We must read the first chunk to catch any AxAgentClarificationError before sending HTTP 200 headers
     // because once streamText is returned, headers are sent and we can't return a JSON response.
@@ -359,20 +392,6 @@ app.post('/', async (c) => {
 
     return streamText(c, async (stream) => {
       let hasWrittenReply = false;
-      const citedSessions = new Set<string>();
-
-      const captureCitation = (fc: any) => {
-        const toolName = fc.name || fc.function?.name;
-        if (toolName !== 'getSessionTranscript') return;
-        
-        const args = fc.arguments || fc.function?.arguments;
-        if (typeof args === 'string') {
-          const match = args.match(/"sessionId"\s*:\s*"([^"]+)"/);
-          if (match) citedSessions.add(match[1]);
-        } else if (args && typeof args === 'object' && args.sessionId) {
-          citedSessions.add(args.sessionId);
-        }
-      };
 
       try {
         // Send the first chunk we already pulled
@@ -388,7 +407,6 @@ app.post('/', async (c) => {
         const firstFunctionCalls = firstChunk?.delta?.functionCalls || firstChunk?.functionCalls;
         if (firstFunctionCalls && Array.isArray(firstFunctionCalls) && firstFunctionCalls.length > 0) {
           for (const fc of firstFunctionCalls) {
-            captureCitation(fc);
             await stream.write(JSON.stringify({
               type: 'metric',
               tool: fc.name || fc.function?.name,
@@ -415,7 +433,6 @@ app.post('/', async (c) => {
           const functionCalls = chunk?.delta?.functionCalls || chunk?.functionCalls;
           if (functionCalls && Array.isArray(functionCalls) && functionCalls.length > 0) {
             for (const fc of functionCalls) {
-              captureCitation(fc);
               await stream.write(JSON.stringify({
                 type: 'metric',
                 tool: fc.name || fc.function?.name,
