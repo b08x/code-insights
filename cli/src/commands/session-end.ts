@@ -53,7 +53,7 @@ export async function sessionEndCommand(options: SessionEndOptions = {}): Promis
   }
 
   const stdinData = await readStdin();
-  let parsed: { session_id?: string; transcript_path?: string; cwd?: string; hook_event_name?: string; reason?: string };
+  let parsed: any;
   try {
     parsed = JSON.parse(stdinData);
   } catch {
@@ -63,14 +63,14 @@ export async function sessionEndCommand(options: SessionEndOptions = {}): Promis
     return;
   }
 
-  if (!parsed.session_id) {
+  // Flexibly extract session_id (Mistral Vibe might nest it in `session` or `context`)
+  const sessionId = parsed.session_id || parsed.session?.id || parsed.session?.session_id || parsed.id;
+  if (!sessionId) {
     if (!quiet) {
       console.error(chalk.red('[Code Insights] session-end: missing session_id in stdin JSON'));
     }
     return;
   }
-
-  const sessionId = parsed.session_id;
 
   // Phase 1: Sync the session file to SQLite (foreground, must complete before exit)
   if (parsed.transcript_path) {
@@ -78,9 +78,19 @@ export async function sessionEndCommand(options: SessionEndOptions = {}): Promis
       await syncSingleFile({ filePath: parsed.transcript_path, sourceTool: options.source, quiet });
     } catch {
       // Sync failure is non-fatal: session may already be in DB from a previous sync.
-      // Fall through to enqueue anyway so analysis still runs if the session is present.
       if (!quiet) {
         console.error(chalk.yellow('[Code Insights] session-end: sync failed, enqueuing anyway'));
+      }
+    }
+  } else if (options.source === 'mistral-vibe') {
+    // Mistral Vibe hooks do not provide a transcript_path, so we run a full sync
+    // which is fast because it just stats files.
+    try {
+      const { runSync } = await import('./sync.js');
+      await runSync({ quiet: true, source: 'mistral-vibe' });
+    } catch {
+      if (!quiet) {
+        console.error(chalk.yellow('[Code Insights] session-end: Vibe sync failed, enqueuing anyway'));
       }
     }
   }

@@ -6,7 +6,10 @@ import chalk from 'chalk';
 import { trackEvent, captureError, classifyError } from '../utils/telemetry.js';
 
 const CLAUDE_SETTINGS_DIR = path.join(os.homedir(), '.claude');
-const HOOKS_FILE = path.join(CLAUDE_SETTINGS_DIR, 'settings.json');
+const CLAUDE_HOOKS_FILE = path.join(CLAUDE_SETTINGS_DIR, 'settings.json');
+
+const VIBE_SETTINGS_DIR = path.join(os.homedir(), '.vibe');
+const VIBE_HOOKS_FILE = path.join(VIBE_SETTINGS_DIR, 'hooks.toml');
 
 // Stable path to the CLI entry point — works across npm link, global install, and npx.
 // process.argv[1] is unstable (npx uses a cache path that changes per invocation).
@@ -31,6 +34,7 @@ export interface InstallHookOptions {
   syncOnly?: boolean;
   analysisOnly?: boolean;
   runner?: string;
+  target?: string;
 }
 
 /** Extract command string from both old (string) and new ({type, command}) hook formats */
@@ -48,12 +52,21 @@ function hookAlreadyInstalled(hookList: HookConfig[]): boolean {
 }
 
 /**
- * Install Claude Code hooks for auto-sync and native session analysis.
+ * Install hooks for auto-sync and native session analysis.
  *
- * By default installs both the Stop (sync) and SessionEnd (analysis) hooks.
- * Use --sync-only or --analysis-only for granular control.
+ * Supports target='claude' (default) and target='vibe'.
  */
 export async function installHookCommand(options: InstallHookOptions = {}): Promise<void> {
+  const { target = 'claude' } = options;
+
+  if (target === 'vibe') {
+    return installVibeHookCommand(options);
+  }
+
+  return installClaudeHookCommand(options);
+}
+
+async function installClaudeHookCommand(options: InstallHookOptions): Promise<void> {
   const { syncOnly = false, analysisOnly = false, runner = 'native' } = options;
 
   if (syncOnly && analysisOnly) {
@@ -64,11 +77,11 @@ export async function installHookCommand(options: InstallHookOptions = {}): Prom
   const installSync = !analysisOnly;
   const installAnalysis = !syncOnly;
 
-  console.log(chalk.cyan('\nInstall Code Insights Hooks\n'));
+  console.log(chalk.cyan('\nInstall Code Insights Hooks (Claude Code)\n'));
 
   try {
     const syncCommand = `node ${CLI_ENTRY} sync -q`;
-    const analysisCommand = `node ${CLI_ENTRY} insights --hook --${runner} -q`;
+    const analysisCommand = `node ${CLI_ENTRY} session-end --source claude-code --${runner} -q`;
 
     if (!syncOnly && !analysisOnly) {
       console.log(chalk.gray('This will add two Claude Code hooks:\n'));
@@ -83,9 +96,9 @@ export async function installHookCommand(options: InstallHookOptions = {}): Prom
 
     // Load existing settings
     let settings: ClaudeSettings = {};
-    if (fs.existsSync(HOOKS_FILE)) {
+    if (fs.existsSync(CLAUDE_HOOKS_FILE)) {
       try {
-        const content = fs.readFileSync(HOOKS_FILE, 'utf-8');
+        const content = fs.readFileSync(CLAUDE_HOOKS_FILE, 'utf-8');
         settings = JSON.parse(content);
       } catch {
         console.log(chalk.yellow('Could not parse existing settings.json, creating new one.'));
@@ -133,14 +146,14 @@ export async function installHookCommand(options: InstallHookOptions = {}): Prom
 
     // Write settings
     fs.mkdirSync(CLAUDE_SETTINGS_DIR, { recursive: true });
-    fs.writeFileSync(HOOKS_FILE, JSON.stringify(settings, null, 2));
+    fs.writeFileSync(CLAUDE_HOOKS_FILE, JSON.stringify(settings, null, 2));
 
     const installedTypes: string[] = [];
     if (syncInstalled) installedTypes.push('sync');
     if (analysisInstalled) installedTypes.push('analysis');
 
     console.log(chalk.green('Hook installed successfully!'));
-    console.log(chalk.gray(`\nConfiguration saved to: ${HOOKS_FILE}`));
+    console.log(chalk.gray(`\nConfiguration saved to: ${CLAUDE_HOOKS_FILE}`));
 
     if (!analysisOnly) {
       console.log(chalk.cyan('\nHow it works:'));
@@ -153,6 +166,7 @@ export async function installHookCommand(options: InstallHookOptions = {}): Prom
 
     trackEvent('cli_install_hook', {
       success: true,
+      target: 'claude',
       hook_types: installedTypes.join(','),
       sync_installed: syncInstalled,
       analysis_installed: analysisInstalled,
@@ -160,24 +174,78 @@ export async function installHookCommand(options: InstallHookOptions = {}): Prom
   } catch (error) {
     console.log(chalk.red(`Failed to install hook: ${error instanceof Error ? error.message : 'Unknown error'}`));
     const { error_type, error_message } = classifyError(error);
-    trackEvent('cli_install_hook', { success: false, error_type, error_message });
-    captureError(error, { command: 'install_hook', error_type });
+    trackEvent('cli_install_hook', { success: false, target: 'claude', error_type, error_message });
+    captureError(error, { command: 'install_hook', target: 'claude', error_type });
+  }
+}
+
+async function installVibeHookCommand(options: InstallHookOptions): Promise<void> {
+  const { runner = 'native' } = options;
+
+  console.log(chalk.cyan('\nInstall Code Insights Hook (Mistral Vibe)\n'));
+
+  try {
+    const hookCommand = `node ${CLI_ENTRY} session-end --source mistral-vibe --${runner} -q`;
+
+    let existing = '';
+    if (fs.existsSync(VIBE_HOOKS_FILE)) {
+      existing = fs.readFileSync(VIBE_HOOKS_FILE, 'utf-8');
+    }
+
+    if (existing.includes('code-insights')) {
+      console.log(chalk.yellow('Code Insights hook already installed for Mistral Vibe.'));
+      console.log(chalk.gray('To reinstall, first run `code-insights uninstall-hook --target vibe`'));
+      return;
+    }
+
+    console.log(chalk.gray('This will add a post_agent hook to Vibe:'));
+    console.log(chalk.white(`  Command: ${hookCommand}`));
+    console.log(chalk.gray('  It runs after each agent turn to sync and queue analysis.\n'));
+
+    const newHook = `\n[[hooks]]\nname = "code-insights-session-end"\ntype = "post_agent"\ncommand = "${hookCommand.replace(/\\/g, '\\\\')}"\ntimeout = 300.0\ndescription = "Analyzes sessions using Code Insights"\n`;
+
+    fs.mkdirSync(VIBE_SETTINGS_DIR, { recursive: true });
+    fs.appendFileSync(VIBE_HOOKS_FILE, newHook);
+
+    console.log(chalk.green('Hook installed successfully!'));
+    console.log(chalk.gray(`\nConfiguration saved to: ${VIBE_HOOKS_FILE}`));
+
+    trackEvent('cli_install_hook', {
+      success: true,
+      target: 'vibe',
+      hook_types: 'analysis'
+    });
+  } catch (error) {
+    console.log(chalk.red(`Failed to install hook: ${error instanceof Error ? error.message : 'Unknown error'}`));
+    const { error_type, error_message } = classifyError(error);
+    trackEvent('cli_install_hook', { success: false, target: 'vibe', error_type, error_message });
+    captureError(error, { command: 'install_hook', target: 'vibe', error_type });
   }
 }
 
 /**
- * Uninstall Claude Code hooks — removes both Stop (sync) and SessionEnd (analysis) hooks.
+ * Uninstall hooks — removes Code Insights hooks from Claude Code or Mistral Vibe.
  */
-export async function uninstallHookCommand(): Promise<void> {
-  console.log(chalk.cyan('\nUninstall Code Insights Hooks\n'));
+export async function uninstallHookCommand(options: { target?: string } = {}): Promise<void> {
+  const { target = 'claude' } = options;
 
-  if (!fs.existsSync(HOOKS_FILE)) {
+  if (target === 'vibe') {
+    return uninstallVibeHookCommand();
+  }
+
+  return uninstallClaudeHookCommand();
+}
+
+async function uninstallClaudeHookCommand(): Promise<void> {
+  console.log(chalk.cyan('\nUninstall Code Insights Hooks (Claude Code)\n'));
+
+  if (!fs.existsSync(CLAUDE_HOOKS_FILE)) {
     console.log(chalk.yellow('No hooks file found. Nothing to uninstall.'));
     return;
   }
 
   try {
-    const content = fs.readFileSync(HOOKS_FILE, 'utf-8');
+    const content = fs.readFileSync(CLAUDE_HOOKS_FILE, 'utf-8');
     const settings: ClaudeSettings = JSON.parse(content);
 
     if (!settings.hooks?.Stop && !settings.hooks?.SessionEnd) {
@@ -210,11 +278,46 @@ export async function uninstallHookCommand(): Promise<void> {
       delete settings.hooks;
     }
 
-    fs.writeFileSync(HOOKS_FILE, JSON.stringify(settings, null, 2));
+    fs.writeFileSync(CLAUDE_HOOKS_FILE, JSON.stringify(settings, null, 2));
 
     console.log(chalk.green('Hooks uninstalled successfully!'));
   } catch (error) {
     console.log(chalk.red('Failed to uninstall hooks:'));
+    console.error(error instanceof Error ? error.message : 'Unknown error');
+  }
+}
+
+async function uninstallVibeHookCommand(): Promise<void> {
+  console.log(chalk.cyan('\nUninstall Code Insights Hook (Mistral Vibe)\n'));
+
+  if (!fs.existsSync(VIBE_HOOKS_FILE)) {
+    console.log(chalk.yellow('No hooks file found. Nothing to uninstall.'));
+    return;
+  }
+
+  try {
+    const content = fs.readFileSync(VIBE_HOOKS_FILE, 'utf-8');
+    
+    // Very basic string parsing to remove the code-insights hook since we lack a TOML parser.
+    // It looks for [[hooks]] ... name = "code-insights-session-end" ... up to the next [[hooks]] or EOF.
+    let updatedContent = content;
+    const codeInsightsHookRegex = /\[\[hooks\]\][\s\S]*?name\s*=\s*"code-insights-session-end"[\s\S]*?(?=\[\[hooks\]\]|$)/g;
+    
+    if (!codeInsightsHookRegex.test(content)) {
+      console.log(chalk.yellow('No Code Insights hooks found. Nothing to uninstall.'));
+      return;
+    }
+
+    updatedContent = updatedContent.replace(codeInsightsHookRegex, '');
+    
+    // Remove extra blank lines that might have been left behind
+    updatedContent = updatedContent.replace(/\n\s*\n\s*\n/g, '\n\n');
+
+    fs.writeFileSync(VIBE_HOOKS_FILE, updatedContent.trim() + '\n');
+
+    console.log(chalk.green('Hook uninstalled successfully!'));
+  } catch (error) {
+    console.log(chalk.red('Failed to uninstall hook:'));
     console.error(error instanceof Error ? error.message : 'Unknown error');
   }
 }

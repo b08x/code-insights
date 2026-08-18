@@ -97,12 +97,14 @@ program
   .option('--sync-only', 'Install only the Stop (sync) hook')
   .option('--analysis-only', 'Install only the SessionEnd (analysis) hook')
   .option('--runner <name>', 'Runner to use for analysis hook (native, codex, claude, antigravity, vibe)', 'native')
-  .action((opts) => installHookCommand({ syncOnly: opts.syncOnly, analysisOnly: opts.analysisOnly, runner: opts.runner }));
+  .option('--target <tool>', 'Target tool for the hook (claude, vibe)', 'claude')
+  .action((opts) => installHookCommand({ syncOnly: opts.syncOnly, analysisOnly: opts.analysisOnly, runner: opts.runner, target: opts.target }));
 
 program
   .command('uninstall-hook')
   .description('Remove Claude Code hooks (sync and analysis)')
-  .action(uninstallHookCommand);
+  .option('--target <tool>', 'Target tool for the hook (claude, vibe)', 'claude')
+  .action((opts) => uninstallHookCommand({ target: opts.target }));
 
 program
   .command('open')

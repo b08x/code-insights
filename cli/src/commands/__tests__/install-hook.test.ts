@@ -89,17 +89,16 @@ describe('installHookCommand', () => {
       expect(stopCmd.command).toMatch(/^node .+index\.js sync -q$/);
     });
 
-    it('SessionEnd hook contains insights command with 120s timeout', async () => {
+    it('SessionEnd hook contains session-end command with 300s timeout', async () => {
       const { installHookCommand } = await import('../install-hook.js');
-      await installHookCommand({});
-
+      await installHookCommand({ runner: 'codex' });
       const settings = readSettings();
       const hooks = settings.hooks as Record<string, Array<{ hooks: Array<{ type: string; command: string; timeout?: number }> }>>;
       const sessionEndCmd = hooks.SessionEnd[0].hooks[0];
 
       expect(sessionEndCmd.type).toBe('command');
-      expect(sessionEndCmd.command).toContain('insights --hook --native -q');
-      expect(sessionEndCmd.command).toMatch(/^node .+index\.js insights --hook --native -q$/);
+      expect(sessionEndCmd.command).toContain('session-end --source claude-code');
+      expect(sessionEndCmd.command).toMatch(/^node .+index\.js session-end/);
       expect(sessionEndCmd.timeout).toBe(300000);
     });
 

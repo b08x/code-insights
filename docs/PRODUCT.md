@@ -188,9 +188,11 @@ code-insights sync --verbose               # Verbose output
 code-insights sync --regenerate-titles     # Regenerate session titles
 code-insights sync prune                   # Soft-delete trivial sessions (≤2 messages, restorable with sync --force)
 code-insights status                       # Show sync statistics
-code-insights install-hook                 # Auto-sync on session end (defaults to native codex)
+code-insights install-hook                 # Auto-sync on session end (defaults to native codex and claude target)
+code-insights install-hook --target vibe   # Install hook for Mistral Vibe
 code-insights install-hook --runner claude # Auto-sync using claude as runner
-code-insights uninstall-hook               # Remove auto-sync hook
+code-insights uninstall-hook               # Remove auto-sync hook from Claude
+code-insights uninstall-hook --target vibe # Remove auto-sync hook from Mistral Vibe
 code-insights insights [id]                # Run AI analysis on session (add --claude to use Claude Code)
 code-insights insights check               # Check unanalyzed sessions (add --claude to use Claude Code)
 
