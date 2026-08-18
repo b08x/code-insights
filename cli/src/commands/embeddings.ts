@@ -306,6 +306,7 @@ export async function embeddingsRecomputeCommand(opts: {
   projectId?: string;
   all?: boolean;
   failed?: boolean;
+  rebuild?: boolean;
 }): Promise<void> {
   const db = getDb();
   loadVectorExtension(db);
@@ -366,6 +367,14 @@ export async function embeddingsRecomputeCommand(opts: {
   } else {
     console.log(chalk.yellow('  Specify --session-id, --project-id, or --all.'));
     process.exit(1);
+  }
+
+  if (opts.rebuild && opts.all) {
+    db.exec(`DROP TABLE IF EXISTS vec_insights`);
+    db.exec(`DROP TABLE IF EXISTS vec_messages`);
+    console.log(chalk.gray(`  Dropped vector store tables to allow rebuilding with a new dimension.`));
+  } else if (opts.rebuild) {
+    console.log(chalk.yellow(`  Warning: --rebuild is only supported with --all. Vector tables were not dropped.`));
   }
 
   console.log('');
@@ -522,12 +531,14 @@ export function buildEmbeddingsCommand(): Command {
     .option('--project-id <id>', 'Recompute for a specific project')
     .option('--all', 'Recompute all computed/stale entities')
     .option('--failed', 'Recompute all failed entities')
+    .option('--rebuild', 'Drop vector store tables to rebuild from scratch with a new model (use with --all)')
     .action((opts) =>
       embeddingsRecomputeCommand({
         sessionId: opts.sessionId,
         projectId: opts.projectId,
         all: opts.all,
         failed: opts.failed,
+        rebuild: opts.rebuild,
       }),
     );
 

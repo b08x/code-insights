@@ -36,6 +36,31 @@ export function createAllVectorTables(db: Database.Database, dim: number): void 
   createVectorTable(db, 'message', dim);
 }
 
+/**
+ * Ensures the vector table exists with the specified dimension.
+ * If it exists but has a different dimension, throws an error.
+ */
+export function ensureVectorTableWithDim(
+  db: Database.Database,
+  entityType: EmbeddingEntityType,
+  dim: number,
+): void {
+  const tableName = VECTOR_TABLES[entityType];
+  const row = db.prepare(`SELECT sql FROM sqlite_master WHERE name = ?`).get(tableName) as { sql: string } | undefined;
+  
+  if (row) {
+    const match = row.sql.match(/float\[(\d+)\]/);
+    if (match) {
+      const existingDim = parseInt(match[1], 10);
+      if (existingDim !== dim) {
+        throw new Error(`Model dimension mismatch: the existing vector index was created with dimension ${existingDim}, but your model produces dimension ${dim}. To switch models, you must recompute all embeddings and rebuild the vector store by running: \`code-insights embeddings recompute --all --rebuild\``);
+      }
+    }
+  } else {
+    createVectorTable(db, entityType, dim);
+  }
+}
+
 /** Convert a Float32Array to a Buffer for sqlite-vec BLOB insertion. */
 export function vecToBlob(v: Float32Array): Buffer {
   return Buffer.from(v.buffer, v.byteOffset, v.byteLength);

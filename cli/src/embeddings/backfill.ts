@@ -8,6 +8,7 @@ import {
   loadVectorExtension,
   createAllVectorTables,
   insertEmbeddingsBatch,
+  ensureVectorTableWithDim,
 } from './store.js';
 import type { EmbeddingEntityType, BackfillStats, EmbeddingResult } from './types.js';
 import type Database from 'better-sqlite3';
@@ -45,7 +46,9 @@ export async function backfillEmbeddings(
 ): Promise<BackfillStats> {
   const db = getDb();
   loadVectorExtension(db);
-  createAllVectorTables(db, config.dim);
+  // We will create the vector tables after we fetch the first batch of embeddings,
+  // so we can dynamically detect the exact dimension produced by the model.
+
 
   const stats: BackfillStats = {
     entityType,
@@ -110,6 +113,8 @@ export async function backfillEmbeddings(
     }
   });
 
+  let tableEnsured = false;
+
   // Embed and save in batches
   for (let i = 0; i < items.length; i += config.batchSize) {
     const batch = items.slice(i, i + config.batchSize);
@@ -117,6 +122,10 @@ export async function backfillEmbeddings(
       const results = await embedTexts(config, batch);
       
       if (results.length > 0) {
+        if (!tableEnsured) {
+          ensureVectorTableWithDim(db, entityType, results[0].dim);
+          tableEnsured = true;
+        }
         insertEmbeddingsBatch(db, entityType, results);
         updateBatch(results);
         stats.computed += results.length;
