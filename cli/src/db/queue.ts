@@ -41,12 +41,29 @@ export interface QueueStatus {
  */
 export function enqueue(sessionId: string, runnerType = 'native'): void {
   const db = getDb();
-  db.prepare(
-    `INSERT OR REPLACE INTO analysis_queue
-       (session_id, status, runner_type, enqueued_at, started_at, completed_at, error_message, attempt_count, max_attempts)
-     VALUES
-       (?, 'pending', ?, datetime('now'), NULL, NULL, NULL, 0, 3)`
-  ).run(sessionId, runnerType);
+  
+  // Validation: Check if the session exists in the database to prevent foreign key errors
+  const sessionExists = db.prepare('SELECT 1 FROM sessions WHERE id = ?').get(sessionId);
+  if (!sessionExists) {
+    // If the session hasn't been saved to the DB yet (e.g. Mistral Vibe post_agent hook running too early)
+    // we gracefully skip enqueuing.
+    return;
+  }
+
+  try {
+    db.prepare(
+      `INSERT OR REPLACE INTO analysis_queue
+         (session_id, status, runner_type, enqueued_at, started_at, completed_at, error_message, attempt_count, max_attempts)
+       VALUES
+         (?, 'pending', ?, datetime('now'), NULL, NULL, NULL, 0, 3)`
+    ).run(sessionId, runnerType);
+  } catch (err: any) {
+    if (err.code === 'SQLITE_CONSTRAINT_FOREIGNKEY') {
+      // Defense-in-depth fallback
+      return;
+    }
+    throw err;
+  }
 }
 
 /**

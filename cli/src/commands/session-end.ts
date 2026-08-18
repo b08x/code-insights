@@ -63,8 +63,33 @@ export async function sessionEndCommand(options: SessionEndOptions = {}): Promis
     return;
   }
 
-  // Flexibly extract session_id (Mistral Vibe might nest it in `session` or `context`)
-  const sessionId = parsed.session_id || parsed.session?.id || parsed.session?.session_id || parsed.id;
+  let sessionId = parsed.session_id || parsed.session?.id || parsed.session?.session_id || parsed.id;
+  
+  let syncCompleted = false;
+  
+  if (!sessionId && options.source === 'opencode') {
+    // If opencode doesn't provide a sessionId in the event payload, we run a full sync
+    // and then find the latest unanalyzed opencode session to enqueue.
+    try {
+      const { runSync } = await import('./sync.js');
+      await runSync({ quiet: true, source: 'opencode' });
+      syncCompleted = true;
+      const { getDb } = await import('../db/client.js');
+      const latest = getDb().prepare(`
+        SELECT id FROM sessions 
+        WHERE source = 'opencode' 
+          AND id NOT IN (SELECT session_id FROM analysis_usage)
+        ORDER BY start_time DESC LIMIT 1
+      `).get() as { id: string } | undefined;
+      
+      if (latest) {
+        sessionId = latest.id;
+      }
+    } catch {
+      // Ignore errors finding the fallback session
+    }
+  }
+
   if (!sessionId) {
     if (!quiet) {
       console.error(chalk.red('[Code Insights] session-end: missing session_id in stdin JSON'));
@@ -76,21 +101,23 @@ export async function sessionEndCommand(options: SessionEndOptions = {}): Promis
   if (parsed.transcript_path) {
     try {
       await syncSingleFile({ filePath: parsed.transcript_path, sourceTool: options.source, quiet });
+      syncCompleted = true;
     } catch {
       // Sync failure is non-fatal: session may already be in DB from a previous sync.
       if (!quiet) {
         console.error(chalk.yellow('[Code Insights] session-end: sync failed, enqueuing anyway'));
       }
     }
-  } else if (options.source === 'mistral-vibe') {
-    // Mistral Vibe hooks do not provide a transcript_path, so we run a full sync
+  } else if (!syncCompleted && (options.source === 'mistral-vibe' || options.source === 'opencode')) {
+    // Mistral Vibe and OpenCode hooks do not provide a transcript_path, so we run a full sync
     // which is fast because it just stats files.
     try {
       const { runSync } = await import('./sync.js');
-      await runSync({ quiet: true, source: 'mistral-vibe' });
+      await runSync({ quiet: true, source: options.source });
+      syncCompleted = true;
     } catch {
       if (!quiet) {
-        console.error(chalk.yellow('[Code Insights] session-end: Vibe sync failed, enqueuing anyway'));
+        console.error(chalk.yellow(`[Code Insights] session-end: ${options.source} sync failed, enqueuing anyway`));
       }
     }
   }

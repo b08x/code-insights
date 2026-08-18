@@ -67,8 +67,8 @@ code-insights dashboard       # Start visual dashboard at http://localhost:7890
 
 | Command | Action | Key Options |
 |:---|:---|:---|
-| `install-hook` | Zero-latency hook for tools | `--runner [codex|claude|vibe|antigravity]`, `--target [claude|vibe]` |
-| `uninstall-hook` | Remove auto-sync hooks | `--target [claude|vibe]` |
+| `install-hook` | Zero-latency hook for tools | `--runner [codex|claude|vibe|antigravity]`, `--target [claude|vibe|opencode]` |
+| `uninstall-hook` | Remove auto-sync hooks | `--target [claude|vibe|opencode]` |
 | `sync` | Discover & import sessions | `--source [claude\|cursor\|copilot]` |
 | `insights [id]` | Run AI analysis on session | `--force`, `--claude`, `--native` |
 | `reflect` | Compile cross-session synthesis | `--week [YYYY-W##]` |

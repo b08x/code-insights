@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { readFileSync } from 'fs';
-import { Command } from 'commander';
+import { Command, Option } from 'commander';
 import { initCommand } from './commands/init.js';
 import { syncCommand, getTrivialSessions, pruneTrivialSessions } from './commands/sync.js';
 import { statusCommand } from './commands/status.js';
@@ -96,14 +96,14 @@ program
   .description('Install Claude Code hooks for automatic sync and session analysis')
   .option('--sync-only', 'Install only the Stop (sync) hook')
   .option('--analysis-only', 'Install only the SessionEnd (analysis) hook')
-  .option('--runner <name>', 'Runner to use for analysis hook (native, codex, claude, antigravity, vibe)', 'native')
-  .option('--target <tool>', 'Target tool for the hook (claude, vibe)', 'claude')
+  .addOption(new Option('--runner <name>', 'Runner to use for analysis hook').choices(['native', 'codex', 'claude', 'antigravity', 'vibe']).default('native'))
+  .addOption(new Option('--target <tool>', 'Target tool for the hook').choices(['claude', 'vibe', 'opencode']).default('claude'))
   .action((opts) => installHookCommand({ syncOnly: opts.syncOnly, analysisOnly: opts.analysisOnly, runner: opts.runner, target: opts.target }));
 
 program
   .command('uninstall-hook')
   .description('Remove Claude Code hooks (sync and analysis)')
-  .option('--target <tool>', 'Target tool for the hook (claude, vibe)', 'claude')
+  .addOption(new Option('--target <tool>', 'Target tool for the hook').choices(['claude', 'vibe', 'opencode']).default('claude'))
   .action((opts) => uninstallHookCommand({ target: opts.target }));
 
 program
@@ -135,6 +135,7 @@ buildSearchCommands().forEach(cmd => program.addCommand(cmd));
 program
   .command('session-end')
   .description('Internal: Claude Code SessionEnd hook entry point')
+  .option('--native', 'Use native runner explicitly')
   .option('--no-native', 'Use configured provider instead of claude -p')
   .option('--codex', 'Use codex exec fallback')
   .option('--claude', 'Use claude -p fallback')

@@ -61,6 +61,8 @@ export async function installHookCommand(options: InstallHookOptions = {}): Prom
 
   if (target === 'vibe') {
     return installVibeHookCommand(options);
+  } else if (target === 'opencode') {
+    return installOpenCodeHookCommand(options);
   }
 
   return installClaudeHookCommand(options);
@@ -223,6 +225,67 @@ async function installVibeHookCommand(options: InstallHookOptions): Promise<void
   }
 }
 
+async function installOpenCodeHookCommand(options: InstallHookOptions): Promise<void> {
+  const { runner = 'native' } = options;
+
+  console.log(chalk.cyan('\nInstall Code Insights Hook (OpenCode)\n'));
+
+  try {
+    const OPENCODE_DIR = path.join(os.homedir(), '.config', 'opencode');
+    const OPENCODE_PLUGINS_DIR = path.join(OPENCODE_DIR, 'plugins');
+    const pluginPath = path.join(OPENCODE_PLUGINS_DIR, 'code-insights.ts');
+
+    if (fs.existsSync(pluginPath)) {
+      console.log(chalk.yellow('Code Insights hook already installed for OpenCode.'));
+      console.log(chalk.gray('To reinstall, first run `code-insights uninstall-hook --target opencode`'));
+      return;
+    }
+
+    console.log(chalk.gray('This will add a code-insights.ts plugin to OpenCode:'));
+    console.log(chalk.gray('  It listens to the session.idle event to sync and queue analysis.\n'));
+
+    const hookContent = `// code-insights-hook:start
+import { spawn } from 'node:child_process';
+
+const BIN = '${CLI_ENTRY}';
+
+export const CodeInsights = async () => ({
+  'session.idle': async (input: any) => {
+    return new Promise<void>((resolve) => {
+      const child = spawn(process.execPath, [BIN, 'session-end', '--source', 'opencode', '--${runner}', '-q'], {
+        stdio: ['pipe', 'pipe', 'ignore'],
+        env: { ...process.env },
+      });
+      child.on('error', () => resolve());
+      child.on('close', () => resolve());
+      child.stdin.end(JSON.stringify({
+        session_id: input?.session?.id || input?.sessionId || input?.id || null,
+      }));
+    });
+  }
+});
+// code-insights-hook:end
+`;
+
+    fs.mkdirSync(OPENCODE_PLUGINS_DIR, { recursive: true });
+    fs.writeFileSync(pluginPath, hookContent, 'utf-8');
+
+    console.log(chalk.green('Hook installed successfully!'));
+    console.log(chalk.gray(`\nConfiguration saved to: ${pluginPath}`));
+
+    trackEvent('cli_install_hook', {
+      success: true,
+      target: 'opencode',
+      hook_types: 'analysis'
+    });
+  } catch (error) {
+    console.log(chalk.red(`Failed to install hook: ${error instanceof Error ? error.message : 'Unknown error'}`));
+    const { error_type, error_message } = classifyError(error);
+    trackEvent('cli_install_hook', { success: false, target: 'opencode', error_type, error_message });
+    captureError(error, { command: 'install_hook', target: 'opencode', error_type });
+  }
+}
+
 /**
  * Uninstall hooks — removes Code Insights hooks from Claude Code or Mistral Vibe.
  */
@@ -231,9 +294,29 @@ export async function uninstallHookCommand(options: { target?: string } = {}): P
 
   if (target === 'vibe') {
     return uninstallVibeHookCommand();
+  } else if (target === 'opencode') {
+    return uninstallOpenCodeHookCommand();
   }
 
   return uninstallClaudeHookCommand();
+}
+
+async function uninstallOpenCodeHookCommand(): Promise<void> {
+  console.log(chalk.cyan('\nUninstall Code Insights Hook (OpenCode)\n'));
+
+  const pluginPath = path.join(os.homedir(), '.config', 'opencode', 'plugins', 'code-insights.ts');
+
+  if (!fs.existsSync(pluginPath)) {
+    console.log(chalk.yellow('No Code Insights plugin found. Nothing to uninstall.'));
+    return;
+  }
+
+  try {
+    fs.rmSync(pluginPath);
+    console.log(chalk.green('Hook uninstalled successfully!'));
+  } catch (error) {
+    console.log(chalk.red(`Failed to uninstall hook: ${error instanceof Error ? error.message : 'Unknown error'}`));
+  }
 }
 
 async function uninstallClaudeHookCommand(): Promise<void> {
