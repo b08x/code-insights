@@ -34,14 +34,13 @@ export class AntigravityNativeRunner implements AnalysisRunner {
     
     try {
       const args = [
-        '-p', '-',
+        '-p', fullPrompt,
         '--dangerously-skip-permissions',
       ];
 
       let rawOutput: string;
       try {
         rawOutput = execFileSync('agy', args, {
-          input: fullPrompt,
           encoding: 'utf-8',
           timeout: 300_000,    // 5-minute hard limit
           maxBuffer: 30 * 1024 * 1024,
