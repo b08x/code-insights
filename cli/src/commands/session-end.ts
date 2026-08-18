@@ -33,6 +33,7 @@ const WORKER_LOG_PATH = join(getConfigDir(), 'hook-analysis.log');
 export interface SessionEndOptions {
   native?: boolean;
   codex?: boolean;
+  claude?: boolean;
   antigravity?: boolean;
   vibe?: boolean;
   quiet?: boolean;
@@ -44,7 +45,7 @@ export interface SessionEndOptions {
  * Returns normally (no process.exit) so tests can call it directly.
  */
 export async function sessionEndCommand(options: SessionEndOptions = {}): Promise<void> {
-  const { quiet = false, native = true, codex = false, antigravity = false, vibe = false } = options;
+  const { quiet = false, native = true, codex = false, claude = false, antigravity = false, vibe = false } = options;
 
   // Guard: break infinite recursion when our own analysis worker's session ends
   if (process.env.CODE_INSIGHTS_HOOK_ACTIVE) {
@@ -88,10 +89,10 @@ export async function sessionEndCommand(options: SessionEndOptions = {}): Promis
   enqueue(sessionId, native ? 'native' : 'provider');
 
   // Phase 3: Spawn detached worker to process the queue
-  spawnWorker({ quiet, codex, antigravity, vibe });
+  spawnWorker({ quiet, codex, claude, antigravity, vibe });
 }
 
-function spawnWorker(options: { quiet: boolean; codex?: boolean; antigravity?: boolean; vibe?: boolean }): void {
+function spawnWorker(options: { quiet: boolean; codex?: boolean; claude?: boolean; antigravity?: boolean; vibe?: boolean }): void {
   try {
     const configDir = getConfigDir();
     if (!existsSync(configDir)) {
@@ -102,6 +103,7 @@ function spawnWorker(options: { quiet: boolean; codex?: boolean; antigravity?: b
     const args = [CLI_ENTRY, 'queue', 'process'];
     if (options.quiet) args.push('-q');
     if (options.codex) args.push('--codex');
+    if (options.claude) args.push('--claude');
     if (options.antigravity) args.push('--antigravity');
     if (options.vibe) args.push('--vibe');
 

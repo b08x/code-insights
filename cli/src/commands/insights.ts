@@ -121,6 +121,7 @@ export interface InsightsCommandOptions {
   sessionId: string;
   native: boolean;
   codex?: boolean;
+  claude?: boolean;
   antigravity?: boolean;
   vibe?: boolean;
   hookMode?: boolean;
@@ -146,6 +147,9 @@ export async function runInsightsCommand(options: InsightsCommandOptions): Promi
   } else if (options.antigravity) {
     AntigravityNativeRunner.validate();
     runner = new AntigravityNativeRunner();
+  } else if (options.claude) {
+    ClaudeNativeRunner.validate();
+    runner = new ClaudeNativeRunner();
   } else if (options.codex) {
     CodexNativeRunner.validate();
     runner = new CodexNativeRunner();
@@ -386,6 +390,7 @@ export async function insightsCommand(
   opts: {
     native?: boolean;
     codex?: boolean;
+    claude?: boolean;
     antigravity?: boolean;
     vibe?: boolean;
     hook?: boolean;
@@ -432,6 +437,7 @@ export async function insightsCommand(
       sessionId: resolvedSessionId,
       native: opts.native ?? false,
       codex: opts.codex ?? false,
+      claude: opts.claude ?? false,
       antigravity: opts.antigravity ?? false,
       vibe: opts.vibe ?? false,
       hookMode: opts.hook ?? false,
@@ -458,6 +464,7 @@ export async function insightsCheckCommand(opts: {
   analyze?: boolean;
   native?: boolean;
   codex?: boolean;
+  claude?: boolean;
   antigravity?: boolean;
   vibe?: boolean;
 }): Promise<void> {
@@ -532,10 +539,12 @@ export async function insightsCheckCommand(opts: {
           currentRunnerType = 'antigravity';
         } else if (opts.codex) {
           currentRunnerType = 'codex';
+        } else if (opts.claude) {
+          currentRunnerType = 'claude';
         } else if (opts.vibe) {
           currentRunnerType = 'vibe';
         } else if (opts.native) {
-          currentRunnerType = 'claude';
+          currentRunnerType = 'codex';
         } else {
           currentRunnerType = 'provider';
         }
@@ -579,8 +588,9 @@ export async function insightsCheckCommand(opts: {
           try {
             await runInsightsCommand({ 
               sessionId: row.id, 
-              native: currentRunnerType === 'claude', 
+              native: currentRunnerType === 'codex' || currentRunnerType === 'claude' || currentRunnerType === 'antigravity' || currentRunnerType === 'vibe',
               codex: currentRunnerType === 'codex', 
+              claude: currentRunnerType === 'claude',
               antigravity: currentRunnerType === 'antigravity',
               vibe: currentRunnerType === 'vibe',
               quiet: true, 
@@ -604,8 +614,9 @@ export async function insightsCheckCommand(opts: {
         let runnerType: RunnerType;
         if (opts.antigravity) runnerType = 'antigravity';
         else if (opts.codex) runnerType = 'codex';
+        else if (opts.claude) runnerType = 'claude';
         else if (opts.vibe) runnerType = 'vibe';
-        else if (opts.native) runnerType = 'claude';
+        else if (opts.native) runnerType = 'codex';
         else runnerType = 'provider';
 
         runner = initializeRunner(runnerType);
@@ -631,8 +642,9 @@ export async function insightsCheckCommand(opts: {
             try {
               await runInsightsCommand({ 
                 sessionId: row.id, 
-                native: runnerType === 'claude',
+                native: runnerType === 'codex' || runnerType === 'claude' || runnerType === 'antigravity' || runnerType === 'vibe',
                 codex: runnerType === 'codex',
+                claude: runnerType === 'claude',
                 antigravity: runnerType === 'antigravity',
                 vibe: runnerType === 'vibe',
                 quiet: true,

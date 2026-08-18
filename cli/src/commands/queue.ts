@@ -59,12 +59,12 @@ export async function queueStatusCommand(opts: { quiet?: boolean } = {}): Promis
 
 // ── queue process ─────────────────────────────────────────────────────────────
 
-export async function queueProcessCommand(opts: { quiet?: boolean; codex?: boolean; antigravity?: boolean; vibe?: boolean } = {}): Promise<void> {
-  const { quiet = false, codex = false, antigravity = false, vibe = false } = opts;
+export async function queueProcessCommand(opts: { quiet?: boolean; codex?: boolean; claude?: boolean; antigravity?: boolean; vibe?: boolean } = {}): Promise<void> {
+  const { quiet = false, codex = false, claude = false, antigravity = false, vibe = false } = opts;
   const log = quiet ? () => {} : console.log.bind(console);
 
   try {
-    const count = await processQueue({ quiet, useCodex: codex, useAntigravity: antigravity, useVibe: vibe });
+    const count = await processQueue({ quiet, useCodex: codex, useClaude: claude, useAntigravity: antigravity, useVibe: vibe });
     if (count === 0) {
       log(chalk.dim('[Code Insights] No pending items in queue'));
     } else {
@@ -132,9 +132,10 @@ export function buildQueueCommand(): Command {
     .description('Process pending queue items (foreground)')
     .option('-q, --quiet', 'Suppress output')
     .option('--codex', 'Use codex exec for processing')
+    .option('--claude', 'Use claude -p for processing')
     .option('--antigravity', 'Use antigravity -p for processing')
     .option('--vibe', 'Use vibe for processing')
-    .action((opts) => queueProcessCommand({ quiet: opts.quiet, codex: opts.codex, antigravity: opts.antigravity, vibe: opts.vibe }));
+    .action((opts) => queueProcessCommand({ quiet: opts.quiet, codex: opts.codex, claude: opts.claude, antigravity: opts.antigravity, vibe: opts.vibe }));
 
   queueCmd
     .command('retry [session_id]')

@@ -67,8 +67,9 @@ code-insights dashboard       # Start visual dashboard at http://localhost:7890
 
 | Command | Action | Key Options |
 |:---|:---|:---|
+| `install-hook` | Zero-latency hook for Claude Code | `--runner [codex|claude|vibe|antigravity]` |
 | `sync` | Discover & import sessions | `--source [claude\|cursor\|copilot]` |
-| `insights [id]` | Run AI analysis on session | `--force` (re-run analysis) |
+| `insights [id]` | Run AI analysis on session | `--force`, `--claude`, `--native` |
 | `reflect` | Compile cross-session synthesis | `--week [YYYY-W##]` |
 | `stats` | Fast terminal analytics | `today`, `cost`, `projects` |
 | `optimize` | Tune insight prompts via `@ax-llm/ax` | `run`, `status`, `list`, `apply`, `compare` |

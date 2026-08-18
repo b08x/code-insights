@@ -30,6 +30,7 @@ interface HookConfig {
 export interface InstallHookOptions {
   syncOnly?: boolean;
   analysisOnly?: boolean;
+  runner?: string;
 }
 
 /** Extract command string from both old (string) and new ({type, command}) hook formats */
@@ -53,7 +54,7 @@ function hookAlreadyInstalled(hookList: HookConfig[]): boolean {
  * Use --sync-only or --analysis-only for granular control.
  */
 export async function installHookCommand(options: InstallHookOptions = {}): Promise<void> {
-  const { syncOnly = false, analysisOnly = false } = options;
+  const { syncOnly = false, analysisOnly = false, runner = 'native' } = options;
 
   if (syncOnly && analysisOnly) {
     console.log(chalk.red('Cannot use --sync-only and --analysis-only together. Use neither flag to install both hooks.'));
@@ -67,12 +68,12 @@ export async function installHookCommand(options: InstallHookOptions = {}): Prom
 
   try {
     const syncCommand = `node ${CLI_ENTRY} sync -q`;
-    const analysisCommand = `node ${CLI_ENTRY} insights --hook --native -q`;
+    const analysisCommand = `node ${CLI_ENTRY} insights --hook --${runner} -q`;
 
     if (!syncOnly && !analysisOnly) {
       console.log(chalk.gray('This will add two Claude Code hooks:\n'));
       console.log(chalk.white('  Stop hook         — Syncs sessions after each response'));
-      console.log(chalk.white('  SessionEnd hook   — Analyzes sessions using your Claude subscription'));
+      console.log(chalk.white(`  SessionEnd hook   — Analyzes sessions using --${runner}`));
       console.log(chalk.gray('                      No API key needed. (~15-30s per session)\n'));
     } else if (syncOnly) {
       console.log(chalk.gray(`This will add a Stop hook: ${syncCommand}\n`));

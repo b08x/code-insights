@@ -24,6 +24,8 @@ export interface ProcessQueueOptions {
   runnerType?: string;
   /** Explicitly use codex if 'native' runner is requested */
   useCodex?: boolean;
+  /** Explicitly use claude if 'native' runner is requested */
+  useClaude?: boolean;
   /** Explicitly use antigravity if 'native' runner is requested */
   useAntigravity?: boolean;
   /** Explicitly use vibe if 'native' runner is requested */

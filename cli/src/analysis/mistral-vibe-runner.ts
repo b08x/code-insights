@@ -68,7 +68,19 @@ export class MistralVibeRunner implements AnalysisRunner {
           throw new Error('vibe -p output contained no assistant message.');
         }
 
-        let rawJson = assistantMessage.content || '';
+        let rawJson = '';
+        if (typeof assistantMessage.content === 'string') {
+          rawJson = assistantMessage.content;
+        } else if (Array.isArray(assistantMessage.content)) {
+          // Extract text from parts array if it's structured content
+          rawJson = assistantMessage.content
+            .filter((p: any) => p.type === 'text' && p.text)
+            .map((p: any) => p.text)
+            .join('\n');
+        } else {
+          rawJson = String(assistantMessage.content || '');
+        }
+
         // Strip <json> tags if present
         rawJson = rawJson.replace(/^<json>\n?/, '').replace(/\n?<\/json>$/, '').trim();
 

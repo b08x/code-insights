@@ -96,7 +96,8 @@ program
   .description('Install Claude Code hooks for automatic sync and session analysis')
   .option('--sync-only', 'Install only the Stop (sync) hook')
   .option('--analysis-only', 'Install only the SessionEnd (analysis) hook')
-  .action((opts) => installHookCommand({ syncOnly: opts.syncOnly, analysisOnly: opts.analysisOnly }));
+  .option('--runner <name>', 'Runner to use for analysis hook (native, codex, claude, antigravity, vibe)', 'native')
+  .action((opts) => installHookCommand({ syncOnly: opts.syncOnly, analysisOnly: opts.analysisOnly, runner: opts.runner }));
 
 program
   .command('uninstall-hook')
@@ -134,6 +135,7 @@ program
   .description('Internal: Claude Code SessionEnd hook entry point')
   .option('--no-native', 'Use configured provider instead of claude -p')
   .option('--codex', 'Use codex exec fallback')
+  .option('--claude', 'Use claude -p fallback')
   .option('--antigravity', 'Use antigravity -p fallback')
   .option('--vibe', 'Use vibe CLI fallback')
   .option('-s, --source <tool>', 'Source tool identifier (default: claude-code)')
@@ -142,6 +144,7 @@ program
     await sessionEndCommand({ 
       native: opts.native, 
       codex: opts.codex, 
+      claude: opts.claude,
       antigravity: opts.antigravity,
       vibe: opts.vibe,
       source: opts.source, 
@@ -154,8 +157,9 @@ program
 const insightsCmd = program
   .command('insights [session_id]')
   .description('Analyze a session with AI — extracts insights and prompt quality score')
-  .option('--native', 'Use claude -p (your Claude subscription, no API key required)')
+  .option('--native', 'Use native runner (Codex -> Claude fallback)')
   .option('--codex', 'Use codex exec (OpenAI Codex, no API key required)')
+  .option('--claude', 'Use claude -p (your Claude subscription, no API key required)')
   .option('--antigravity', 'Use antigravity -p (Google Antigravity CLI, no API key required)')
   .option('--vibe', 'Use vibe CLI (Mistral Vibe, no API key required)')
   .option('--hook', 'Read session context from stdin (for Claude Code SessionEnd hook)')
@@ -172,8 +176,9 @@ insightsCmd
   .option('--days <n>', 'Lookback window in days', '7')
   .option('-q, --quiet', 'Machine-readable output (just count)')
   .option('--analyze', 'Process all found sessions sequentially')
-  .option('--native', 'Use native runner (claude -p) for batch analysis')
+  .option('--native', 'Use native runner for batch analysis')
   .option('--codex', 'Use codex exec for batch analysis')
+  .option('--claude', 'Use claude -p for batch analysis')
   .option('--antigravity', 'Use antigravity -p for batch analysis')
   .option('--vibe', 'Use vibe CLI for batch analysis')
   .action(async (opts, cmd) => {
@@ -184,6 +189,7 @@ insightsCmd
       analyze: opts.analyze,
       native: opts.native ?? parentOpts.native,
       codex: opts.codex ?? parentOpts.codex,
+      claude: opts.claude ?? parentOpts.claude,
       antigravity: opts.antigravity ?? parentOpts.antigravity,
       vibe: opts.vibe ?? parentOpts.vibe,
     });

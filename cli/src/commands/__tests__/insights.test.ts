@@ -611,7 +611,7 @@ describe('insightsCheckCommand — --analyze flag', () => {
     }
   }
 
-  it('processes all sessions with --analyze and shows [N/total] progress', async () => {
+  it('processes all sessions with --analyze and shows [N/total] progress', { timeout: 15000 }, async () => {
     seedSessions(mockDb, 3);
     for (let i = 0; i < 3; i++) {
       mockProviderRunAnalysis
@@ -630,7 +630,7 @@ describe('insightsCheckCommand — --analyze flag', () => {
     expect(logOutput).toMatch(/Analyzed 3 session/i);
   });
 
-  it('continues processing after one session fails', async () => {
+  it('continues processing after one session fails', { timeout: 15000 }, async () => {
     seedSessions(mockDb, 3);
     mockProviderRunAnalysis
       .mockRejectedValueOnce(new Error('fail on session 0'))

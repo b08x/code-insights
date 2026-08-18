@@ -188,11 +188,11 @@ code-insights sync --verbose               # Verbose output
 code-insights sync --regenerate-titles     # Regenerate session titles
 code-insights sync prune                   # Soft-delete trivial sessions (≤2 messages, restorable with sync --force)
 code-insights status                       # Show sync statistics
-code-insights install-hook                 # Auto-sync on session end
+code-insights install-hook                 # Auto-sync on session end (defaults to native codex)
+code-insights install-hook --runner claude # Auto-sync using claude as runner
 code-insights uninstall-hook               # Remove auto-sync hook
-```
-
-#### Dashboard & Browser
+code-insights insights [id]                # Run AI analysis on session (add --claude to use Claude Code)
+code-insights insights check               # Check unanalyzed sessions (add --claude to use Claude Code)
 
 ```bash
 code-insights dashboard                    # Start local server + open dashboard (auto-syncs first)
