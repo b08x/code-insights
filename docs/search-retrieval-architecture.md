@@ -45,13 +45,14 @@ db.prepare(`
 ### 2. Vector Search (KNN)
 
 ```
-User Query → Ollama embedOne → querySimilar() → distance sort → message fetch
+User Query → Ollama embedOne → querySimilar() → distance sort → map to parent entity → deduplicate → message fetch
 ```
 
 - **Embedding:** Ollama model (configurable via `--model`)
 - **Storage:** `sqlite-vec` extension loaded at runtime
 - **Table:** `message_embeddings`
 - **Similarity:** `1 / (1 + distance)` (cosine distance → similarity score)
+- **Hierarchical Retrieval:** Vector Search maps matching child chunks back to their parent `entity_id`. This deduplicates results and returns the larger parent context for RAG.
 
 ```typescript
 // cli/src/embeddings/store.ts:84-96

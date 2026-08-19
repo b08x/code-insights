@@ -29,15 +29,21 @@ function messageSourceText(row: { content: string }): string {
   return row.content;
 }
 
+import { chunkText } from './chunker.js';
+
+const PARENT_CHUNK_MAX = 4000;
+const CHILD_CHUNK_MAX = 512;
+
 /**
  * Backfill embeddings for a specific entity type.
  *
  * 1. Load the sqlite-vec extension
  * 2. Create virtual tables if needed
  * 3. Query rows WHERE embedding_status = 'pending'
- * 4. Embed via Ollama in batches
- * 5. Store vectors in sqlite-vec + embedding_metadata
- * 6. Update embedding_status to 'computed'
+ * 4. Split into parent and child chunks
+ * 5. Embed child chunks via Ollama in batches
+ * 6. Store vectors in sqlite-vec + embedding_metadata + entity_chunks
+ * 7. Update embedding_status to 'computed'
  */
 export async function backfillEmbeddings(
   config: EmbeddingConfig,
@@ -46,9 +52,6 @@ export async function backfillEmbeddings(
 ): Promise<BackfillStats> {
   const db = getDb();
   loadVectorExtension(db);
-  // We will create the vector tables after we fetch the first batch of embeddings,
-  // so we can dynamically detect the exact dimension produced by the model.
-
 
   const stats: BackfillStats = {
     entityType,
@@ -88,56 +91,96 @@ export async function backfillEmbeddings(
     return stats;
   }
 
-  // Prepare items for embedding
-  const items = pendingRows.map(row => ({
-    id: row.id,
-    text:
-      entityType === 'insight'
-        ? insightSourceText(row as { type: string; project_name: string; title: string; content: string; summary: string })
-        : messageSourceText(row as { content: string }),
-  }));
-
+  // Define prepared statements
+  const chunkStmt = db.prepare(`
+    INSERT OR REPLACE INTO entity_chunks (id, entity_type, entity_id, chunk_index, content)
+      VALUES (?, ?, ?, ?, ?)
+  `);
   const metaStmt = db.prepare(`
-    INSERT OR REPLACE INTO embedding_metadata (id, entity_type, model, dim, source_text, updated_at)
-      VALUES (?, ?, ?, ?, ?, datetime('now'))
+    INSERT OR REPLACE INTO embedding_metadata (id, entity_type, entity_id, model, dim, source_text, parent_chunk_id, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
   `);
   const statusStmt = db.prepare(`
     UPDATE ${entityType === 'insight' ? 'insights' : 'messages'}
     SET embedding_status = 'computed'
     WHERE id = ?
   `);
-  const updateBatch = db.transaction((results: EmbeddingResult[]) => {
-    for (const r of results) {
-      metaStmt.run(r.id, entityType, r.model, r.dim, r.sourceText);
-      statusStmt.run(r.id);
+
+  const updateBatch = db.transaction((entityIds: string[], childResults: Array<EmbeddingResult & { entityId: string }>) => {
+    // 1. Insert embeddings and metadata
+    for (const r of childResults) {
+      metaStmt.run(r.id, entityType, r.entityId, r.model, r.dim, r.sourceText, r.parentChunkId);
+    }
+    // 2. Mark parent entities as computed
+    for (const id of entityIds) {
+      statusStmt.run(id);
     }
   });
 
   let tableEnsured = false;
 
-  // Embed and save in batches
-  for (let i = 0; i < items.length; i += config.batchSize) {
-    const batch = items.slice(i, i + config.batchSize);
+  // Process each pending row
+  for (let rowIdx = 0; rowIdx < pendingRows.length; rowIdx++) {
+    const row = pendingRows[rowIdx];
+    const sourceTxt = entityType === 'insight'
+      ? insightSourceText(row as { type: string; project_name: string; title: string; content: string; summary: string })
+      : messageSourceText(row as { content: string });
+
     try {
-      const results = await embedTexts(config, batch);
+      // 1. Split into parent chunks
+      const parentChunks = chunkText(sourceTxt, PARENT_CHUNK_MAX);
+      const childItems: Array<{ id: string; text: string; parentId: string }> = [];
       
-      if (results.length > 0) {
+      db.transaction(() => {
+        for (let pIdx = 0; pIdx < parentChunks.length; pIdx++) {
+          const pText = parentChunks[pIdx];
+          const parentId = `${row.id}_p${pIdx}`;
+          
+          chunkStmt.run(parentId, entityType, row.id, pIdx, pText);
+          
+          // 2. Split each parent chunk into child chunks
+          const childChunks = chunkText(pText, CHILD_CHUNK_MAX);
+          for (let cIdx = 0; cIdx < childChunks.length; cIdx++) {
+            childItems.push({
+              id: `${parentId}_c${cIdx}`,
+              text: childChunks[cIdx],
+              parentId: parentId
+            });
+          }
+        }
+      })();
+
+      // 3. Embed child chunks in batches
+      const allChildResults: Array<EmbeddingResult & { entityId: string }> = [];
+      for (let i = 0; i < childItems.length; i += config.batchSize) {
+        const batch = childItems.slice(i, i + config.batchSize);
+        const results = await embedTexts(config, batch);
+        
+        // Attach parent chunk id and entity_id
+        for (let j = 0; j < results.length; j++) {
+          (results[j] as any).parentChunkId = batch[j].parentId;
+          (results[j] as any).entityId = row.id;
+        }
+        allChildResults.push(...(results as Array<EmbeddingResult & { entityId: string }>));
+      }
+
+      // 4. Save results
+      if (allChildResults.length > 0) {
         if (!tableEnsured) {
-          ensureVectorTableWithDim(db, entityType, results[0].dim);
+          ensureVectorTableWithDim(db, entityType, allChildResults[0].dim);
           tableEnsured = true;
         }
-        insertEmbeddingsBatch(db, entityType, results);
-        updateBatch(results);
-        stats.computed += results.length;
+        insertEmbeddingsBatch(db, entityType, allChildResults);
       }
+      
+      updateBatch([row.id], allChildResults);
+      stats.computed++;
+      
     } catch (err) {
-      // Mark the whole batch as failed
       const msg = err instanceof Error ? err.message : String(err);
-      for (const item of batch) {
-        stats.failed++;
-        stats.errors.push({ id: item.id, error: msg });
-        updateStatus(db, entityType, item.id, 'failed');
-      }
+      stats.failed++;
+      stats.errors.push({ id: row.id, error: msg });
+      updateStatus(db, entityType, row.id, 'failed');
     }
 
     if (onProgress) {

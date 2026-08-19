@@ -113,11 +113,36 @@ export function querySimilar(
   topK: number,
 ): Array<{ id: string; distance: number }> {
   const tableName = VECTOR_TABLES[entityType];
-  return db
+  const candidates = db
     .prepare(
       `SELECT id, distance FROM ${tableName} WHERE embedding MATCH ? ORDER BY distance LIMIT ?`,
     )
-    .all(vecToBlob(queryVector), topK) as Array<{ id: string; distance: number }>;
+    .all(vecToBlob(queryVector), topK * 10) as Array<{ id: string; distance: number }>;
+
+  if (candidates.length === 0) return [];
+
+  // Map chunk IDs to entity IDs
+  const placeholders = candidates.map(() => '?').join(', ');
+  const metaRows = db
+    .prepare(`SELECT id as chunk_id, entity_id FROM embedding_metadata WHERE id IN (${placeholders})`)
+    .all(...candidates.map(c => c.id)) as Array<{ chunk_id: string; entity_id: string }>;
+  const metaMap = new Map(metaRows.map(r => [r.chunk_id, r.entity_id]));
+
+  const result: Array<{ id: string; distance: number }> = [];
+  const seenEntities = new Set<string>();
+
+  for (const c of candidates) {
+    const entityId = metaMap.get(c.id);
+    if (!entityId) continue;
+    
+    if (!seenEntities.has(entityId)) {
+      seenEntities.add(entityId);
+      result.push({ id: entityId, distance: c.distance });
+      if (result.length === topK) break;
+    }
+  }
+
+  return result;
 }
 
 /**
@@ -157,10 +182,20 @@ export function rebuildVectorStore(
 export function deleteEmbedding(
   db: Database.Database,
   entityType: EmbeddingEntityType,
-  id: string,
+  id: string, // this is the entity_id
 ): void {
   const tableName = VECTOR_TABLES[entityType];
-  db.prepare(`DELETE FROM ${tableName} WHERE id = ?`).run(id);
+  
+  // Find all chunk IDs for this entity
+  const chunkRows = db.prepare(`SELECT id FROM embedding_metadata WHERE entity_id = ? AND entity_type = ?`).all(id, entityType) as Array<{ id: string }>;
+  if (chunkRows.length === 0) return;
+  
+  const chunkIds = chunkRows.map(r => r.id);
+  const placeholders = chunkIds.map(() => '?').join(',');
+  
+  db.prepare(`DELETE FROM ${tableName} WHERE id IN (${placeholders})`).run(...chunkIds);
+  db.prepare(`DELETE FROM embedding_metadata WHERE entity_id = ? AND entity_type = ?`).run(id, entityType);
+  db.prepare(`DELETE FROM entity_chunks WHERE entity_id = ? AND entity_type = ?`).run(id, entityType);
 }
 
 /**
@@ -216,22 +251,45 @@ export function findSimilar(
        ORDER BY v.distance
        LIMIT ?`,
     )
-    .all(vecToBlob(queryVector), limit * 2) as Array<{ id: string; distance: number }>;
+    .all(vecToBlob(queryVector), limit * 10) as Array<{ id: string; distance: number }>;
 
-  const within = candidates.filter(c => c.distance <= maxDistance).slice(0, limit);
+  const within = candidates.filter(c => c.distance <= maxDistance);
   if (within.length === 0) return [];
 
-  // Batch-fetch metadata from the entity table.
-  const metaStmt = db.prepare(
-    `SELECT id, metadata FROM ${entityTable} WHERE id IN (${within.map(() => '?').join(', ')})`,
-  );
-  const metaRows = metaStmt.all(...within.map(c => c.id)) as Array<{ id: string; metadata: string | null }>;
-  const metaMap = new Map(metaRows.map(r => [r.id, r.metadata]));
+  // Map chunk IDs to entity IDs
+  const placeholders = within.map(() => '?').join(', ');
+  const metaRows = db
+    .prepare(`SELECT id as chunk_id, entity_id FROM embedding_metadata WHERE id IN (${placeholders})`)
+    .all(...within.map(c => c.id)) as Array<{ chunk_id: string; entity_id: string }>;
+  const metaMap = new Map(metaRows.map(r => [r.chunk_id, r.entity_id]));
 
-  return within.map(c => ({
+  const uniqueEntities = [];
+  const seenEntities = new Set<string>();
+  
+  for (const c of within) {
+    const entityId = metaMap.get(c.id);
+    if (!entityId) continue;
+    if (!seenEntities.has(entityId)) {
+      seenEntities.add(entityId);
+      uniqueEntities.push({ id: entityId, distance: c.distance });
+      if (uniqueEntities.length === limit) break;
+    }
+  }
+
+  if (uniqueEntities.length === 0) return [];
+
+  // Batch-fetch metadata from the entity table.
+  const entityPlaceholders = uniqueEntities.map(() => '?').join(', ');
+  const entityStmt = db.prepare(
+    `SELECT id, metadata FROM ${entityTable} WHERE id IN (${entityPlaceholders})`,
+  );
+  const entityRows = entityStmt.all(...uniqueEntities.map(c => c.id)) as Array<{ id: string; metadata: string | null }>;
+  const entityMap = new Map(entityRows.map(r => [r.id, r.metadata]));
+
+  return uniqueEntities.map(c => ({
     id: c.id,
     distance: c.distance,
-    metadata: metaMap.get(c.id) ?? null,
+    metadata: entityMap.get(c.id) ?? null,
   }));
 }
 

@@ -10,6 +10,7 @@ export interface MigrationResult {
   v11Applied: boolean;
   v12Applied: boolean;
   v13Applied: boolean;
+  v14Applied: boolean;
 }
 
 /**
@@ -109,7 +110,13 @@ export function runMigrations(db: Database.Database): MigrationResult {
     v13Applied = true;
   }
 
-  return { v6Applied, v7Applied, v8Applied, v9Applied, v10Applied, v11Applied, v12Applied, v13Applied };
+  let v14Applied = false;
+  if (currentVersion < 14) {
+    applyV14(db);
+    v14Applied = true;
+  }
+
+  return { v6Applied, v7Applied, v8Applied, v9Applied, v10Applied, v11Applied, v12Applied, v13Applied, v14Applied };
 }
 
 function getCurrentVersion(db: Database.Database): number {
@@ -356,4 +363,37 @@ function applyV13(db: Database.Database): void {
   `);
 
   db.prepare('INSERT OR IGNORE INTO schema_version (version) VALUES (?)').run(13);
+}
+
+function applyV14(db: Database.Database): void {
+  // Add entity_chunks table for parent/child RAG
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS entity_chunks (
+      id          TEXT PRIMARY KEY,
+      entity_type TEXT NOT NULL CHECK(entity_type IN ('insight', 'message')),
+      entity_id   TEXT NOT NULL,
+      chunk_index INTEGER NOT NULL,
+      content     TEXT NOT NULL
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_entity_chunks_entity ON entity_chunks(entity_type, entity_id);`);
+
+  // Add parent_chunk_id and entity_id to embedding_metadata
+  try {
+    db.exec(`ALTER TABLE embedding_metadata ADD COLUMN parent_chunk_id TEXT`);
+  } catch (e: any) {
+    if (!e.message?.includes('duplicate column')) throw e;
+  }
+  try {
+    db.exec(`ALTER TABLE embedding_metadata ADD COLUMN entity_id TEXT NOT NULL DEFAULT ''`);
+  } catch (e: any) {
+    if (!e.message?.includes('duplicate column')) throw e;
+  }
+
+  // Set embedding_status of all messages back to 'pending' to force re-chunking
+  db.exec(`UPDATE messages SET embedding_status = 'pending'`);
+  // And clean up existing metadata for messages (vec_messages will be orphaned/overwritten)
+  db.exec(`DELETE FROM embedding_metadata WHERE entity_type = 'message'`);
+
+  db.prepare('INSERT OR IGNORE INTO schema_version (version) VALUES (?)').run(14);
 }

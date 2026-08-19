@@ -124,13 +124,15 @@ CREATE INDEX IF NOT EXISTS idx_insights_embedding_status ON insights(embedding_s
 -- Embedding metadata (tracks provenance for computed embeddings)
 -- ============================================================
 CREATE TABLE IF NOT EXISTS embedding_metadata (
-  id            TEXT PRIMARY KEY,
-  entity_type   TEXT NOT NULL CHECK(entity_type IN ('insight', 'message')),
-  model         TEXT NOT NULL,
-  dim           INTEGER NOT NULL,
-  source_text   TEXT NOT NULL,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
+  id              TEXT PRIMARY KEY,
+  entity_type     TEXT NOT NULL CHECK(entity_type IN ('insight', 'message')),
+  entity_id       TEXT NOT NULL,
+  model           TEXT NOT NULL,
+  dim             INTEGER NOT NULL,
+  source_text     TEXT NOT NULL,
+  parent_chunk_id TEXT,
+  created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_embedding_metadata_type ON embedding_metadata(entity_type);
 CREATE INDEX IF NOT EXISTS idx_embedding_metadata_model ON embedding_metadata(model);
@@ -148,8 +150,20 @@ CREATE TABLE IF NOT EXISTS usage_stats (
   sessions_with_usage   INTEGER DEFAULT 0,
   last_updated_at       TEXT DEFAULT (datetime('now'))
 );
+
+-- ============================================================
+-- Entity Chunks (for Parent/Child RAG)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS entity_chunks (
+  id          TEXT PRIMARY KEY,
+  entity_type TEXT NOT NULL CHECK(entity_type IN ('insight', 'message')),
+  entity_id   TEXT NOT NULL,
+  chunk_index INTEGER NOT NULL,
+  content     TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_entity_chunks_entity ON entity_chunks(entity_type, entity_id);
 `;
 
-export const CURRENT_SCHEMA_VERSION = 13;
+export const CURRENT_SCHEMA_VERSION = 14;
 
 export { runMigrations } from './migrate.js';

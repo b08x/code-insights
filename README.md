@@ -24,6 +24,7 @@
 - **Rage Loop & Friction Detection** — Identify temporal looping and context stasis ("Sunk Cost Alerts") via SFL (Systemic Functional Linguistics) criteria.
 - **AI Fluency Scoring** — Evaluate your prompts using multi-dimensional prompt quality metrics.
 - **Vector-Based Recurring Insights** — Group similar insights using local `sqlite-vec` KNN search + MMR deduplication (~90% token savings).
+- **Hierarchical RAG Chunking Strategy** — Intelligently segment code and session history to avoid context length errors and dramatically improve retrieval precision.
 - **Privacy First** — Completely local SQLite backend with zero external dependencies (unless configuring cloud LLM models).
 
 ---

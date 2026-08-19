@@ -84,6 +84,15 @@ Default embedding config:
 - `embedding_metadata` table for provenance
 - `vec_insights` and `vec_messages` virtual tables via sqlite-vec
 
+### Hierarchical Parent/Child Chunking Strategy
+
+To avoid LLM context length errors during backfill and to ensure high-quality semantic retrieval, the system uses a hierarchical chunking strategy for long messages:
+
+- **Parent Chunks**: Messages are split into parent chunks with a maximum of 4000 characters. These chunks preserve the broader context and are stored in the `entity_chunks` table.
+- **Child Chunks**: The parent chunks are further split into smaller child chunks with a maximum of 512 characters. The embedding vectors are computed on these child chunks, and their provenance is tracked in the `embedding_metadata` table.
+
+This approach guarantees that the LLM is fed safely sized tokens during embedding generation while retaining the ability to return substantial context during RAG.
+
 ### CLI Commands
 
 | Command | Purpose |

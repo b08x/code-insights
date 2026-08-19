@@ -24,6 +24,7 @@ export interface EmbeddingResult {
   sourceText: string;         // the text that was embedded
   model: string;
   dim: number;
+  parentChunkId?: string;
 }
 
 export type EmbeddingEntityType = 'insight' | 'message';
