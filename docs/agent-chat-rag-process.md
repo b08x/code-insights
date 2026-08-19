@@ -236,17 +236,17 @@ function execMcpCli(toolName: string, args: Record<string, any>): string {
 ```typescript
 // cli/src/embeddings/types.ts
 interface EmbeddingConfig {
-  model: string;              // 'qwen3-embedding:0.6b'
+  model: string;              // 'embeddinggemma:latest'
   baseUrl: string;            // 'http://tinybot:11434'
-  dim: number;                // 1024
+  dim: number;                // 768
   batchSize: number;          // 50
   rateLimitPerMinute: number; // 0 = disabled
 }
 
 const DEFAULT_EMBEDDING_CONFIG: EmbeddingConfig = {
-  model: 'qwen3-embedding:0.6b',
+  model: 'embeddinggemma:latest',
   baseUrl: process.env.OLLAMA_BASE_URL || 'http://tinybot:11434',
-  dim: 1024,
+  dim: 768,
   batchSize: 50,
   rateLimitPerMinute: 0,
 };
@@ -290,13 +290,13 @@ const texts = batch.map(b =>
 -- vec_insights: for insight embeddings
 CREATE VIRTUAL TABLE vec_insights USING vec0(
   id TEXT PRIMARY KEY,
-  embedding float[1024]
+  embedding float[768]
 );
 
 -- vec_messages: for message embeddings
 CREATE VIRTUAL TABLE vec_messages USING vec0(
   id TEXT PRIMARY KEY,
-  embedding float[1024]
+  embedding float[768]
 );
 ```
 

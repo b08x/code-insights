@@ -3,17 +3,17 @@
 // enable semantic retrieval, deduplication, and RAG context injection.
 
 export interface EmbeddingConfig {
-  model: string;              // e.g. 'qwen3-embedding:0.6b'
+  model: string;              // e.g. 'embeddinggemma:latest'
   baseUrl: string;            // e.g. 'http://tinybot:11434'
-  dim: number;                // 1024 for qwen3-embedding
+  dim: number;                // 768 for embeddinggemma
   batchSize: number;          // 50 — Ollama /api/embed accepts multiple inputs
   rateLimitPerMinute: number; // 0 = disabled
 }
 
 export const DEFAULT_EMBEDDING_CONFIG: EmbeddingConfig = {
-  model: 'qwen3-embedding:0.6b',
+  model: 'embeddinggemma:latest',
   baseUrl: process.env.OLLAMA_BASE_URL || 'http://tinybot:11434',
-  dim: 1024,
+  dim: 768,
   batchSize: 50,
   rateLimitPerMinute: 0,
 };

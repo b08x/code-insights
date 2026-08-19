@@ -1,9 +1,9 @@
 /**
- * sqlite-vec POC — verify integration with better-sqlite3 + Ollama qwen3-embedding
+ * sqlite-vec POC — verify integration with better-sqlite3 + Ollama embeddinggemma
  *
  * Tests:
  * 1. Load sqlite-vec extension
- * 2. Create vec0 virtual table with float[1024]
+ * 2. Create vec0 virtual table with float[768]
  * 3. Insert real vectors from Ollama
  * 4. KNN query returns correct neighbors
  * 5. Persistence: close + reopen, KNN still works
@@ -15,8 +15,8 @@ import Database from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
 
 const OLLAMA_URL = process.env.OLLAMA_BASE_URL ?? 'http://tinybot:11434';
-const EMBED_MODEL = process.env.EMBEDDING_MODEL ?? 'qwen3-embedding:0.6b';
-const DIM = 1024;
+const EMBED_MODEL = process.env.EMBEDDING_MODEL ?? 'embeddinggemma:latest';
+const DIM = 768;
 const BENCHMARK_SIZE = 15000;
 
 async function embed(text: string): Promise<Float32Array> {
@@ -47,7 +47,7 @@ async function main() {
   console.log(`    vec_version = ${ver.v}`);
 
   // ── Step 2: Create virtual table ────────────────────────────────────
-  console.log('[2] Creating vec0 virtual table (float[1024])...');
+  console.log(`[2] Creating vec0 virtual table (float[${DIM}])...`);
   db.exec(`
     CREATE VIRTUAL TABLE IF NOT EXISTS vec_test USING vec0(
       id TEXT PRIMARY KEY,
@@ -162,7 +162,7 @@ async function main() {
   console.log(`sqlite-vec version:     ${ver.v}`);
   console.log(`Extension load:         PASS`);
   console.log(`Virtual table (vec0):   PASS`);
-  console.log(`Ollama embed (1024-dim): PASS`);
+  console.log(`Ollama embed (${DIM}-dim): PASS`);
   console.log(`KNN query:              PASS`);
   console.log(`Persistence:            PASS`);
   console.log(`Insert ${inserted} vectors:     ${insertMs.toFixed(0)}ms`);

@@ -209,7 +209,7 @@ code-insights optimize compare
 Code Insights uses local vector and hybrid search to match similar insights and find related messages from your history.
 
 ```bash
-# Index messages and insights with Ollama (qwen3-embedding:0.6b)
+# Index messages and insights with Ollama (embeddinggemma:latest)
 code-insights embeddings backfill --entity messages
 
 # Verify coverage and storage stats

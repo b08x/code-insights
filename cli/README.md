@@ -271,14 +271,14 @@ code-insights queue prune --days 14
 
 ### Embeddings
 
-Manage vector embeddings for semantic search over insights and messages. Requires an Ollama instance with an embedding model (e.g., `qwen3-embedding:0.6b`).
+Manage vector embeddings for semantic search over insights and messages. Requires an Ollama instance with an embedding model (e.g., `embeddinggemma:latest`).
 
 ```bash
 # Backfill pending embeddings (insights, messages, or both)
 code-insights embeddings backfill
 code-insights embeddings backfill --entity insights
 code-insights embeddings backfill --entity messages
-code-insights embeddings backfill --model qwen3-embedding:0.6b --batch-size 50
+code-insights embeddings backfill --model embeddinggemma:latest --batch-size 50
 
 # Show embedding coverage and vector index stats
 code-insights embeddings status
@@ -295,7 +295,7 @@ code-insights embeddings search "error handling patterns" --top-k 10
 
 **Ollama configuration:**
 - Set `OLLAMA_BASE_URL` environment variable to point to your Ollama instance (default: `http://tinybot:11434`)
-- The default embedding model is `qwen3-embedding:0.6b` (1024-dim)
+- The default embedding model is `embeddinggemma:latest` (768-dim)
 
 ### Prompt Optimization (GEPA)
 

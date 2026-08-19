@@ -51,7 +51,7 @@ export interface InsightEmbedding {
   title: string;
   summary: string;
   type: string;
-  /** The embedding vector (dim=1024 for qwen3-embedding). */
+  /** The embedding vector (dim=768 for embeddinggemma). */
   vector: Float32Array;
 }
 

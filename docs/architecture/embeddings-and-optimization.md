@@ -42,7 +42,7 @@ Enable semantic search and deduplication over insights and messages without send
 │  │  ┌────────────────┐  ┌────────────────┐              │    │
 │  │  │ vec_insights   │  │ vec_messages   │              │    │
 │  │  │ (id, embedding │  │ (id, embedding │              │    │
-│  │  │  float[1024])   │  │  float[1024])   │              │    │
+│  │  │  float[768])   │  │  float[768])   │              │    │
 │  │  └────────────────┘  └────────────────┘              │    │
 │  │  KNN search via sqlite-vec virtual tables            │    │
 │  └──────────────────────────────────────────────────────┘    │
@@ -70,9 +70,9 @@ Enable semantic search and deduplication over insights and messages without send
 Default embedding config:
 ```typescript
 {
-  model: 'qwen3-embedding:0.6b',
+  model: 'embeddinggemma:latest',
   baseUrl: process.env.OLLAMA_BASE_URL || 'http://tinybot:11434',
-  dim: 1024,
+  dim: 768,
   batchSize: 50,
   rateLimitPerMinute: 0  // disabled
 }

@@ -265,7 +265,7 @@ export async function saveInsightsToDbWithDedup(
 
   // Ensure vector extension is loaded and table exists.
   loadVectorExtensionFn(db);
-  createVectorTableFn(db, 'insight', 1024);
+  createVectorTableFn(db, 'insight', 768);
 
   // Fast path: no existing embeddings → skip dedup entirely.
   const existingCount = db.prepare("SELECT COUNT(*) as n FROM vec_insights").get() as { n: number };

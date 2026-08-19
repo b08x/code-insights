@@ -30,7 +30,7 @@ import {
 
 // ─── Helpers ─────────────────────────────────────────────────────────
 
-const EMBEDDING_DIM = 1024;
+const EMBEDDING_DIM = 768;
 
 /** Create an in-memory SQLite DB with insights table + vector tables. */
 function makeTestDb(): Database.Database {

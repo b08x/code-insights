@@ -505,7 +505,7 @@ export function buildEmbeddingsCommand(): Command {
   embeddingsCmd
     .command('backfill')
     .description('Backfill pending embeddings via Ollama')
-    .option('--model <name>', 'Embedding model (default: qwen3-embedding:0.6b)')
+    .option('--model <name>', 'Embedding model (default: embeddinggemma:latest)')
     .option('--batch-size <n>', 'Batch size (default: 50)', '50')
     .option('--entity <type>', 'Entity type: insights, messages, or both (default: both)', 'both')
     .option('-q, --quiet', 'Suppress output')
@@ -546,7 +546,7 @@ export function buildEmbeddingsCommand(): Command {
     .command('search <query>')
     .description('KNN similarity search over insight embeddings')
     .option('--top-k <n>', 'Number of results (default: 5)', '5')
-    .option('--model <name>', 'Embedding model for query (default: qwen3-embedding:0.6b)')
+    .option('--model <name>', 'Embedding model for query (default: embeddinggemma:latest)')
     .option('-q, --quiet', 'Suppress output')
     .action((query: string, opts) =>
       embeddingsSearchCommand(query, {
