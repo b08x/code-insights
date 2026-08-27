@@ -69,9 +69,15 @@ export default function PatternsPage() {
     };
   }, []);
 
+  const handleWeekChange = useCallback((week: string) => {
+    setCurrentWeek(week);
+    setReflectResults(null);
+  }, []);
+
   /**
-   * Auto-jump heuristic:
-   * On initial load, jump to the most recent week that has a snapshot.
+   * Auto-navigation:
+   * If the user lands on the page and the current week has no snapshot but an older week does,
+   * automatically jump to the most recent week that actually has data.
    * This avoids showing the current week with no data when reflections exist for recent weeks.
    * Only runs once (when weeks first loads) — tracked by whether currentWeek is still the computed default.
    */
@@ -99,11 +105,6 @@ export default function PatternsPage() {
       setReflectResults(snapshotData.snapshot.results);
     }
   }, [snapshotData, reflectResults, generating]);
-
-  const handleWeekChange = useCallback((week: string) => {
-    setCurrentWeek(week);
-    setReflectResults(null);
-  }, []);
 
   const handleProjectChange = useCallback((projectId: string | undefined) => {
     setSelectedProject(projectId);
