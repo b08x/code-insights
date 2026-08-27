@@ -79,13 +79,23 @@ export async function analyzePromptQuality(
     };
 
     options?.onProgress?.({ phase: 'analyzing' });
+    
+    const timeoutMs = 120000; // 2 minutes maximum
+    const timeoutSignal = AbortSignal.timeout(timeoutMs);
+    let fetchSignal = timeoutSignal;
+    if (options?.signal) {
+      fetchSignal = (AbortSignal as any).any 
+        ? (AbortSignal as any).any([options.signal, timeoutSignal])
+        : timeoutSignal;
+    }
+
     const response = await client.chat([
       { role: 'system', content: SHARED_ANALYST_SYSTEM_PROMPT },
       { role: 'user', content: [
         buildCacheableConversationBlock(analysisInput),
         { type: 'text' as const, text: buildPromptQualityInstructions(session.project_name, sessionShape, sessionMeta) },
       ] },
-    ], { signal: options?.signal });
+    ], { signal: fetchSignal });
 
     const parsed = parsePromptQualityResponse(response.content);
     if (!parsed.success) {

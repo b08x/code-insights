@@ -127,9 +127,10 @@ async function backfillBatch(
   sessionIds: string[],
   offset: number,
   total: number,
+  spinner: any,
   signal?: AbortSignal
 ): Promise<{ completed: number; failed: number }> {
-  return backfillBatchToEndpoint(baseUrl, '/api/facets/backfill', sessionIds, offset, total, signal);
+  return backfillBatchToEndpoint(baseUrl, '/api/facets/backfill', sessionIds, offset, total, spinner, signal);
 }
 
 async function backfillPqBatch(
@@ -137,9 +138,10 @@ async function backfillPqBatch(
   sessionIds: string[],
   offset: number,
   total: number,
+  spinner: any,
   signal?: AbortSignal
 ): Promise<{ completed: number; failed: number }> {
-  return backfillBatchToEndpoint(baseUrl, '/api/facets/backfill-pq', sessionIds, offset, total, signal);
+  return backfillBatchToEndpoint(baseUrl, '/api/facets/backfill-pq', sessionIds, offset, total, spinner, signal);
 }
 
 async function backfillBatchToEndpoint(
@@ -148,6 +150,7 @@ async function backfillBatchToEndpoint(
   sessionIds: string[],
   offset: number,
   total: number,
+  spinner: any,
   signal?: AbortSignal
 ): Promise<{ completed: number; failed: number }> {
   const res = await fetch(`${baseUrl}${endpoint}`, {
@@ -171,8 +174,6 @@ async function backfillBatchToEndpoint(
   let currentData = '';
   let result = { completed: 0, failed: 0 };
 
-  const spinner = ora({ text: `  Backfilling ${offset + 1}-${offset + sessionIds.length} of ${total}...`, indent: 2 }).start();
-
   try {
     while (true) {
       const { done, value } = await reader.read();
@@ -193,7 +194,6 @@ async function backfillBatchToEndpoint(
               spinner.text = `  Backfilling ${offset + processed + 1} of ${total}...`;
             } else if (currentEvent === 'complete') {
               result = { completed: data.completed as number, failed: data.failed as number };
-              spinner.succeed(`  Batch complete: ${result.completed} extracted, ${result.failed} failed`);
             }
           } catch { /* skip malformed */ }
           currentEvent = '';
@@ -333,7 +333,7 @@ async function reflectAction(options: {
   console.log();
 }
 
-const BACKFILL_BATCH_SIZE = 200;
+const BACKFILL_BATCH_SIZE = 1;
 
 async function backfillAction(options: {
   period?: string;
@@ -407,12 +407,16 @@ async function backfillAction(options: {
   let totalCompleted = 0;
   let totalFailed = 0;
 
+  const spinner = ora({ text: `  Backfilling 1 of ${count}...`, indent: 2 }).start();
+
   for (let i = 0; i < sessionIds.length; i += BACKFILL_BATCH_SIZE) {
     const batch = sessionIds.slice(i, i + BACKFILL_BATCH_SIZE);
-    const { completed, failed } = await backfillBatch(baseUrl, batch, i, sessionIds.length);
+    const { completed, failed } = await backfillBatch(baseUrl, batch, i, sessionIds.length, spinner);
     totalCompleted += completed;
     totalFailed += failed;
   }
+
+  spinner.stop();
 
   console.log();
   console.log(chalk.bold('  Summary'));
@@ -495,12 +499,16 @@ async function backfillPqAction(options: {
   let totalCompleted = 0;
   let totalFailed = 0;
 
+  const spinner = ora({ text: `  Backfilling 1 of ${count}...`, indent: 2 }).start();
+
   for (let i = 0; i < sessionIds.length; i += BACKFILL_BATCH_SIZE) {
     const batch = sessionIds.slice(i, i + BACKFILL_BATCH_SIZE);
-    const { completed, failed } = await backfillPqBatch(baseUrl, batch, i, sessionIds.length);
+    const { completed, failed } = await backfillPqBatch(baseUrl, batch, i, sessionIds.length, spinner);
     totalCompleted += completed;
     totalFailed += failed;
   }
+
+  spinner.stop();
 
   console.log();
   console.log(chalk.bold('  Summary'));

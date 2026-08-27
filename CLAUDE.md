@@ -25,3 +25,25 @@
 You have full codebase knowledge from the files above.
 Do NOT re-read source files to understand structure — use memory files.
 If something seems outdated, flag it rather than re-analyzing.
+
+## Development Guidelines
+
+### Resolving Node Shared Library Errors (libnghttp3)
+
+**Context**: When running Node installed via Linuxbrew (`~/.local/apps/homebrew/bin/node`), it may fail to start with `error while loading shared libraries: libnghttp3.so.X: cannot open shared object file: No such file or directory`.
+
+**Pattern**: Force Homebrew to recreate the missing symlinks for the upgraded dependency.
+```yaml
+approach: Run `brew link --overwrite libnghttp3` (or the missing library) to restore broken symlinks.
+validation: Run `node -v` or `brew missing` to confirm the shared library is correctly resolved.
+examples:
+  - case: Node fails to start due to missing `libnghttp3.so.9` after a brew upgrade cleanup.
+    implementation: /home/b08x/.local/apps/homebrew/bin/brew link --overwrite libnghttp3
+```
+
+**Avoid**: 
+- Reinstalling Node completely without checking if it's just a broken symlink for a dependency.
+- Manually copying or creating symlinks in the Homebrew `lib` directory.
+
+**Confidence**: High
+**Source**: 2026-08-19 (Homebrew dependency upgrade orphaned symlink resolution)
