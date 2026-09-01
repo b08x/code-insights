@@ -32,6 +32,11 @@ import {
 
 const EMBEDDING_DIM = 768;
 
+function insertTestEmbedding(db: Database.Database, entityType: string, id: string, vec: Float32Array) {
+  insertEmbedding(db, entityType as any, id, vec);
+  db.prepare(`INSERT INTO embedding_metadata (id, entity_type, entity_id, model, dim, source_text) VALUES (?, ?, ?, 'test', 768, 'test')`).run(id, entityType, id);
+}
+
 /** Create an in-memory SQLite DB with insights table + vector tables. */
 function makeTestDb(): Database.Database {
   const db = new Database(':memory:');
@@ -70,6 +75,20 @@ function makeTestDb(): Database.Database {
     CREATE VIRTUAL TABLE IF NOT EXISTS vec_messages USING vec0(
       id TEXT PRIMARY KEY,
       embedding float[${EMBEDDING_DIM}]
+    )
+  `);
+
+  db.exec(`
+    CREATE TABLE embedding_metadata (
+      id TEXT PRIMARY KEY,
+      entity_type TEXT NOT NULL,
+      entity_id TEXT NOT NULL,
+      model TEXT NOT NULL,
+      dim INTEGER NOT NULL,
+      source_text TEXT NOT NULL,
+      parent_chunk_id TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     )
   `);
 
@@ -145,8 +164,8 @@ describe('querySimilarFiltered — sqlite-vec retrieval query', () => {
     const vecA = unitVectorAt(0);
     const vecB = unitVectorAt(1);
 
-    insertEmbedding(db, 'insight', 'insight-proj1-a', vecA);
-    insertEmbedding(db, 'insight', 'insight-proj2-a', vecB); // different vector, different project
+    insertTestEmbedding(db, 'insight', 'insight-proj1-a', vecA);
+    insertTestEmbedding(db, 'insight', 'insight-proj2-a', vecB); // different vector, different project
 
     // Insert corresponding insight rows with project_ids
     db.prepare(`INSERT INTO insights (id, session_id, project_id, project_name, type, title, content, summary, bullets, confidence, source, metadata, timestamp, created_at, scope, analysis_version, embedding_status)
@@ -163,7 +182,7 @@ describe('querySimilarFiltered — sqlite-vec retrieval query', () => {
 
   it('returns empty when no insights match the project filter', () => {
     const vec = unitVectorAt(0);
-    insertEmbedding(db, 'insight', 'insight-other', vec);
+    insertTestEmbedding(db, 'insight', 'insight-other', vec);
     db.prepare(`INSERT INTO insights (id, session_id, project_id, project_name, type, title, content, summary, bullets, confidence, source, metadata, timestamp, created_at, scope, analysis_version, embedding_status)
       VALUES ('insight-other', 's1', 'other-project', 'Other', 'summary', 'Title', 'Content', 'Summary', '[]', 0.9, 'llm', null, '2024-01-01', '2024-01-01', 'session', '3.0.0', 'computed')`).run();
 
@@ -176,7 +195,7 @@ describe('querySimilarFiltered — sqlite-vec retrieval query', () => {
     for (let i = 0; i < 5; i++) {
       const vec = unitVectorAt(i);
       const id = `insight-p1-${i}`;
-      insertEmbedding(db, 'insight', id, vec);
+      insertTestEmbedding(db, 'insight', id, vec);
       db.prepare(`INSERT INTO insights (id, session_id, project_id, project_name, type, title, content, summary, bullets, confidence, source, metadata, timestamp, created_at, scope, analysis_version, embedding_status)
         VALUES (?, 's1', 'proj1', 'Project One', 'summary', 'Title', 'Content', 'Summary', '[]', 0.9, 'llm', null, '2024-01-01', '2024-01-01', 'session', '3.0.0', 'computed')`).run(id);
     }
@@ -192,7 +211,7 @@ describe('querySimilarFiltered — sqlite-vec retrieval query', () => {
     for (let i = 0; i < 4; i++) {
       const vec = unitVectorAt(i * 10); // positions 0, 10, 20, 30
       const id = `insight-dist-${i}`;
-      insertEmbedding(db, 'insight', id, vec);
+      insertTestEmbedding(db, 'insight', id, vec);
       db.prepare(`INSERT INTO insights (id, session_id, project_id, project_name, type, title, content, summary, bullets, confidence, source, metadata, timestamp, created_at, scope, analysis_version, embedding_status)
         VALUES (?, 's1', 'proj1', 'Project One', 'summary', 'Title', 'Content', 'Summary', '[]', 0.9, 'llm', null, '2024-01-01', '2024-01-01', 'session', '3.0.0', 'computed')`).run(id);
     }
@@ -208,7 +227,7 @@ describe('querySimilarFiltered — sqlite-vec retrieval query', () => {
 
   it('falls back to unfiltered query for non-insight entity types', () => {
     const vec = unitVectorAt(0);
-    insertEmbedding(db, 'message', 'msg-1', vec);
+    insertTestEmbedding(db, 'message', 'msg-1', vec);
 
     // For 'message' entity type, querySimilarFiltered delegates to querySimilar
     // (no project_id filtering since messages table doesn't have it in the same way)
@@ -345,7 +364,7 @@ describe('findSimilar — semantic deduplication', () => {
 
   it('detects exact duplicate (identical vector, distance ≈ 0)', () => {
     const vec = unitVectorAt(0);
-    insertEmbedding(db, 'insight', 'existing-1', vec);
+    insertTestEmbedding(db, 'insight', 'existing-1', vec);
     db.prepare(`INSERT INTO insights (id, session_id, project_id, project_name, type, title, content, summary, bullets, confidence, source, metadata, timestamp, created_at, scope, analysis_version, embedding_status)
       VALUES ('existing-1', 's1', 'p1', 'proj', 'summary', 'Title', 'Content', 'Summary', '[]', 0.9, 'llm', '{"link_ids": ["old-1"]}', '2024-01-01', '2024-01-01', 'session', '3.0.0', 'computed')`).run();
 
@@ -357,7 +376,7 @@ describe('findSimilar — semantic deduplication', () => {
 
   it('returns empty for dissimilar vectors (below threshold)', () => {
     const v1 = unitVectorAt(0);
-    insertEmbedding(db, 'insight', 'orig-1', v1);
+    insertTestEmbedding(db, 'insight', 'orig-1', v1);
 
     const v2 = unitVectorAt(500); // orthogonal
     const results = findSimilar(db, 'insight', v2, 0.90, 5);
@@ -366,7 +385,7 @@ describe('findSimilar — semantic deduplication', () => {
 
   it('returns metadata from the insights table', () => {
     const vec = unitVectorAt(0);
-    insertEmbedding(db, 'insight', 'with-meta', vec);
+    insertTestEmbedding(db, 'insight', 'with-meta', vec);
     db.prepare(`INSERT INTO insights (id, session_id, project_id, project_name, type, title, content, summary, bullets, confidence, source, metadata, timestamp, created_at, scope, analysis_version, embedding_status)
       VALUES ('with-meta', 's1', 'p1', 'proj', 'summary', 'Title', 'Content', 'Summary', '[]', 0.9, 'llm', '{"key": "value"}', '2024-01-01', '2024-01-01', 'session', '3.0.0', 'computed')`).run();
 
@@ -376,7 +395,7 @@ describe('findSimilar — semantic deduplication', () => {
 
   it('returns null metadata when insight row is missing', () => {
     const vec = unitVectorAt(0);
-    insertEmbedding(db, 'insight', 'orphan-1', vec);
+    insertTestEmbedding(db, 'insight', 'orphan-1', vec);
     // No insight row inserted
 
     const results = findSimilar(db, 'insight', vec, 0.90, 5);
@@ -388,7 +407,7 @@ describe('findSimilar — semantic deduplication', () => {
     // Insert 5 vectors at different positions
     for (let i = 0; i < 5; i++) {
       const vec = unitVectorAt(i);
-      insertEmbedding(db, 'insight', `insight-${i}`, vec);
+      insertTestEmbedding(db, 'insight', `insight-${i}`, vec);
     }
 
     const queryVec = unitVectorAt(0);
@@ -399,7 +418,7 @@ describe('findSimilar — semantic deduplication', () => {
   it('converts similarity threshold to distance correctly', () => {
     // Insert a vector
     const v1 = unitVectorAt(0);
-    insertEmbedding(db, 'insight', 'target', v1);
+    insertTestEmbedding(db, 'insight', 'target', v1);
 
     // Query with identical vector — distance = 0, similarity = 1.0
     // Threshold 0.90 means maxDistance = 0.10
@@ -463,8 +482,8 @@ describe('Retrieval → Prompt → Dedup integration', () => {
     // Step 1: Insert existing insights with embeddings
     const vec1 = unitVectorAt(0);
     const vec2 = unitVectorAt(10);
-    insertEmbedding(db, 'insight', 'ret-1', vec1);
-    insertEmbedding(db, 'insight', 'ret-2', vec2);
+    insertTestEmbedding(db, 'insight', 'ret-1', vec1);
+    insertTestEmbedding(db, 'insight', 'ret-2', vec2);
 
     db.prepare(`INSERT INTO insights (id, session_id, project_id, project_name, type, title, content, summary, bullets, confidence, source, metadata, timestamp, created_at, scope, analysis_version, embedding_status)
       VALUES ('ret-1', 's1', 'proj1', 'My Project', 'decision', 'Use Vitest', 'Chose Vitest for speed', 'Summary', '[]', 0.85, 'llm', null, '2024-01-01', '2024-01-01', 'session', '3.0.0', 'computed')`).run();
@@ -505,8 +524,8 @@ describe('Retrieval → Prompt → Dedup integration', () => {
   it('insights from different projects are not mixed in retrieval', () => {
     // Insert insights for two projects
     const vec = unitVectorAt(0);
-    insertEmbedding(db, 'insight', 'p1-insight', vec);
-    insertEmbedding(db, 'insight', 'p2-insight', vec); // same vector, different project
+    insertTestEmbedding(db, 'insight', 'p1-insight', vec);
+    insertTestEmbedding(db, 'insight', 'p2-insight', vec); // same vector, different project
 
     db.prepare(`INSERT INTO insights (id, session_id, project_id, project_name, type, title, content, summary, bullets, confidence, source, metadata, timestamp, created_at, scope, analysis_version, embedding_status)
       VALUES ('p1-insight', 's1', 'proj1', 'Project One', 'decision', 'P1 Decision', 'Content', 'Summary', '[]', 0.9, 'llm', null, '2024-01-01', '2024-01-01', 'session', '3.0.0', 'computed')`).run();

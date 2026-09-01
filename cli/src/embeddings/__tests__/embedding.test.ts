@@ -56,7 +56,25 @@ function freshDb(): Database.Database {
   const db = new Database(':memory:');
   loadVectorExtension(db);
   createAllVectorTables(db, 768);
+  db.exec(`
+    CREATE TABLE embedding_metadata (
+      id TEXT PRIMARY KEY,
+      entity_type TEXT NOT NULL,
+      entity_id TEXT NOT NULL,
+      model TEXT NOT NULL,
+      dim INTEGER NOT NULL,
+      source_text TEXT NOT NULL,
+      parent_chunk_id TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+  `);
   return db;
+}
+
+function insertTestEmbedding(db: Database.Database, entityType: string, id: string, vec: Float32Array) {
+  insertEmbedding(db, entityType as any, id, vec);
+  db.prepare(`INSERT INTO embedding_metadata (id, entity_type, entity_id, model, dim, source_text) VALUES (?, ?, ?, 'test', 768, 'test')`).run(id, entityType, id);
 }
 
 describe('ollama-client', () => {
@@ -142,7 +160,7 @@ describe('store', () => {
     vec[0] = 1.0;
     vec[1] = 2.0;
 
-    insertEmbedding(db, 'insight', 'i1', vec);
+    insertTestEmbedding(db, 'insight', 'i1', vec);
     expect(countVectors(db, 'insight')).toBe(1);
     expect(countVectors(db, 'message')).toBe(0);
     db.close();
@@ -170,7 +188,7 @@ describe('store', () => {
     for (let i = 0; i < 5; i++) {
       const v = new Float32Array(768);
       v[i * 10] = 1.0;
-      insertEmbedding(db, 'insight', `v${i}`, v);
+      insertTestEmbedding(db, 'insight', `v${i}`, v);
     }
 
     // Query with vector closest to v2
@@ -190,7 +208,7 @@ describe('store', () => {
     for (let i = 0; i < 5; i++) {
       const v = new Float32Array(768);
       v[i * 10] = 1.0;
-      insertEmbedding(db, 'insight', `v${i}`, v);
+      insertTestEmbedding(db, 'insight', `v${i}`, v);
     }
 
     const queryVec = new Float32Array(768);
@@ -236,7 +254,7 @@ describe('store', () => {
     for (let i = 0; i < 3; i++) {
       const v = new Float32Array(768);
       v[i * 10] = 1.0;
-      insertEmbedding(db, 'insight', `alpha-${i}`, v);
+      insertTestEmbedding(db, 'insight', `alpha-${i}`, v);
       db.prepare('INSERT INTO insights (id, session_id, project_id, project_name, type, title, content, summary, bullets, confidence, source, timestamp, created_at, scope, analysis_version, embedding_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
         .run(`alpha-${i}`, `sess-${i}`, projA, 'Alpha', 'decision', `Alpha insight ${i}`, `Content ${i}`, `Summary ${i}`, '[]', 0.8, 'llm', '2025-01-01', '2025-01-01', 'session', '3.0.0', 'computed');
     }
@@ -244,7 +262,7 @@ describe('store', () => {
     for (let i = 0; i < 3; i++) {
       const v = new Float32Array(768);
       v[i * 10] = 1.0;
-      insertEmbedding(db, 'insight', `beta-${i}`, v);
+      insertTestEmbedding(db, 'insight', `beta-${i}`, v);
       db.prepare('INSERT INTO insights (id, session_id, project_id, project_name, type, title, content, summary, bullets, confidence, source, timestamp, created_at, scope, analysis_version, embedding_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
         .run(`beta-${i}`, `sess-${i}`, projB, 'Beta', 'decision', `Beta insight ${i}`, `Content ${i}`, `Summary ${i}`, '[]', 0.8, 'llm', '2025-01-01', '2025-01-01', 'session', '3.0.0', 'computed');
     }
@@ -281,7 +299,7 @@ describe('store', () => {
 
     const v = new Float32Array(768);
     v[0] = 1.0;
-    insertEmbedding(db, 'insight', 'only-one', v);
+    insertTestEmbedding(db, 'insight', 'only-one', v);
     db.prepare('INSERT INTO insights (id, session_id, project_id, project_name, type, title, content, summary, bullets, confidence, source, timestamp, created_at, scope, analysis_version, embedding_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
       .run('only-one', 'sess-1', 'proj-exists', 'Exists', 'decision', 'Only', 'Content', 'Summary', '[]', 0.8, 'llm', '2025-01-01', '2025-01-01', 'session', '3.0.0', 'computed');
 
@@ -299,7 +317,7 @@ describe('store', () => {
     const db = freshDb();
 
     // Insert some data
-    insertEmbedding(db, 'insight', 'old-1', new Float32Array(768).fill(1));
+    insertTestEmbedding(db, 'insight', 'old-1', new Float32Array(768).fill(1));
     expect(countVectors(db, 'insight')).toBe(1);
 
     // Rebuild with new data
@@ -356,7 +374,7 @@ describe('store', () => {
     for (let i = 0; i < 5; i++) {
       const v = new Float32Array(768);
       v[i * 10] = 1.0;
-      insertEmbedding(db, 'insight', `v${i}`, v);
+      insertTestEmbedding(db, 'insight', `v${i}`, v);
     }
 
     // Also insert into the insights table so metadata join works
@@ -414,7 +432,7 @@ describe('store', () => {
     for (let i = 0; i < 3; i++) {
       const v = new Float32Array(768);
       v[i * 10] = 1.0;
-      insertEmbedding(db, 'insight', `v${i}`, v);
+      insertTestEmbedding(db, 'insight', `v${i}`, v);
     }
 
     // Query with a vector that doesn't match any
@@ -457,7 +475,7 @@ describe('store', () => {
       const v = new Float32Array(768);
       v[0] = 1.0;
       v[1] = i * 0.01; // tiny variation
-      insertEmbedding(db, 'insight', `near${i}`, v);
+      insertTestEmbedding(db, 'insight', `near${i}`, v);
     }
 
     const queryVec = new Float32Array(768);

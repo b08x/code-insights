@@ -29,9 +29,8 @@ describe('AntigravityNativeRunner', () => {
 
     expect(mockedExecFileSync).toHaveBeenCalledWith(
       'agy',
-      expect.arrayContaining(['-p', '-', '--dangerously-skip-permissions']),
+      expect.arrayContaining(['-p', expect.stringContaining('sys'), '--dangerously-skip-permissions']),
       expect.objectContaining({
-        input: expect.stringContaining('sys'),
         encoding: 'utf-8',
         timeout: 300000,
         maxBuffer: 30 * 1024 * 1024,

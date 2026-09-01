@@ -84,6 +84,21 @@ function makeInsightsDb(): Database.Database {
       embedding float[768]
     )
   `);
+  
+  // Create embedding_metadata table
+  db.exec(`
+    CREATE TABLE embedding_metadata (
+      id TEXT PRIMARY KEY,
+      entity_type TEXT NOT NULL,
+      entity_id TEXT NOT NULL,
+      model TEXT NOT NULL,
+      dim INTEGER NOT NULL,
+      source_text TEXT NOT NULL,
+      parent_chunk_id TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
 
   return db;
 }
@@ -109,6 +124,11 @@ function mockEmbedFn(text: string): Float32Array {
     for (let i = 0; i < 768; i++) vec[i] /= norm;
   }
   return vec;
+}
+
+function insertTestEmbedding(db: Database.Database, entityType: string, id: string, vec: Float32Array) {
+  insertEmbedding(db, entityType as any, id, vec);
+  db.prepare(`INSERT INTO embedding_metadata (id, entity_type, entity_id, model, dim, source_text) VALUES (?, ?, ?, 'test', 768, 'test')`).run(id, entityType, id);
 }
 
 // ─── Tests ─────────────────────────────────────────────────────────
@@ -176,7 +196,7 @@ describe('findSimilar integration with dedup', () => {
     // Insert a vector
     const vec = new Float32Array(768);
     vec[0] = 1.0;
-    insertEmbedding(db, 'insight', 'existing-1', vec);
+    insertTestEmbedding(db, 'insight', 'existing-1', vec);
 
     // Insert corresponding insight row
     db.prepare(`
@@ -204,7 +224,7 @@ describe('findSimilar integration with dedup', () => {
     // Insert a vector at position 0
     const v1 = new Float32Array(768);
     v1[0] = 1.0;
-    insertEmbedding(db, 'insight', 'orig-1', v1);
+    insertTestEmbedding(db, 'insight', 'orig-1', v1);
 
     // Query with orthogonal vector
     const v2 = new Float32Array(768);
@@ -222,7 +242,7 @@ describe('findSimilar integration with dedup', () => {
     // Insert vector but NO insight row
     const vec = new Float32Array(768);
     vec[0] = 1.0;
-    insertEmbedding(db, 'insight', 'orphan-1', vec);
+    insertTestEmbedding(db, 'insight', 'orphan-1', vec);
 
     const results = findSimilar(db, 'insight', vec, 0.90, 5);
     expect(results.length).toBe(1);
