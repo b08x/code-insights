@@ -7,7 +7,20 @@ import { loadVectorExtension, querySimilar } from '@code-insights/cli/embeddings
 import { agent, ai, f, fn, AxAgentClarificationError, AxJSRuntime } from '@ax-llm/ax';
 import { loadConfig } from '@code-insights/cli/utils/config';
 import { loadLLMConfig } from '../llm/client.js';
-import { execFileSync } from 'child_process';
+import { execFile } from 'child_process';
+import * as os from 'os';
+import * as path from 'path';
+
+const DEBUG_LOG_PATH = path.join(os.homedir(), '.code-insights', 'agent-debug.log');
+function logDebug(message: string, obj?: any) {
+  try {
+    const line = `[${new Date().toISOString()}] ${message}${obj ? ' ' + JSON.stringify(obj) : ''}\n`;
+    fs.appendFileSync(DEBUG_LOG_PATH, line);
+    console.log(message, obj || '');
+  } catch (e) {
+    console.error('Failed to write to debug log:', e);
+  }
+}
 
 const app = new Hono();
 
@@ -31,14 +44,26 @@ import type { AxAgentMemoriesSearchFn } from '@ax-llm/ax';
  * to prevent context window bloat.
  */
 const onMemoriesSearch: AxAgentMemoriesSearchFn = async (searches, alreadyLoaded) => {
-  console.log('[DEBUG] onMemoriesSearch called', { searches });
+  logDebug('[DEBUG] onMemoriesSearch called', { searches });
   const db = getDb();
   const skip = new Set(alreadyLoaded.map(m => m.id));
   const results: {id: string, content: string}[] = [];
   const k = 60;
   
-  for (const keyword of searches) {
+  try {
+    loadVectorExtension(db);
+  } catch (e) {
+    logDebug('[DEBUG] Failed to load vector extension initially', e);
+  }
+  
+  await Promise.all(searches.map(async (keyword) => {
     const sessionScores = new Map<string, number>();
+
+    // Start embedding process immediately to run concurrently with local DB lookups
+    const embeddingPromise = embedOne(DEFAULT_EMBEDDING_CONFIG, 'query', keyword).catch(e => {
+      logDebug('[DEBUG] Vector search embedding failed', e);
+      return null;
+    });
 
     // 1. BM25 Keyword Search via FTS5 (messages_fts)
     try {
@@ -59,7 +84,7 @@ const onMemoriesSearch: AxAgentMemoriesSearchFn = async (searches, alreadyLoaded
         });
       }
     } catch (e) {
-      console.error('[DEBUG] FTS search failed', e);
+      logDebug('[DEBUG] FTS search failed', e);
     }
     
     // Fallback/Additive SQL LIKE on sessions
@@ -83,25 +108,26 @@ const onMemoriesSearch: AxAgentMemoriesSearchFn = async (searches, alreadyLoaded
     
     // 2. Vector Semantic Search
     try {
-      loadVectorExtension(db);
-      const embedding = await embedOne(DEFAULT_EMBEDDING_CONFIG, 'query', keyword);
-      const vecInsights = querySimilar(db, 'insight', embedding.vector, 10);
-      if (vecInsights.length > 0) {
-        const insightIds = vecInsights.map(v => v.id);
-        const placeholders = insightIds.map(() => '?').join(',');
-        const insights = db.prepare(`SELECT id, session_id FROM insights WHERE id IN (${placeholders})`).all(...insightIds) as { id: string, session_id: string }[];
-        const insightToSession = new Map(insights.map(i => [i.id, i.session_id]));
-        
-        vecInsights.forEach((v, idx) => {
-          const sid = insightToSession.get(v.id);
-          if (sid) {
-            const rrf = 1.0 / (k + idx + 1);
-            sessionScores.set(sid, (sessionScores.get(sid) || 0) + rrf);
-          }
-        });
+      const embedding = await embeddingPromise;
+      if (embedding) {
+        const vecInsights = querySimilar(db, 'insight', embedding.vector, 10);
+        if (vecInsights.length > 0) {
+          const insightIds = vecInsights.map(v => v.id);
+          const placeholders = insightIds.map(() => '?').join(',');
+          const insights = db.prepare(`SELECT id, session_id FROM insights WHERE id IN (${placeholders})`).all(...insightIds) as { id: string, session_id: string }[];
+          const insightToSession = new Map(insights.map(i => [i.id, i.session_id]));
+          
+          vecInsights.forEach((v, idx) => {
+            const sid = insightToSession.get(v.id);
+            if (sid) {
+              const rrf = 1.0 / (k + idx + 1);
+              sessionScores.set(sid, (sessionScores.get(sid) || 0) + rrf);
+            }
+          });
+        }
       }
     } catch (e) {
-      console.error('[DEBUG] Vector search failed', e);
+      logDebug('[DEBUG] Vector search failed', e);
     }
 
     // Sort by RRF score and pick top 2 sessions per search query to avoid massive context bloat
@@ -109,11 +135,13 @@ const onMemoriesSearch: AxAgentMemoriesSearchFn = async (searches, alreadyLoaded
       .sort((a, b) => b[1] - a[1])
       .map(e => e[0]);
 
-    for (const sid of sortedIds.slice(0, 2)) {
+    for (const sid of sortedIds.slice(0, 1)) {
       if (!skip.has(sid)) {
+        skip.add(sid); // don't add again in subsequent searches
+        
         // Fetch session metadata and transcript
         const session = db.prepare(`SELECT project_name, custom_title, generated_title, summary FROM sessions WHERE id = ?`).get(sid) as any;
-        const messages = db.prepare(`SELECT type, content FROM messages WHERE session_id = ? ORDER BY timestamp ASC LIMIT 50`).all(sid) as any[];
+        const messages = db.prepare(`SELECT type, content FROM messages WHERE session_id = ? ORDER BY timestamp ASC LIMIT 20`).all(sid) as any[];
         
         if (session) {
           const contentStr = `
@@ -126,18 +154,18 @@ ${messages.map(m => `[${m.type}]: ${m.content}`).join('\n\n')}
           `.trim();
 
           results.push({ id: sid, content: contentStr });
-          skip.add(sid); // don't add again in subsequent searches
         }
       }
     }
-  }
+  }));
 
-  return results;
+  logDebug('[DEBUG] onMemoriesSearch completed, returning results length:', results.length);
+  return results.slice(0, 3);
 };
 
 /**
  * MCP Integration Tools
- * Executes a codebase-memory-mcp tool synchronously.
+ * Executes a codebase-memory-mcp tool asynchronously to prevent event loop blocking.
  * 
  * Acts as the bridge between the internal Ax LLM agent and the external MCP server
  * which provides codebase navigation and indexing capabilities.
@@ -146,18 +174,24 @@ ${messages.map(m => `[${m.type}]: ${m.content}`).join('\n\n')}
  * @param args - JSON serializable arguments for the tool.
  * @returns The stdout of the executed tool.
  */
-function execMcpCli(toolName: string, args: Record<string, any>): string {
-  try {
-    const stdout = execFileSync('codebase-memory-mcp', ['cli', toolName], {
-      input: JSON.stringify(args),
-      encoding: 'utf-8',
+async function execMcpCli(toolName: string, args: Record<string, any>): Promise<string> {
+  return new Promise((resolve) => {
+    const child = execFile('codebase-memory-mcp', ['cli', toolName], {
       timeout: 120000 // Extended timeout for indexing
+    }, (error, stdout, stderr) => {
+      if (error) {
+        console.error(`[MCP CLI Error] ${toolName}:`, stderr || error?.message);
+        resolve(JSON.stringify({ error: stderr || error?.message }));
+      } else {
+        resolve(stdout.toString());
+      }
     });
-    return stdout;
-  } catch (error: any) {
-    console.error(`[MCP CLI Error] ${toolName}:`, error.stderr || error.message);
-    return JSON.stringify({ error: error.stderr || error.message });
-  }
+    
+    if (child.stdin) {
+      child.stdin.write(JSON.stringify(args));
+      child.stdin.end();
+    }
+  });
 }
 
 const listProjectsTool = fn('listProjects')
@@ -361,115 +395,96 @@ app.post('/', async (c) => {
   }
 
   try {
-    const citedSessions = new Set<string>();
-
-    /**
-     * Executes the Ax Agent in streaming mode (streamingForward route logic).
-     * 
-     * The agent may emit internal actions, tool calls, or requests for user clarification.
-     * We capture memory usage (citedSessions) to append citations to the final output.
-     */
-    const streamResult = (await insightAgent.streamingForward(
-      llm, 
-      { userQuery: request, chatHistory: chatHistory, userClarification: answer },
-      {
-        onUsedMemories: (items) => {
-          for (const item of items) {
-             citedSessions.add(item.id);
-          }
-        }
-      }
-    )) as AsyncIterableIterator<any>;
+    c.header('X-Accel-Buffering', 'no');
+    c.header('Cache-Control', 'no-cache, no-transform');
     
-    // We must read the first chunk to catch any AxAgentClarificationError before sending HTTP 200 headers
-    // because once streamText is returned, headers are sent and we can't return a JSON response.
-    const iterator = streamResult[Symbol.asyncIterator]();
-    const firstResult = await iterator.next();
-    
-    if (firstResult.done) {
-      return c.text('');
-    }
-
     return streamText(c, async (stream) => {
       let hasWrittenReply = false;
+      const citedSessions = new Set<string>();
 
       try {
-        // Send the first chunk we already pulled
-        const firstChunk = firstResult.value;
-        fs.appendFileSync('agent-debug.log', 'FIRST CHUNK: ' + JSON.stringify(firstChunk) + '\n');
+        logDebug(`Starting streamingForward for query: ${request}`);
         
-        const firstReply = firstChunk?.delta?.reply || firstChunk?.reply;
-        if (firstReply) {
-          hasWrittenReply = true;
-          await stream.write(JSON.stringify({ type: 'chunk', text: firstReply }) + '\n');
-        }
-        
-        const firstFunctionCalls = firstChunk?.delta?.functionCalls || firstChunk?.functionCalls;
-        if (firstFunctionCalls && Array.isArray(firstFunctionCalls) && firstFunctionCalls.length > 0) {
-          for (const fc of firstFunctionCalls) {
-            await stream.write(JSON.stringify({
-              type: 'metric',
-              tool: fc.name || fc.function?.name,
-              args: fc.arguments || fc.function?.arguments
-            }) + '\n');
-          }
-        }
-        
-        // Stream the rest
-        while (true) {
-          const { done, value: chunk } = await iterator.next();
-          if (done) break;
-          
-          fs.appendFileSync('agent-debug.log', 'CHUNK: ' + JSON.stringify(chunk) + '\n');
-          
-          // Emit Text
-          const replyText = chunk?.delta?.reply || chunk?.reply;
-          if (replyText) {
-            hasWrittenReply = true;
-            await stream.write(JSON.stringify({ type: 'chunk', text: replyText }) + '\n');
-          }
-          
-          // Emit Tools (live metrics)
-          const functionCalls = chunk?.delta?.functionCalls || chunk?.functionCalls;
-          if (functionCalls && Array.isArray(functionCalls) && functionCalls.length > 0) {
-            for (const fc of functionCalls) {
-              await stream.write(JSON.stringify({
-                type: 'metric',
-                tool: fc.name || fc.function?.name,
-                args: fc.arguments || fc.function?.arguments
-              }) + '\n');
+        const streamResult = (await insightAgent.streamingForward(
+          llm, 
+          { userQuery: request, chatHistory: chatHistory, userClarification: answer },
+          {
+            onUsedMemories: (items) => {
+              logDebug(`onUsedMemories triggered, items count: ${items.length}`);
+              for (const item of items) {
+                 citedSessions.add(item.id);
+              }
             }
           }
-        }
+        )) as AsyncIterableIterator<any>;
         
-        if (!hasWrittenReply) {
-          await stream.write(JSON.stringify({ type: 'chunk', text: "\n\n*The agent completed its process but did not return a valid reply. This often happens if the configured LLM does not strictly follow the required JSON output schema. Try using a more capable model (like gpt-4o or claude-3-5-sonnet).*" }) + '\n');
-        }
+        logDebug('streamingForward completed, starting async iteration');
+        const iterator = streamResult[Symbol.asyncIterator]();
+        
+        const keepAliveInterval = setInterval(() => {
+          logDebug('Sending keep-alive ping to prevent timeout...');
+          stream.write('\n').catch(() => {});
+        }, 15000);
 
-        // Append citations at the end of the stream
-        if (citedSessions.size > 0) {
-          let citationMd = '\n\n---\n**Sources Consulted:**\n';
-          for (const sessionId of citedSessions) {
-            citationMd += `- [Session ${sessionId.substring(0, 8)}](/sessions/${sessionId})\n`;
+        try {
+          while (true) {
+            const { done, value: chunk } = await iterator.next();
+            if (done) { logDebug("DONE\n"); break; }
+            
+            logDebug('CHUNK: ' + JSON.stringify(chunk) + '\n');
+            
+            // Emit Text
+            const replyText = chunk?.delta?.reply || chunk?.reply;
+            if (replyText) {
+              hasWrittenReply = true;
+              await stream.write(JSON.stringify({ type: 'chunk', text: replyText }) + '\n');
+            }
+            
+            // Emit Tools (live metrics)
+            const functionCalls = chunk?.delta?.functionCalls || chunk?.functionCalls;
+            if (functionCalls && Array.isArray(functionCalls) && functionCalls.length > 0) {
+              for (const fc of functionCalls) {
+                await stream.write(JSON.stringify({
+                  type: 'metric',
+                  tool: fc.name || fc.function?.name,
+                  args: fc.arguments || fc.function?.arguments
+                }) + '\n');
+              }
+            }
           }
-          await stream.write(JSON.stringify({ type: 'chunk', text: citationMd }) + '\n');
+          
+          if (!hasWrittenReply) {
+            await stream.write(JSON.stringify({ type: 'chunk', text: "\n\n*The agent completed its process but did not return a valid reply. This often happens if the configured LLM does not strictly follow the required JSON output schema. Try using a more capable model (like gpt-4o or claude-3-5-sonnet).*" }) + '\n');
+          }
+
+          // Append citations at the end of the stream
+          if (citedSessions.size > 0) {
+            let citationMd = '\n\n---\n**Sources Consulted:**\n';
+            for (const sessionId of citedSessions) {
+              citationMd += `- [Session ${sessionId.substring(0, 8)}](/sessions/${sessionId})\n`;
+            }
+            await stream.write(JSON.stringify({ type: 'chunk', text: citationMd }) + '\n');
+          }
+        } finally {
+          clearInterval(keepAliveInterval);
         }
 
       } catch (err: any) {
-        console.error('Error during streaming:', err);
-        await stream.write(JSON.stringify({ type: 'chunk', text: `\n\n[Agent Error: ${err.message}]` }) + '\n');
+        if (err instanceof AxAgentClarificationError) {
+          await stream.write(JSON.stringify({ 
+            type: 'clarification',
+            question: err.question,
+            clarificationDetails: err.clarification,
+            savedState: err.getState()
+          }) + '\n');
+        } else {
+          console.error('Error during streaming:', err);
+          await stream.write(JSON.stringify({ type: 'chunk', text: `\n\n[Agent Error: ${err.message}]` }) + '\n');
+        }
       }
     });
 
-  } catch (error) {
-    if (error instanceof AxAgentClarificationError) {
-      return c.json({
-        type: 'clarification',
-        question: error.question,
-        clarificationDetails: error.clarification,
-        savedState: error.getState(),
-      });
-    }
+  } catch (error: any) {
     console.error('Agent error:', error);
     return c.json({ error: 'Internal agent error' }, 500);
   }

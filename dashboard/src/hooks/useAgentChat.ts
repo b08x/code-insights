@@ -136,6 +136,22 @@ export function useAgentChat() {
               });
             } else if (parsed.type === 'metric') {
               setLiveMetrics((prev) => [...prev, parsed]);
+            } else if (parsed.type === 'clarification') {
+              setClarification({
+                question: parsed.question,
+                details: parsed.clarificationDetails,
+                originalRequest: clarification ? clarification.originalRequest : text
+              });
+              setSavedState(parsed.savedState);
+              
+              // Remove the empty assistant message bubble that was added for streaming
+              setMessages((prev) => {
+                const newMessages = [...prev];
+                if (newMessages[newMessages.length - 1].content === '') {
+                  newMessages.pop();
+                }
+                return newMessages;
+              });
             }
           } catch (e) {
             console.error('Failed to parse NDJSON line:', line, e);
