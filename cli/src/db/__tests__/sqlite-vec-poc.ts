@@ -14,7 +14,7 @@ import * as sqliteVec from 'sqlite-vec';
 import Database from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
 
-const OLLAMA_URL = process.env.OLLAMA_BASE_URL ?? 'http://tinybot:11434';
+const OLLAMA_URL = process.env.OLLAMA_BASE_URL ?? 'http://127.0.0.1:11434';
 const EMBED_MODEL = process.env.EMBEDDING_MODEL ?? 'embeddinggemma:latest';
 const DIM = 768;
 const BENCHMARK_SIZE = 15000;

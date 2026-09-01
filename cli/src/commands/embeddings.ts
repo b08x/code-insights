@@ -27,12 +27,18 @@ import {
 } from '../embeddings/store.js';
 import { trackEvent, captureError, classifyError } from '../utils/telemetry.js';
 import type Database from 'better-sqlite3';
+import { loadConfig } from '../utils/config.js';
 
 // ── helpers ────────────────────────────────────────────────────────────────────
 
 function buildEmbeddingConfig(overrides?: { model?: string; batchSize?: string }): EmbeddingConfig {
+  const userConfig = loadConfig();
+  const embeddingConfig = userConfig?.dashboard?.embedding;
+
   return {
     ...DEFAULT_EMBEDDING_CONFIG,
+    ...(embeddingConfig?.baseUrl ? { baseUrl: embeddingConfig.baseUrl } : {}),
+    ...(embeddingConfig?.model ? { model: embeddingConfig.model } : {}),
     ...(overrides?.model ? { model: overrides.model } : {}),
     ...(overrides?.batchSize ? { batchSize: parseInt(overrides.batchSize, 10) } : {}),
   };

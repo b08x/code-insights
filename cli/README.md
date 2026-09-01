@@ -294,7 +294,8 @@ code-insights embeddings search "error handling patterns" --top-k 10
 ```
 
 **Ollama configuration:**
-- Set `OLLAMA_BASE_URL` environment variable to point to your Ollama instance (default: `http://tinybot:11434`)
+- Ensure you have Ollama running with the `embeddinggemma` model (`ollama pull embeddinggemma`).
+- Set `OLLAMA_BASE_URL` environment variable to point to your Ollama instance (default: `http://127.0.0.1:11434`)
 - The default embedding model is `embeddinggemma:latest` (768-dim)
 
 ### Prompt Optimization (GEPA)

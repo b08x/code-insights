@@ -227,7 +227,7 @@ code-insights query "database migrations connection error"
 ```
 
 > [!NOTE]
-> Embeddings are configured via `OLLAMA_BASE_URL` (default: `http://tinybot:11434`). It leverages `sqlite-vec` for native, lightning-fast in-database vector operations, and `FTS5` for BM25 keyword matching.
+> Embeddings are configured via `OLLAMA_BASE_URL` (default: `http://127.0.0.1:11434`). It leverages `sqlite-vec` for native, lightning-fast in-database vector operations, and `FTS5` for BM25 keyword matching.
 
 ---
 

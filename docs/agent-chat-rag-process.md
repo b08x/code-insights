@@ -237,7 +237,7 @@ function execMcpCli(toolName: string, args: Record<string, any>): string {
 // cli/src/embeddings/types.ts
 interface EmbeddingConfig {
   model: string;              // 'embeddinggemma:latest'
-  baseUrl: string;            // 'http://tinybot:11434'
+  baseUrl: string;            // 'http://127.0.0.1:11434'
   dim: number;                // 768
   batchSize: number;          // 50
   rateLimitPerMinute: number; // 0 = disabled
@@ -245,7 +245,7 @@ interface EmbeddingConfig {
 
 const DEFAULT_EMBEDDING_CONFIG: EmbeddingConfig = {
   model: 'embeddinggemma:latest',
-  baseUrl: process.env.OLLAMA_BASE_URL || 'http://tinybot:11434',
+  baseUrl: process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434',
   dim: 768,
   batchSize: 50,
   rateLimitPerMinute: 0,

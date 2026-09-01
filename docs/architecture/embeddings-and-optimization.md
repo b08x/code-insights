@@ -69,9 +69,9 @@ Enable semantic search and deduplication over insights and messages without send
 
 Default embedding config:
 ```typescript
-{
+export const DEFAULT_EMBEDDING_CONFIG: EmbeddingConfig = {
   model: 'embeddinggemma:latest',
-  baseUrl: process.env.OLLAMA_BASE_URL || 'http://tinybot:11434',
+  baseUrl: process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434',
   dim: 768,
   batchSize: 50,
   rateLimitPerMinute: 0  // disabled

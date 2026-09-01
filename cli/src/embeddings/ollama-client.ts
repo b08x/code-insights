@@ -74,6 +74,43 @@ async function embedBatch(
 
       if (!res.ok) {
         const text = await res.text().catch(() => '');
+        
+        if (res.status === 404) {
+          if (text.includes('not found') && text.includes('model')) {
+            throw new EmbeddingError(
+              `Model '${config.model}' not found in Ollama. Please run: ollama pull ${config.model}`,
+            );
+          }
+          
+          if (url.endsWith('/api/embed')) {
+            // Fallback for older Ollama versions that only support /api/embeddings
+            const fallbackResults = await Promise.all(
+              texts.map(async (text) => {
+                const fallbackUrl = `${config.baseUrl.replace(/\/+$/, '')}/api/embeddings`;
+                const fallbackBody = JSON.stringify({ model: config.model, prompt: text });
+                const fallbackRes = await fetch(fallbackUrl, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: fallbackBody,
+                });
+                if (!fallbackRes.ok) {
+                  const errText = await fallbackRes.text().catch(() => '');
+                  if (fallbackRes.status === 404 && errText.includes('not found') && errText.includes('model')) {
+                    throw new EmbeddingError(`Model '${config.model}' not found in Ollama. Please run: ollama pull ${config.model}`);
+                  }
+                  throw new Error(`Fallback /api/embeddings returned ${fallbackRes.status}: ${errText.slice(0, 200)}`);
+                }
+                const fallbackJson = (await fallbackRes.json()) as { embedding?: number[] };
+                if (!fallbackJson.embedding || !Array.isArray(fallbackJson.embedding)) {
+                  throw new Error('Fallback response missing embedding array');
+                }
+                return fallbackJson.embedding;
+              })
+            );
+            return fallbackResults.map(e => new Float32Array(e));
+          }
+        }
+
         throw new EmbeddingError(
           `Ollama /api/embed returned ${res.status}: ${text.slice(0, 200)}`,
         );

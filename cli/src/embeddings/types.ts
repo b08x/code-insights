@@ -4,7 +4,7 @@
 
 export interface EmbeddingConfig {
   model: string;              // e.g. 'embeddinggemma:latest'
-  baseUrl: string;            // e.g. 'http://tinybot:11434'
+  baseUrl: string;            // e.g. 'http://127.0.0.1:11434'
   dim: number;                // 768 for embeddinggemma
   batchSize: number;          // 50 — Ollama /api/embed accepts multiple inputs
   rateLimitPerMinute: number; // 0 = disabled
@@ -12,7 +12,7 @@ export interface EmbeddingConfig {
 
 export const DEFAULT_EMBEDDING_CONFIG: EmbeddingConfig = {
   model: 'embeddinggemma:latest',
-  baseUrl: process.env.OLLAMA_BASE_URL || 'http://tinybot:11434',
+  baseUrl: process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434',
   dim: 768,
   batchSize: 50,
   rateLimitPerMinute: 0,
