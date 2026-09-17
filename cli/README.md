@@ -238,6 +238,36 @@ code-insights insights <session_id> --native
 code-insights insights check
 ```
 
+#### Retrieval-Augmented Analysis
+
+Session analysis now uses a retrieval-augmented generation (RAG) pipeline. Session transcripts are chunked using an annotated chunker (respecting role boundaries, with parent/child splitting for long messages), embedded, and stored in `vec_analysis_chunks`. Relevant historical context is retrieved to enhance analysis quality.
+
+```bash
+# Rich terminal output with score bars and visual indicators
+code-insights insights <session_id> --format rich
+
+# JSON output for programmatic use
+code-insights insights <session_id> --format json
+
+# Quiet mode for scripting (minimal output)
+code-insights insights <session_id> --format quiet
+```
+
+The `--format` flag controls terminal output:
+
+| Format | Description |
+|--------|-------------|
+| `rich` | Score bars, severity dots, emoji headers, dimension breakdown, metrics footer (default) |
+| `json` | Machine-readable JSON output |
+| `quiet` | Minimal output for scripting |
+
+**Rich format includes:**
+- **Score Bars** — visual representation of insight quality scores
+- **Severity Dots** — indication of friction/importance levels
+- **Emoji Headers** — categorized insight types
+- **Dimension Breakdown** — coverage, precision, actionability metrics
+- **Metrics Footer** — session statistics and analysis summary
+
 ### Queue Management
 
 The analysis queue runs session insights asynchronously to prevent blocking hooks and the UI.
@@ -292,6 +322,16 @@ code-insights embeddings recompute --project-id <project_id>
 code-insights embeddings search "how to handle auth"
 code-insights embeddings search "error handling patterns" --top-k 10
 ```
+
+The `embeddings status` command shows coverage across all vector tables:
+
+| Table | Contents |
+|-------|----------|
+| `vec_insights` | Insight embeddings |
+| `vec_messages` | Message embeddings |
+| `vec_analysis_chunks` | Analysis chunk embeddings (parent/child chunks from annotated chunker) |
+
+The status output includes coverage percentages, vector dimensions, parent/child chunk relationships, and index health metrics.
 
 **Ollama configuration:**
 - Ensure you have Ollama running with the `embeddinggemma` model (`ollama pull embeddinggemma`).

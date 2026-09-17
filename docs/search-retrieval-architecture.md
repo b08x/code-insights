@@ -15,6 +15,7 @@ Code Insights implements a multi-strategy search system combining keyword-based 
 | API Search | Sessions + Insights | SQL LIKE | `server/src/routes/search.ts` |
 | Analysis Retrieval | Insights | Vector similarity | `server/src/llm/analysis.ts:getRetrievalConfig` |
 | Agent RAG Memory | Messages + Transcripts | Hybrid RRF (BM25 + KNN) | `server/src/routes/agent.ts:onMemoriesSearch` |
+| Analysis Chunks Retrieval | Analysis chunks | sqlite-vec KNN + dynamic query | `cli/src/analysis/retrieval.ts` |
 
 ---
 
@@ -164,6 +165,75 @@ analyzeSession()
 
 ---
 
+## Analysis Chunks Retrieval (Shared Retrieval Layer)
+
+> Added in v4.8.0 — Shared retrieval layer for annotated analysis chunks.
+
+### Overview
+
+A new shared retrieval layer (`cli/src/analysis/retrieval.ts`) provides configurable KNN search over `vec_analysis_chunks`, with dynamic query adaptation and context window augmentation. This layer is used by the analysis pipeline to enrich session analysis with relevant historical context.
+
+### Configuration
+
+```typescript
+// cli/src/analysis/retrieval.ts
+interface RetrievalConfig {
+  threshold: number;       // Minimum similarity score (default: 0.75)
+  k: number;              // Number of nearest neighbors (default: 5)
+  contextWindow: number;  // Context window size for augmentation (default: 3)
+  dynamicQuery: boolean;  // Enable query adaptation (default: true)
+}
+```
+
+### Retrieval Flow
+
+```
+Analysis Query
+      │
+      ▼
+┌─────────────────────────────────────────────────────────┐
+│ 1. Dynamic Query Adaptation                             │
+│    - Analyze session content for query terms            │
+│    - Adapt search query based on context needs           │
+└─────────────────────────────────────────────────────────┘
+      │
+      ▼
+┌─────────────────────────────────────────────────────────┐
+│ 2. KNN Search on vec_analysis_chunks                    │
+│    - sqlite-vec virtual table                            │
+│    - Filter by threshold (default: 0.75)                │
+│    - Retrieve top-k neighbors (default: 5)               │
+└─────────────────────────────────────────────────────────┘
+      │
+      ▼
+┌─────────────────────────────────────────────────────────┐
+│ 3. Context Window Augmentation                          │
+│    - Expand to context window (default: 3 neighbors)     │
+│    - Map child chunks back to parent chunks              │
+│    - Assemble augmented context for analysis             │
+└─────────────────────────────────────────────────────────┘
+      │
+      ▼
+┌─────────────────────────────────────────────────────────┐
+│ 4. Rich Terminal Render                                 │
+│    - Score bars for insight quality                      │
+│    - Severity dots for friction/importance               │
+│    - Dimension breakdown (coverage, precision, etc.)    │
+│    - Metrics footer with session statistics              │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Threshold and Dynamic Query Configuration
+
+The retrieval layer supports both static and dynamic query modes:
+
+- **Static mode**: Uses the raw analysis query with a fixed threshold
+- **Dynamic mode**: Adapts the query based on session content, extracting key terms and phrases to improve retrieval relevance
+
+The threshold determines the minimum cosine similarity for a chunk to be considered relevant. Lower thresholds increase recall at the cost of precision; higher thresholds do the opposite.
+
+---
+
 ## Vector Infrastructure
 
 ### sqlite-vec Integration
@@ -181,6 +251,7 @@ querySimilar(db, entityType, queryVector, topK)  // Generic KNN query
 |--------|-----------------|----------------|
 | `message` | `message_embeddings` | Message content |
 | `insight` | `insight_embeddings` | Insight title + summary |
+| `analysis_chunk` | `vec_analysis_chunks` | Annotated child chunks from session transcripts |
 
 ### Embedding Generation
 
@@ -275,6 +346,7 @@ querySimilar(db, entityType, queryVector, topK)  // Generic KNN query
 - `message_embeddings` — sqlite-vec vector storage
 - `insights` — analyzed insights
 - `insight_embeddings` — sqlite-vec vector storage
+- `vec_analysis_chunks` — sqlite-vec vector storage for annotated analysis chunks (parent/child)
 - `sessions` — session metadata (searched by API)
 
 ### Extensions
@@ -317,6 +389,11 @@ dashboard:
 | `cli/src/commands/embeddings.ts` | Embedding search for insights |
 | `cli/src/embeddings/store.ts` | Vector storage and KNN queries |
 | `cli/src/embeddings/ollama-client.ts` | Ollama embedding client |
+| `cli/src/analysis/retrieval.ts` | Shared retrieval layer for analysis chunks (threshold, dynamic query, context window) |
+| `cli/src/analysis/annotated-chunker.ts` | Annotated chunking with role-boundary splitting and parent/child strategy |
+| `cli/src/analysis/analysis-chunks-store.ts` | vec_analysis_chunks table management |
+| `cli/src/analysis/analysis-pipeline.ts` | Embedding, indexing, and retrieval readiness orchestration |
+| `cli/src/analysis/render.ts` | Rich terminal output rendering (score bars, severity dots) |
 | `server/src/routes/search.ts` | API search endpoint (LIKE-based) |
 | `server/src/llm/analysis.ts` | Analysis retrieval config |
 | `cli/src/db/migrate.ts` | Schema migrations (FTS + vector tables) |

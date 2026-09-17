@@ -250,6 +250,124 @@ sequenceDiagram
     end
 ```
 
+## Retrieval-Augmented Analysis Pipeline
+
+> Added in v4.8.0 — Annotated chunking and retrieval pipeline for enhanced session analysis.
+
+### Annotated Chunking Flow
+
+```mermaid
+sequenceDiagram
+    participant Session as Session Transcript
+    participant Chunker as annotated-chunker.ts
+    participant Pipeline as analysis-pipeline.ts
+    participant Ollama as Embedding Client
+    participant Store as analysis-chunks-store.ts
+    participant Vec as vec_analysis_chunks
+    participant Retrieval as retrieval.ts
+    participant Render as render.ts
+    
+    Session->>Chunker: Raw transcript
+    Chunker->>Chunker: Split at role boundaries
+    Chunker->>Chunker: Detect session phases
+    Chunker->>Chunker: Parent chunks (≤4000 chars)
+    Chunker->>Chunker: Child chunks (≤512 chars)
+    Chunker->>Pipeline: Parent/child chunk pairs
+    Pipeline->>Ollama: Embed child chunks
+    Ollama->>Pipeline: Embedding vectors
+    Pipeline->>Store: Store chunks with metadata
+    Store->>Vec: Insert into vec_analysis_chunks
+    Pipeline->>Store: Mark readiness status
+    Note over Retrieval: On analysis query
+    Retrieval->>Vec: KNN search (threshold config)
+    Vec->>Retrieval: Matching chunks with distances
+    Retrieval->>Retrieval: Dynamic query adaptation
+    Retrieval->>Retrieval: Context window augmentation
+    Retrieval->>Render: Augmented analysis results
+    Render->>Render: Score bars, severity dots
+    Render->>User: Rich terminal output
+```
+
+### Parent/Child Chunking Strategy
+
+```
+Full Session Messages
+                           ↓
+┌─────────────────────────────────────────────────────────┐
+│ Annotated Chunker                                       │
+│  1. Split at role boundaries (user/assistant)            │
+│  2. Detect phases (coding, debugging, reviewing)        │
+│  3. Parent chunks (≤4000 chars) — broader context       │
+│  4. Child chunks (≤512 chars) — embedding targets       │
+│  5. Child references parent for provenance              │
+└─────────────────────────────────────────────────────────┘
+                           ↓
+┌─────────────────────────────────────────────────────────┐
+│ Parent Chunk A (≤4000 chars)                             │
+│  ├─ Child A1 (≤512 chars) → embed → vec_analysis_chunks  │
+│  ├─ Child A2 (≤512 chars) → embed → vec_analysis_chunks  │
+│  └─ Child A3 (≤512 chars) → embed → vec_analysis_chunks  │
+│                                                          │
+│ Parent Chunk B (≤4000 chars)                             │
+│  ├─ Child B1 (≤512 chars) → embed → vec_analysis_chunks  │
+│  └─ Child B2 (≤512 chars) → embed → vec_analysis_chunks  │
+└─────────────────────────────────────────────────────────┘
+                           ↓
+┌─────────────────────────────────────────────────────────┐
+│ Retrieval Layer                                          │
+│  - KNN search on child chunk embeddings                  │
+│  - Configurable threshold (default: 0.75)               │
+│  - Dynamic query adaptation                             │
+│  - Context window (default: 3 neighbors)               │
+│  - Map child matches back to parent for full context     │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Analysis Chunks Storage and Retrieval
+
+```
+Session Analysis Request
+      │
+      ▼
+┌─────────────────────────────────────────────────────────┐
+│ 1. Chunk: annotated-chunker.ts                          │
+│    - Role-boundary splitting                             │
+│    - Parent/child pairs with metadata                    │
+└─────────────────────────────────────────────────────────┘
+      │
+      ▼
+┌─────────────────────────────────────────────────────────┐
+│ 2. Embed: analysis-pipeline.ts                          │
+│    - Ollama embedOne for each child chunk                │
+│    - 768-dim vectors (configurable)                     │
+└─────────────────────────────────────────────────────────┘
+      │
+      ▼
+┌─────────────────────────────────────────────────────────┐
+│ 3. Store: analysis-chunks-store.ts                      │
+│    - Insert into vec_analysis_chunks                    │
+│    - Track parent/child relationships                    │
+│    - Set readiness status                                │
+└─────────────────────────────────────────────────────────┘
+      │
+      ▼
+┌─────────────────────────────────────────────────────────┐
+│ 4. Retrieve: retrieval.ts                               │
+│    - KNN search with threshold (0.75)                   │
+│    - Dynamic query based on session content             │
+│    - Context window augmentation (3 neighbors)          │
+│    - Map children → parents for full context             │
+└─────────────────────────────────────────────────────────┘
+      │
+      ▼
+┌─────────────────────────────────────────────────────────┐
+│ 5. Render: render.ts                                    │
+│    - Rich: score bars, severity dots, dimensions        │
+│    - JSON: machine-readable                             │
+│    - Quiet: minimal scripting output                    │
+└─────────────────────────────────────────────────────────┘
+```
+
 ## Database Write Flow
 
 ```mermaid

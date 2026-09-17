@@ -10,6 +10,8 @@
 Source tool session files -> Provider (discover + parse) -> SQLite -> Dashboard (localhost:7890)
                                                          -> CLI stats commands
                                                          -> Analysis Queue -> Background Worker -> LLM Analysis
+                                                         -> Retrieval Pipeline -> Annotated Chunker -> vec_analysis_chunks
+                                                                                                    -> Retrieval Layer -> Augmented Analysis
 ```
 
 ---
@@ -23,6 +25,11 @@ code-insights/
 │       ├── commands/       # CLI commands (init, sync, status, stats, dashboard, config, insights)
 │       ├── commands/stats/ # Stats command suite (4-layer architecture)
 │       ├── analysis/       # Prompt builders, response parsers, normalizers, runner interface (shared by CLI + server)
+│       ├── analysis/annotated-chunker.ts  # Annotated chunking (role boundaries, parent/child splitting)
+│       ├── analysis/analysis-chunks-store.ts # vec_analysis_chunks table management
+│       ├── analysis/analysis-pipeline.ts # Embedding, indexing, retrieval readiness orchestration
+│       ├── analysis/retrieval.ts        # Shared retrieval layer (threshold, dynamic query, context window)
+│       ├── analysis/render.ts           # Rich terminal output (score bars, severity dots, dimension breakdown)
 │       ├── providers/      # Source tool providers (claude-code, cursor, codex, copilot, copilot-cli, crush, opencode, hermes-agent, gemini-cli)
 │       ├── parser/         # JSONL parsing, title generation
 │       ├── db/             # SQLite schema, migrations, queries
@@ -132,7 +139,66 @@ Providers are registered in `providers/registry.ts`. To add a new source tool:
 | `analysis_usage` | Per-session LLM analysis cost data, composite PK `(session_id, analysis_type)` | V7, V8 |
 | `analysis_queue` | Analysis job queue for background processing, PK `session_id`, status lifecycle: pending → processing → completed/failed with retry logic | V9 |
 | `embedding_metadata` | Provenance for computed embeddings (model, dim, source text) | V11 |
+| `vec_analysis_chunks` | sqlite-vec virtual table for analysis chunk KNN search (parent/child chunks) | V13 |
 | `schema_version` | Migration tracking | V1 |
+
+---
+
+## Retrieval-Augmented Analysis Layer
+
+> Added in v4.8.0 — Annotated chunking and retrieval pipeline for enhanced session analysis.
+
+### Overview
+
+Session analysis now uses a retrieval-augmented generation (RAG) pipeline that chunks session transcripts using an annotated chunker, embeds the chunks, and retrieves relevant historical context to augment analysis quality.
+
+### Modules
+
+| Module | File | Purpose |
+|--------|------|---------|
+| Annotated Chunker | `cli/src/analysis/annotated-chunker.ts` | Intelligent segmentation respecting role boundaries with parent/child splitting |
+| Analysis Chunks Store | `cli/src/analysis/analysis-chunks-store.ts` | Manages `vec_analysis_chunks` table for storing and querying analysis chunks |
+| Analysis Pipeline | `cli/src/analysis/analysis-pipeline.ts` | Orchestrates embedding, indexing, and retrieval readiness |
+| Retrieval Layer | `cli/src/analysis/retrieval.ts` | Shared retrieval with configurable threshold, dynamic query, and context window |
+| Rich Render | `cli/src/analysis/render.ts` | Terminal output with score bars, severity dots, dimension breakdown |
+
+### Annotated Chunking Data Flow
+
+```
+Session Transcript
+      │
+      ▼
+Annotated Chunker
+  ├─ Split at role boundaries (user/assistant)
+  ├─ Detect session phases (coding, debugging, reviewing)
+  ├─ Parent chunks (≤4000 chars) preserving broader context
+  └─ Child chunks (≤512 chars) for embedding computation
+      │
+      ▼
+Analysis Pipeline
+  ├─ Embed child chunks via Ollama
+  ├─ Store in vec_analysis_chunks
+  └─ Index with readiness status
+      │
+      ▼
+Retrieval Layer
+  ├─ KNN search with configurable threshold (default: 0.75)
+  ├─ Dynamic query adaptation based on session content
+  └─ Context window augmentation (default: 3 neighbors)
+      │
+      ▼
+Augmented Analysis → Rich Terminal Render
+```
+
+### CLI Integration
+
+The `--format` flag controls analysis output:
+
+```bash
+code-insights insights <session_id> --format rich   # Score bars, severity dots, dimension breakdown
+code-insights insights <session_id> --format json   # Machine-readable JSON
+code-insights insights <session_id> --format quiet   # Minimal output for scripting
+```
 
 ---
 

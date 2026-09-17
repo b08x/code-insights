@@ -194,6 +194,10 @@ async function execMcpCli(toolName: string, args: Record<string, any>): Promise<
   });
 }
 
+/**
+ * MCP Tool: List all indexed projects in the codebase knowledge graph.
+ * Call this first to check if a project is already indexed before indexing or querying.
+ */
 const listProjectsTool = fn('listProjects')
   .description('List all projects currently indexed in the codebase knowledge graph. Call this first to see if a project is available.')
   .namespace('codebase')
@@ -201,6 +205,11 @@ const listProjectsTool = fn('listProjects')
   .handler(async () => execMcpCli('list_projects', {}))
   .build();
 
+/**
+ * MCP Tool: Index a repository into the knowledge graph.
+ * Use when listProjects shows the repo is missing. Supports full, moderate,
+ * fast, and cross-repo-intelligence indexing modes.
+ */
 const indexRepositoryTool = fn('indexRepository')
   .description('Index a repository into the knowledge graph. Use this if listProjects shows the repo is missing.')
   .namespace('codebase')
@@ -211,6 +220,10 @@ const indexRepositoryTool = fn('indexRepository')
   .handler(async (args) => execMcpCli('index_repository', args))
   .build();
 
+/**
+ * MCP Tool: Get high-level architecture overview for an indexed project.
+ * Returns languages, packages, routes, hotspots, and structural summary.
+ */
 const getArchitectureTool = fn('getArchitecture')
   .description('Codebase overview: languages, packages, routes, hotspots. Call after verifying the project is indexed.')
   .namespace('codebase')
@@ -219,6 +232,10 @@ const getArchitectureTool = fn('getArchitecture')
   .handler(async (args) => execMcpCli('get_architecture', args))
   .build();
 
+/**
+ * MCP Tool: Structured graph search by label, name pattern, or file pattern.
+ * Returns matching graph nodes (functions, classes, routes, variables).
+ */
 const searchGraphTool = fn('searchGraph')
   .description('Structured search by label, name pattern, file pattern.')
   .namespace('codebase')
@@ -229,6 +246,10 @@ const searchGraphTool = fn('searchGraph')
   .handler(async (args) => execMcpCli('search_graph', args))
   .build();
 
+/**
+ * MCP Tool: Read source code for a function or symbol by qualified name.
+ * Requires the project to be indexed first.
+ */
 const getCodeSnippetTool = fn('getCodeSnippet')
   .description('Read source code for a function or symbol by qualified name.')
   .namespace('codebase')
@@ -238,6 +259,11 @@ const getCodeSnippetTool = fn('getCodeSnippet')
   .handler(async (args) => execMcpCli('get_code_snippet', args))
   .build();
 
+/**
+ * MCP Tool: Trace paths through the code graph for impact analysis.
+ * Supports inbound (callers), outbound (callees), and both directions.
+ * Modes: calls, data_flow, cross_service. Default depth: 3 hops.
+ */
 const tracePathTool = fn('tracePath')
   .description('Trace paths through the code graph. Use for callers, dependencies, impact analysis, or data flow tracing.')
   .namespace('codebase')
@@ -250,6 +276,11 @@ const tracePathTool = fn('tracePath')
   .handler(async (args) => execMcpCli('trace_path', args))
   .build();
 
+/**
+ * MCP Tool: Check indexing coverage for exact paths or path scopes.
+ * Call before making negative or exhaustive claims about codebase structure
+ * to avoid hallucinating on partially indexed code.
+ */
 const checkIndexCoverageTool = fn('checkIndexCoverage')
   .description('Check authoritative indexing-coverage metadata for exact paths or path scopes. Use this before negative/exhaustive claims.')
   .namespace('codebase')
@@ -295,7 +326,22 @@ When finalizing an insight or responding to a session query, format EXACTLY as:
 
 const runtime = new AxJSRuntime();
 
-// 2. Define Agent Factory
+/**
+ * AxAgent factory definition.
+ *
+ * Creates a checkpointed LLM agent with memory search and codebase integration
+ * via MCP tools. The agent uses a SFL-constrained system prompt to enforce
+ * structured analytical output.
+ *
+ * Configuration:
+ * - `contextPolicy: 'checkpointed'` — agent state persists across clarification rounds
+ * - `maxRuntimeChars: 4000` — limits RLM context to prevent bloat
+ * - `onMemoriesSearch` — hybrid search (BM25 + vector + SQL LIKE) with RRF fusion
+ * - `functions` — 7 MCP tools for codebase graph navigation
+ *
+ * @see onMemoriesSearch for memory retrieval implementation
+ * @see execMcpCli for MCP tool execution details
+ */
 const insightAgent = agent('userQuery:string, chatHistory?:string[], userClarification?:string -> reply:string', {
   agentIdentity: {
     name: 'KnowledgeAgent',
@@ -320,7 +366,32 @@ const insightAgent = agent('userQuery:string, chatHistory?:string[], userClarifi
   contextFields: [],
 });
 
-// 3. API Endpoint
+/**
+ * POST /api/agent — Agent chat endpoint with NDJSON streaming.
+ *
+ * Accepts either a new query or a clarification answer and returns a streamed
+ * response. The agent may request clarification (returned as JSON) before
+ * producing a streamed reply.
+ *
+ * Request body:
+ *   { request: string } — new query
+ *   { answer: string, savedState: any } — clarification response
+ *
+ * Response types:
+ *   1. Clarification (JSON): { type: 'clarification', question, clarificationDetails, savedState }
+ *   2. Streaming (NDJSON): lines of { type: 'chunk', text } or { type: 'metric', tool, args }
+ *
+ * Streaming features:
+ *   - Immediate stream start (no waiting for first LLM chunk)
+ *   - Keep-alive heartbeat every 15s to prevent connection timeouts
+ *   - X-Accel-Buffering: no — disables proxy buffering
+ *   - Citation appendix sent at stream end via onUsedMemories callback
+ *
+ * Provider resolution:
+ *   1. Agent-specific config (config.dashboard.agent)
+ *   2. Fallback to main LLM config
+ *   3. Environment variable (OPENAI_API_KEY, ANTHROPIC_API_KEY, etc.)
+ */
 app.post('/', async (c) => {
   const body = await c.req.json();
   const request = body.request;

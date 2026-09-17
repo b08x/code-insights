@@ -112,6 +112,108 @@ The recurring insights system (`server/src/llm/recurring-insights.ts`) now uses 
 
 ---
 
+## Retrieval-Augmented Analysis System
+
+> Added in v4.8.0 - Annotated chunking and retrieval-augmented analysis pipeline
+
+### Purpose
+
+Enhance session analysis quality by augmenting the LLM context with relevant historical information from your codebase history. This addresses the cold-start problem and provides richer context for more accurate insights.
+
+### Architecture
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│ Retrieval-Augmented Analysis Pipeline                          │
+│                                                                  │
+│  Session Transcript                                             │
+│        │                                                        │
+│        ▼                                                        │
+│  ┌──────────────────┐  ┌──────────────────────────┐            │
+│  │ Annotated        │  │ Analysis Pipeline         │            │
+│  │ Chunker          │───▶│ (embedding, readiness)    │            │
+│  │                  │  │                          │            │
+│  │ - role boundary   │  └──────────┬───────────────┘            │
+│  │ - phase/session   │             │                            │
+│  │ - parent/child    │             ▼                            │
+│  │   splitting       │  ┌──────────────────────┐            │
+│  └──────────────────┘  │ vec_analysis_chunks   │            │
+│                         │ (KNN search)         │            │
+│                         └──────────┬───────────┘            │
+│                                    │                            │
+│                                    ▼                            │
+│                         ┌──────────────────────┐            │
+│                         │ Retrieval Layer       │            │
+│                         │ - threshold config    │            │
+│                         │ - dynamic query       │            │
+│                         │ - context window      │            │
+│                         └──────────┬───────────┘            │
+│                                    │                            │
+│                                    ▼                            │
+│                         ┌──────────────────────┐            │
+│                         │ Render Layer          │            │
+│                         │ - Rich Terminal       │            │
+│                         │ - Score bars          │            │
+│                         │ - Severity dots        │            │
+│                         │ - Dimension breakdown  │            │
+│                         └──────────────────────┘            │
+└──────────────────────────────────────────────────────────────┘
+```
+
+### Components
+
+| Component | File | Purpose |
+|-----------|------|---------|
+| `AnnotatedChunker` | `cli/src/analysis/annotated-chunker.ts` | Intelligent chunking respecting role boundaries with parent/child strategy |
+| `AnalysisChunksStore` | `cli/src/analysis/analysis-chunks-store.ts` | Manages vec_analysis_chunks table for storing analysis chunks |
+| `AnalysisPipeline` | `cli/src/analysis/analysis-pipeline.ts` | Orchestrates embedding, indexing, and retrieval readiness |
+| `Retrieval` | `cli/src/analysis/retrieval.ts` | Shared retrieval layer with threshold and dynamic query configuration |
+| `Render` | `cli/src/analysis/render.ts` | Rich terminal output formatting (score bars, severity dots) |
+
+### Database Schema Changes (V13)
+
+- `vec_analysis_chunks` virtual table via sqlite-vec for KNN search on analysis chunks
+- Stores chunks from annotated chunker with parent/child relationships
+- Enables retrieval of relevant historical context for analysis augmentation
+
+### Annotated Chunking Strategy
+
+The annotated chunker implements a sophisticated splitting strategy:
+
+1. **Role Boundary Respect**: Chunks are split at message role boundaries (user/assistant) to preserve conversation context
+2. **Phase Detection**: Identifies session phases (e.g., coding, debugging, reviewing) for semantic grouping
+3. **Parent/Child Splitting**: 
+   - Parent chunks: Up to 4000 characters, preserving broader context
+   - Child chunks: Up to 512 characters, used for embedding computation
+   - Child chunks reference their parent for provenance tracking
+4. **Annotated Metadata**: Each chunk carries metadata about its role, phase, position, and relationships
+
+This strategy ensures:
+- High-quality semantic retrieval through focused child chunk embeddings
+- Rich context preservation through parent chunk references
+- Efficient LLM processing with properly sized tokens
+- Accurate provenance tracking for analysis augmentation
+
+### Data Flow
+
+1. **Chunking**: Session transcripts are processed by the annotated chunker, producing parent/child chunk pairs
+2. **Embedding**: Child chunks are embedded via Ollama and stored in `vec_analysis_chunks`
+3. **Indexing**: Chunks are indexed with readiness status for retrieval
+4. **Retrieval**: Analysis queries use KNN search with configurable thresholds to find relevant chunks
+5. **Augmentation**: Retrieved chunks augment the analysis context for richer insight generation
+6. **Rendering**: Results are formatted with rich terminal visualizations
+
+### Configuration
+
+The retrieval layer supports configurable parameters:
+
+- `threshold`: Minimum similarity score for retrieval (default: 0.75)
+- `k`: Number of nearest neighbors to retrieve (default: 5)
+- `contextWindow`: Size of context window for augmentation (default: 3)
+- `dynamicQuery`: Enable/disable query adaptation based on session content
+
+---
+
 ## Optimization System (GEPA)
 
 ### Purpose

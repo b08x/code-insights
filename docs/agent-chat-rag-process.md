@@ -227,6 +227,123 @@ function execMcpCli(toolName: string, args: Record<string, any>): string {
 - `trace_path` → Trace logical paths between files/components
 - `check_index_coverage` → Check graph index coverage
 
+### 3.4 Agent Memory Search Optimization (v4.8.0+)
+
+Significant optimizations were made to improve agent responsiveness and memory search performance:
+
+#### Async MCP Execution
+
+The `execMcpCli` function has been refactored to use asynchronous execution:
+
+```typescript
+// Before (synchronous, blocking):
+function execMcpCli(toolName: string, args: Record<string, any>): string {
+  return execFileSync('codebase-memory-mcp', 
+    ['cli', toolName, JSON.stringify(args)], {
+      encoding: 'utf-8',
+      timeout: 120000
+    });
+}
+
+// After (asynchronous, non-blocking):
+async function execMcpCli(toolName: string, args: Record<string, any>): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile('codebase-memory-mcp', 
+      ['cli', toolName, JSON.stringify(args)], 
+      { encoding: 'utf-8', timeout: 120000 },
+      (error, stdout, stderr) => {
+        if (error) reject(error);
+        else resolve(stdout);
+      }
+    );
+  });
+}
+```
+
+**Benefits:**
+- MCP tool calls no longer block the Node.js event loop
+- Multiple MCP tools can run concurrently
+- Improved throughput for indexing operations
+- Extended timeout (120s) accommodates large repository indexing
+
+#### Stream Responsiveness Improvements
+
+```typescript
+// Key changes in agent.ts streaming flow:
+
+// 1. Stream returned immediately (no waiting for first LLM chunk)
+const stream = insightAgent.streamingForward(llm, { userQuery, userClarification });
+
+// 2. TTFT (Time to First Token) significantly reduced
+// 3. Disabled proxy buffering in streamText headers
+const response = new Response(stream, {
+  headers: {
+    'Content-Type': 'text/plain; charset=utf-8',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+  },
+});
+
+// 4. Keep-alive heartbeat mechanism (15-second intervals)
+setInterval(() => {
+  if (!streamClosed) {
+    // Send heartbeat to prevent connection timeout
+    streamController.enqueue('\n');
+  }
+}, 15000);
+```
+
+**Improvements:**
+- **Immediate Stream Start**: Stream begins flowing as soon as the agent starts processing, without waiting for the first LLM chunk
+- **Reduced TTFT**: Time to First Token significantly decreased through optimized streaming pipeline
+- **No Proxy Buffering**: Disabled buffering that was delaying stream output
+- **Keep-Alive Heartbeats**: 15-second heartbeat intervals prevent connection timeouts on slow LLM responses
+
+#### Context Bloat Prevention
+
+Reduced session context injection to prevent excessive context window usage:
+
+```typescript
+// Before: Full session context injected
+const context = await buildFullSessionContext(session, messages);
+
+// After: Selective context injection
+const context = await buildOptimizedContext(session, messages, {
+  maxTokens: 16000,  // Conservative limit
+  includeHistory: true,
+  includeInsights: true,
+  includeProject: true,
+});
+```
+
+**Benefits:**
+- Prevents context window overflow
+- Faster agent response times
+- More efficient token usage
+- Avoids LLM context length errors
+
+#### Debug Logging
+
+Enhanced debugging with persistent logs:
+
+```typescript
+// Debug logging persisted to ~/.code-insights/agent-debug.log
+const debugLog = createDebugLogger('agent-debug.log');
+
+// Log key events:
+- Agent initialization and configuration
+- Tool call execution and results
+- Stream chunk processing
+- Error conditions and recoveries
+- Performance metrics (TTFT, token counts)
+```
+
+**Features:**
+- Rotating log files to prevent disk space issues
+- Timestamped entries with severity levels
+- JSON structured output for easy parsing
+- Configurable log retention (default: 7 days)
+
 ---
 
 ## 4. Embedding Layer

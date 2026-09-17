@@ -25,6 +25,8 @@
 - **AI Fluency Scoring** — Evaluate your prompts using multi-dimensional prompt quality metrics.
 - **Vector-Based Recurring Insights** — Group similar insights using local `sqlite-vec` KNN search + MMR deduplication (~90% token savings).
 - **Hierarchical RAG Chunking Strategy** — Intelligently segment code and session history to avoid context length errors and dramatically improve retrieval precision.
+- **Retrieval-Augmented Analysis** — Enhanced session analysis with annotated chunking (role-boundary grouping, parent/child splitting) and context augmentation from historical sessions.
+- **Rich Terminal Output** — Detailed CLI analysis with score bars, severity dots, emoji headers, and dimension breakdowns.
 - **Privacy First** — Completely local SQLite backend with zero external dependencies (unless configuring cloud LLM models).
 
 ---
@@ -71,12 +73,40 @@ code-insights dashboard       # Start visual dashboard at http://localhost:7890
 | `install-hook` | Zero-latency hook for tools | `--runner [codex|claude|vibe|antigravity]`, `--target [claude|vibe|opencode]` |
 | `uninstall-hook` | Remove auto-sync hooks | `--target [claude|vibe|opencode]` |
 | `sync` | Discover & import sessions | `--source [claude\|cursor\|copilot]` |
-| `insights [id]` | Run AI analysis on session | `--force`, `--claude`, `--native` |
+| `insights [id]` | Run AI analysis on session | `--force`, `--claude`, `--native`, `--format [rich|json|quiet]` |
 | `reflect` | Compile cross-session synthesis | `--week [YYYY-W##]` |
 | `stats` | Fast terminal analytics | `today`, `cost`, `projects` |
 | `optimize` | Tune insight prompts via `@ax-llm/ax` | `run`, `status`, `list`, `apply`, `compare` |
 | `embeddings` | Manage SQLite vector database | `backfill`, `status`, `recompute` |
 | `search / vsearch / query` | Hybrid semantic search over messages | `--top-k` |
+
+---
+
+## Retrieval-Augmented Analysis
+
+Code Insights now uses a sophisticated retrieval-augmented generation (RAG) pipeline for session analysis:
+
+- **Annotated Chunking**: Intelligent segmentation respecting role boundaries, with parent/child splitting for long messages
+- **Context Augmentation**: Retrieves relevant historical context (window + neighbors) to enhance analysis quality
+- **Dynamic Query**: Adapts search queries based on session content and context needs
+
+```bash
+# Use rich terminal output for detailed analysis
+code-insights insights <session_id> --format rich
+
+# Or get JSON output for programmatic use
+code-insights insights <session_id> --format json
+
+# Quiet mode for scripting
+code-insights insights <session_id> --format quiet
+```
+
+The rich format includes:
+- **Score Bars**: Visual representation of insight quality scores
+- **Severity Dots**: Indication of friction/importance levels
+- **Emoji Headers**: Categorized insight types
+- **Dimension Breakdown**: Coverage, precision, actionability metrics
+- **Metrics Footer**: Session statistics and analysis summary
 
 ---
 
@@ -265,14 +295,15 @@ Session Sources (Claude, Cursor, Copilot, Gemini CLI, Hermes, OpenCode, Crush)
              │
              ▼
       ┌─────────────────────────────────────┐
-      │ SQLite DB (V12)                     │  ~/.code-insights/data.db
+      │ SQLite DB (V13)                     │  ~/.code-insights/data.db
+      │  ┌──────────┐  ┌──────────────────┐ │
       │  ┌──────────┐  ┌──────────────────┐ │
       │  │ Tables   │  │ Search Tables    │ │
       │  │ projects │  │ vec_insights     │ │
       │  │ sessions │  │ vec_messages     │ │
       │  │ messages │  │ messages_fts     │ │
-      │  │ insights │  └──────────────────┘ │
-      │  └──────────┘                       │
+      │  │ insights │  │ vec_analysis_chunks│ │
+      │  └──────────┘  └──────────────────┘ │
       └──────┬──────────────────────────────┘
              │
       ┌──────┴───────────────┐
@@ -292,6 +323,41 @@ Session Sources (Claude, Cursor, Copilot, Gemini CLI, Hermes, OpenCode, Crush)
 │ Embeddings │  │ (Analysis)   │  │ Optimization│
 │ (1024-dim) │  │              │  │ (@ax-llm/ax)│
 └────────────┘  └──────────────┘  └─────────────┘
+
+── Retrieval-Augmented Analysis Pipeline ──
+┌──────────────────────────────────────────────────────────────┐
+│                                                                  │
+│  Session Transcript                                             │
+│        │                                                        │
+│        ▼                                                        │
+│  ┌──────────────────┐  ┌──────────────────────────┐            │
+│  │ Annotated        │  │ Analysis Pipeline         │            │
+│  │ Chunker          │───▶│ (embedding, readiness)    │            │
+│  │ - role boundary   │  │                          │            │
+│  │ - phase/signific  │  └──────────┬───────────────┘            │
+│  │ - parent/child    │             │                            │
+│  └──────────────────┘             ▼                            │
+│                             ┌──────────────────────┐            │
+│                             │ vec_analysis_chunks   │            │
+│                             │ (KNN search)         │            │
+│                             └──────────┬───────────┘            │
+│                                        │                            │
+│                                        ▼                            │
+│                             ┌──────────────────────┐            │
+│                             │ Retrieval Layer       │            │
+│                             │ - threshold config    │            │
+│                             │ - dynamic query       │            │
+│                             │ - context window      │            │
+│                             └──────────┬───────────┘            │
+│                                        │                            │
+│                                        ▼                            │
+│                             ┌──────────────────────┐            │
+│                             │ Rich Terminal Render  │            │
+│                             │ - score bars          │            │
+│                             │ - severity dots        │            │
+│                             │ - dimension breakdown  │            │
+│                             └──────────────────────┘            │
+└──────────────────────────────────────────────────────────────┘
 ```
 
 ---
