@@ -169,6 +169,7 @@ const insightsCmd = program
   .option('-s, --source <tool>', 'Source tool identifier (default: claude-code)')
   .option('--force', 'Re-analyze even if already analyzed at this session length')
   .option('-q, --quiet', 'Suppress output')
+  .option('--format <mode>', 'Output format: rich (default), json, quiet', 'rich')
   .action(async (sessionId: string | undefined, opts) => {
     await insightsCommand(sessionId, opts);
   });

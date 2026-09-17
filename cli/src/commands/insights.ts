@@ -20,6 +20,7 @@ import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { getDb } from '../db/client.js';
+import { renderAnalysisReport } from '../analysis/render.js';
 import { ClaudeNativeRunner } from '../analysis/native-runner.js';
 import { CodexNativeRunner } from '../analysis/codex-runner.js';
 import { AntigravityNativeRunner } from '../analysis/antigravity-runner.js';
@@ -128,13 +129,15 @@ export interface InsightsCommandOptions {
   force?: boolean;
   quiet?: boolean;
   source?: string;
+  format?: string;
   /** Pre-built runner to reuse across batch calls. Skips runner construction and validate(). */
   _runner?: AnalysisRunner;
 }
 
 // ── Core logic ────────────────────────────────────────────────────────────────
 
-export async function runInsightsCommand(options: InsightsCommandOptions): Promise<void> {
+export async function runInsightsCommand(options: InsightsCommandOptions): Promise<string | void> {
+  const format = options.format ?? 'rich';
   const log = options.quiet ? () => {} : console.log.bind(console);
 
   // 1. Build the runner (or reuse a pre-built one from batch callers)
@@ -245,6 +248,45 @@ export async function runInsightsCommand(options: InsightsCommandOptions): Promi
   // 5. Build shared conversation block (same for both passes)
   const formattedMessages = formatMessagesForAnalysis(messages);
 
+  // 5b. Retrieval-augmented context for long conversations
+  let retrievalContext = '';
+  try {
+    const { shouldUseRetrieval, retrieveAnalysisChunks, generateSessionSummary } = await import('../embeddings/retrieval.js');
+    const { checkEmbeddingReadiness, chunkAndEmbedSession } = await import('../embeddings/analysis-pipeline.js');
+
+    if (shouldUseRetrieval(formattedMessages)) {
+      log(chalk.dim(`[Code Insights] Long conversation detected, checking retrieval readiness...`));
+
+      // Check if embeddings exist for this session
+      const readiness = checkEmbeddingReadiness(getDb(), options.sessionId);
+
+      if (!readiness.ready) {
+        // Trigger background chunking + embedding
+        log(chalk.dim(`[Code Insights] Computing embeddings for ${readiness.status.total || messages.length} chunks...`));
+        const chunkResult = await chunkAndEmbedSession(options.sessionId, messages);
+        if (!chunkResult.embedded) {
+          log(chalk.yellow(`[Code Insights] Embedding failed: ${chunkResult.error}. Falling back to full conversation.`));
+        }
+      }
+
+      // Retrieve relevant chunks
+      const sessionSummary = generateSessionSummary(messages);
+      const retrieved = await retrieveAnalysisChunks(
+        options.sessionId,
+        formattedMessages,
+        session.summary || sessionSummary,
+        session.project_name,
+      );
+
+      if (retrieved.usedRetrieval) {
+        retrievalContext = `\n\n${retrieved.augmentedChunks}\n\n`;
+        log(chalk.dim(`[Code Insights] Retrieved ${retrieved.chunkCount} relevant segments (~${retrieved.estimatedTokens} tokens)`));
+      }
+    }
+  } catch {
+    // Retrieval is non-fatal — fall back to full conversation
+  }
+
   // 6. Heuristic loop detection
   const loopSignal = detectRageLoopHeuristic(messages);
 
@@ -290,7 +332,7 @@ export async function runInsightsCommand(options: InsightsCommandOptions): Promi
     // Ignore: tool missing, project not indexed, or timeout
   }
 
-  const sessionUserPrompt = `${buildCacheableConversationBlock(formattedMessages).text}${architectureContext}\n${sessionInstructions}`;
+  const sessionUserPrompt = `${buildCacheableConversationBlock(formattedMessages).text}${retrievalContext}${architectureContext}\n${sessionInstructions}`;
 
   const sessionResult = await performAnalysis({
     systemPrompt: SHARED_ANALYST_SYSTEM_PROMPT,
@@ -375,12 +417,37 @@ export async function runInsightsCommand(options: InsightsCommandOptions): Promi
     session_message_count: session.message_count,
   });
 
-  // ── Summary line ──────────────────────────────────────────────────────────
+  // ── Render report ──────────────────────────────────────────────────────────
 
-  // Non-PQ insight count (excludes summary's own entry which is always saved)
-  const insightCount = sessionInsights.length;
-  const pqScore = parsedPQ.data.efficiency_score;
-  log(chalk.green(`[Code Insights] Session analyzed: ${insightCount} insights, PQ ${pqScore}/100`));
+  const resultPayload = {
+    session: parsedSession.data,
+    promptQuality: parsedPQ.data,
+    meta: {
+      model: sessionResult.model,
+      durationMs: (sessionResult.durationMs || 0) + (pqResult.durationMs || 0),
+      inputTokens: (sessionResult.inputTokens || 0) + (pqResult.inputTokens || 0),
+      outputTokens: (sessionResult.outputTokens || 0) + (pqResult.outputTokens || 0),
+      messageCount: session.message_count,
+      projectName: session.project_name,
+    },
+  };
+
+  if (format === 'json') {
+    // Return raw JSON so batch callers can parse and render
+    return JSON.stringify(resultPayload);
+  } else {
+    const report = renderAnalysisReport({
+      sessionAnalysis: parsedSession.data,
+      pqAnalysis: parsedPQ.data,
+      model: sessionResult.model,
+      durationMs: (sessionResult.durationMs || 0) + (pqResult.durationMs || 0),
+      inputTokens: (sessionResult.inputTokens || 0) + (pqResult.inputTokens || 0),
+      outputTokens: (sessionResult.outputTokens || 0) + (pqResult.outputTokens || 0),
+      messageCount: session.message_count,
+      projectName: session.project_name,
+    });
+    log(report);
+  }
 }
 
 // ── CLI command entry point ───────────────────────────────────────────────────
@@ -397,9 +464,11 @@ export async function insightsCommand(
     source?: string;
     force?: boolean;
     quiet?: boolean;
+    format?: string;
   }
 ): Promise<void> {
-  const quiet = opts.quiet ?? false;
+  const quiet = opts.quiet ?? opts.format === 'quiet';
+  const format = opts.format ?? 'rich';
   const log = quiet ? () => {} : console.log.bind(console);
 
   try {
@@ -444,6 +513,7 @@ export async function insightsCommand(
       force: opts.force ?? false,
       quiet,
       source: opts.source,
+      format,
     });
   } catch (error) {
     if (!quiet) {
@@ -586,7 +656,7 @@ export async function insightsCheckCommand(opts: {
           process.stdout.write(`${position} ${label} ... `);
           const start = Date.now();
           try {
-            await runInsightsCommand({ 
+            const report = await runInsightsCommand({ 
               sessionId: row.id, 
               native: currentRunnerType === 'codex' || currentRunnerType === 'claude' || currentRunnerType === 'antigravity' || currentRunnerType === 'vibe',
               codex: currentRunnerType === 'codex', 
@@ -594,10 +664,26 @@ export async function insightsCheckCommand(opts: {
               antigravity: currentRunnerType === 'antigravity',
               vibe: currentRunnerType === 'vibe',
               quiet: true, 
-              _runner: runner 
+              _runner: runner,
+              format: 'json',
             });
             const elapsed = Math.round((Date.now() - start) / 1000);
             process.stdout.write(`done (${elapsed}s)\n`);
+            if (report) {
+              try {
+                const parsed = JSON.parse(report);
+                console.log(renderAnalysisReport({
+                  sessionAnalysis: parsed.session,
+                  pqAnalysis: parsed.promptQuality,
+                  model: parsed.meta?.model,
+                  durationMs: parsed.meta?.durationMs,
+                  inputTokens: parsed.meta?.inputTokens,
+                  outputTokens: parsed.meta?.outputTokens,
+                  messageCount: parsed.meta?.messageCount,
+                  projectName: parsed.meta?.projectName,
+                }));
+              } catch { /* report not JSON, skip */ }
+            }
             successCount++;
           } catch (err: any) {
             process.stdout.write('failed\n');
@@ -640,7 +726,7 @@ export async function insightsCheckCommand(opts: {
         if (runner) {
           for (const row of rows) {
             try {
-              await runInsightsCommand({ 
+              const report = await runInsightsCommand({ 
                 sessionId: row.id, 
                 native: runnerType === 'codex' || runnerType === 'claude' || runnerType === 'antigravity' || runnerType === 'vibe',
                 codex: runnerType === 'codex',
@@ -648,8 +734,24 @@ export async function insightsCheckCommand(opts: {
                 antigravity: runnerType === 'antigravity',
                 vibe: runnerType === 'vibe',
                 quiet: true,
-                _runner: runner
+                _runner: runner,
+                format: 'json',
               });
+              if (report) {
+                try {
+                  const parsed = JSON.parse(report);
+                  console.log(renderAnalysisReport({
+                    sessionAnalysis: parsed.session,
+                    pqAnalysis: parsed.promptQuality,
+                    model: parsed.meta?.model,
+                    durationMs: parsed.meta?.durationMs,
+                    inputTokens: parsed.meta?.inputTokens,
+                    outputTokens: parsed.meta?.outputTokens,
+                    messageCount: parsed.meta?.messageCount,
+                    projectName: parsed.meta?.projectName,
+                  }));
+                } catch { /* report not JSON, skip */ }
+              }
             } catch {
               // Silently ignore auto-analyze errors for 1-2 sessions
             }

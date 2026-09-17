@@ -35,7 +35,11 @@
     "./analysis/schemas/prompt-quality.json": "./dist/analysis/schemas/prompt-quality.json",
     "./embeddings/client": "./dist/embeddings/client.js",
     "./embeddings/store": "./dist/embeddings/store.js",
-    "./embeddings/types": "./dist/embeddings/types.js"
+    "./embeddings/types": "./dist/embeddings/types.js",
+    "./embeddings/retrieval": "./dist/embeddings/retrieval.js",
+    "./embeddings/analysis-pipeline": "./dist/embeddings/analysis-pipeline.js",
+    "./embeddings/annotated-chunker": "./dist/embeddings/annotated-chunker.js",
+    "./embeddings/analysis-chunks-store": "./dist/embeddings/analysis-chunks-store.js"
   },
   "bin": {
     "code-insights": "./dist/index.js"

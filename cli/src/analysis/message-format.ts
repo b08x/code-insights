@@ -16,11 +16,11 @@ function safeParseJson<T>(value: string | null | undefined, defaultValue: T): T 
 }
 
 // Internal types — only used within formatMessagesForAnalysis
-interface ParsedToolCall {
+export interface ParsedToolCall {
   name?: string;
 }
 
-interface ParsedToolResult {
+export interface ParsedToolResult {
   output?: string;
 }
 

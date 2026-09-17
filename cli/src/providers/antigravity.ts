@@ -7,6 +7,26 @@ import type { ParsedSession, ParsedMessage, ToolCall, ToolResult } from '../type
 import { getGeminiHomeDir } from '../utils/config.js';
 import { generateTitle, detectSessionCharacter } from '../parser/titles.js';
 
+function findProjectRoot(filePath: string): string | null {
+  let currentDir = fs.statSync(filePath, { throwIfNoEntry: false })?.isDirectory() 
+    ? filePath 
+    : path.dirname(filePath);
+    
+  // Don't walk higher than these bases
+  const bases = ['/home/b08x/WorkspaceV3', '/home/b08x/Workspace', '/home/b08x/.syncopated'];
+  
+  while (currentDir && currentDir !== '/' && currentDir !== '/home/b08x') {
+    if (fs.existsSync(path.join(currentDir, '.git'))) {
+      return currentDir;
+    }
+    if (bases.includes(path.dirname(currentDir))) {
+      return currentDir;
+    }
+    currentDir = path.dirname(currentDir);
+  }
+  return null;
+}
+
 /**
  * Antigravity session provider.
  * Discovers SQLite database (.db) and Protobuf (.pb) files in ~/.gemini/antigravity-cli/conversations/
@@ -105,6 +125,19 @@ export class AntigravityProvider implements SessionProvider {
             if (lineStr.includes(projPath)) {
               projectPath = projPath;
               projectName = path.basename(projPath);
+              break;
+            }
+          }
+
+          // Fallback: Use regex to find typical workspace paths if not found in projects.json
+          if (projectName === 'unknown') {
+            const workspaceMatch = lineStr.match(/(\/home\/b08x\/(?:Workspace|WorkspaceV3|\.syncopated)\/[^\/\\"']+)/);
+            if (workspaceMatch && workspaceMatch[1]) {
+              const root = findProjectRoot(workspaceMatch[1]);
+              if (root) {
+                projectPath = root;
+                projectName = path.basename(projectPath);
+              }
             }
           }
 
@@ -272,8 +305,24 @@ export class AntigravityProvider implements SessionProvider {
         const content = fs.readFileSync(walkthroughPath, 'utf-8');
         const fileMatch = content.match(/\[.*?\]\(file:\/\/(.*?)\)/);
         if (fileMatch && fileMatch[1]) {
-          projectPath = path.dirname(fileMatch[1]);
-          projectName = path.basename(projectPath);
+          const root = findProjectRoot(fileMatch[1]);
+          if (root) {
+            projectPath = root;
+            projectName = path.basename(projectPath);
+          } else {
+            projectPath = path.dirname(fileMatch[1]);
+            projectName = path.basename(projectPath);
+          }
+        } else {
+          // Fallback regex for paths like /home/user/Workspace/project
+          const workspaceMatch = content.match(/(\/home\/b08x\/(?:Workspace|WorkspaceV3|\.syncopated)\/[^\/\s"'\)]+)/);
+          if (workspaceMatch && workspaceMatch[1]) {
+            const root = findProjectRoot(workspaceMatch[1]);
+            if (root) {
+              projectPath = root;
+              projectName = path.basename(projectPath);
+            }
+          }
         }
 
         messages.push({

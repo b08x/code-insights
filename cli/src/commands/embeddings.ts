@@ -279,6 +279,18 @@ export async function embeddingsStatusCommand(opts: { quiet?: boolean }): Promis
       }
     }
 
+    // --- Analysis chunks (retrieval-augmented) ---
+    try {
+      const { countAnalysisChunks, countSessionsWithChunks } = await import('../embeddings/analysis-chunks-store.js');
+      loadVectorExtension(db);
+      const analysisChunkCount = countAnalysisChunks(db);
+      const analysisSessionCount = countSessionsWithChunks(db);
+      log(chalk.white('\n  Analysis chunks (retrieval-augmented):'));
+      log(chalk.gray(`    ${analysisChunkCount} chunks across ${analysisSessionCount} sessions`));
+    } catch {
+      // Analysis chunks not yet created
+    }
+
     // --- sqlite-vec virtual table counts ---
     log(chalk.white('\n  sqlite-vec index:'));
     try {
@@ -292,6 +304,16 @@ export async function embeddingsStatusCommand(opts: { quiet?: boolean }): Promis
       log(chalk.gray(`    vec_messages:  ${messageVecCount} vectors`));
     } catch {
       log(chalk.dim('    vec_messages:  not created yet'));
+    }
+    try {
+      const db2 = getDb();
+      loadVectorExtension(db2);
+      const analysisVecRow = db2.prepare(`SELECT COUNT(*) as n FROM vec_analysis_chunks`).get() as { n: number } | undefined;
+      if (analysisVecRow) {
+        log(chalk.gray(`    vec_analysis_chunks:  ${analysisVecRow.n} vectors`));
+      }
+    } catch {
+      log(chalk.dim('    vec_analysis_chunks:  not created yet'));
     }
 
     log('');

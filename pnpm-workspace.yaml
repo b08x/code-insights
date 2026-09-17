@@ -3,5 +3,9 @@ packages:
   - 'dashboard'
   - 'server'
 allowBuilds:
+  '@ax-llm/ax': set this to true or false
+  '@openrouter/sdk': set this to true or false
   better-sqlite3: true
+  core-js: set this to true or false
   esbuild: false
+  protobufjs: set this to true or false

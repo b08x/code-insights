@@ -104,6 +104,9 @@ function getStmts() {
         ?, ?, ?, ?
       )
       ON CONFLICT(id) DO UPDATE SET
+        project_id              = excluded.project_id,
+        project_name            = excluded.project_name,
+        project_path            = excluded.project_path,
         generated_title         = excluded.generated_title,
         title_source            = excluded.title_source,
         session_character       = excluded.session_character,

@@ -48,6 +48,8 @@ import * as sqliteVec from 'sqlite-vec';
 import { embedOne, DEFAULT_EMBEDDING_CONFIG } from '@code-insights/cli/embeddings/client';
 import { loadVectorExtension, querySimilarFiltered } from '@code-insights/cli/embeddings/store';
 import type { EmbeddingConfig } from '@code-insights/cli/embeddings/types';
+import { shouldUseRetrieval, retrieveAnalysisChunks, generateSessionSummary } from '@code-insights/cli/embeddings/retrieval';
+import { checkEmbeddingReadiness, chunkAndEmbedSession } from '@code-insights/cli/embeddings/analysis-pipeline';
 
 // Re-export from sub-modules so existing imports of these from analysis.ts keep working.
 export { analyzePromptQuality } from './prompt-quality-analysis.js';
@@ -102,6 +104,36 @@ export async function analyzeSession(
       retrievalConfig,
     );
 
+    // Retrieval-augmented context for long conversations
+    let retrievalContextBlock = '';
+    try {
+      if (shouldUseRetrieval(formattedMessages)) {
+        const db = getDb();
+        const readiness = checkEmbeddingReadiness(db, session.id);
+
+        if (!readiness.ready) {
+          await chunkAndEmbedSession(session.id, messages, embeddingConfig);
+        }
+
+        const sessionSummary = generateSessionSummary(messages);
+        const retrieved = await retrieveAnalysisChunks(
+          session.id,
+          formattedMessages,
+          session.summary || sessionSummary,
+          session.project_name,
+          sessionMeta,
+          { ...retrievalConfig, maxInputTokens: MAX_INPUT_TOKENS, retrievalThresholdRatio: 0.8 },
+          embeddingConfig,
+        );
+
+        if (retrieved.usedRetrieval) {
+          retrievalContextBlock = `\n\n${retrieved.augmentedChunks}\n\n`;
+        }
+      }
+    } catch {
+      // Retrieval is non-fatal — fall back to full conversation
+    }
+
     let analysisResponse: AnalysisResponse;
     let totalInputTokens = 0;
     let totalOutputTokens = 0;
@@ -125,7 +157,7 @@ export async function analyzeSession(
           { role: 'system', content: SHARED_ANALYST_SYSTEM_PROMPT },
           { role: 'user', content: [
             buildCacheableConversationBlock(chunkFormatted),
-            { type: 'text' as const, text: buildSessionAnalysisInstructions(session.project_name, session.summary, sessionMeta, undefined, relatedInsights) },
+            { type: 'text' as const, text: `${retrievalContextBlock}${buildSessionAnalysisInstructions(session.project_name, session.summary, sessionMeta, undefined, relatedInsights)}` },
           ] },
         ], { signal: options?.signal });
 
@@ -201,7 +233,7 @@ export async function analyzeSession(
         { role: 'system', content: SHARED_ANALYST_SYSTEM_PROMPT },
         { role: 'user', content: [
           buildCacheableConversationBlock(formattedMessages),
-          { type: 'text' as const, text: buildSessionAnalysisInstructions(session.project_name, session.summary, sessionMeta, undefined, relatedInsights) },
+          { type: 'text' as const, text: `${retrievalContextBlock}${buildSessionAnalysisInstructions(session.project_name, session.summary, sessionMeta, undefined, relatedInsights)}` },
         ] },
       ], { signal: options?.signal });
 
