@@ -173,6 +173,19 @@ export interface DashboardStats {
   estimated_cost_usd: number | null;
 }
 
+export type DecisionDriver = 'user' | 'agent' | 'collaborative';
+export type FcaDriver = 'LLM_Decide' | 'User_Decide' | 'Collab_Decide';
+export type FcaTarget = 'Target_Config' | 'Target_SrcCode' | 'Target_Test' | 'Target_Docs';
+export type FcaState = 'State_Success' | 'State_Error' | 'State_Blocked';
+
+export interface SemanticStep {
+  step: string;
+  turn_ref: string;
+  driver: FcaDriver;
+  target: FcaTarget;
+  state: FcaState;
+}
+
 /**
  * Typed metadata for insight rendering.
  * Mirrors cli/src/types.ts InsightMetadata — all fields optional since
@@ -187,6 +200,9 @@ export interface InsightMetadata {
   trade_offs?: string;
   revisit_when?: string;
   evidence?: string[];
+  decided_by?: DecisionDriver;
+  intent?: string;
+  branch_point?: string;
   // Learning fields
   symptom?: string;
   root_cause?: string;
@@ -196,6 +212,8 @@ export interface InsightMetadata {
   // Distinct from session_facets.outcome_satisfaction ('high'|'medium'|'low'|'abandoned')
   // which is a quantitative satisfaction rating used on the Patterns page.
   outcome?: 'success' | 'partial' | 'abandoned' | 'blocked';
+  // Semantic step matrix for FCA (Formal Concept Analysis)
+  step_matrix?: SemanticStep[];
   // Legacy learning/technique
   context?: string;
   applicability?: string;

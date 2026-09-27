@@ -864,4 +864,160 @@ describe('Export routes', () => {
       );
     });
   });
+
+  describe('GET /api/export/session/:id/rails', () => {
+    it('returns 404 when session not found', async () => {
+      const app = createApp();
+      const res = await app.request('/api/export/session/non-existent/rails');
+      expect(res.status).toBe(404);
+      const json = await res.json();
+      expect(json.error).toBe('Session not found');
+    });
+
+    it('returns Rails-compatible JSON with session, decisions, and step_matrix', async () => {
+      const projId = 'proj-' + randomUUID();
+      const sessId = 'sess-' + randomUUID();
+      seedProjectAndSession(projId, sessId);
+
+      seedInsight(
+        sessId,
+        projId,
+        'summary',
+        'Session Summary',
+        'Summary content',
+        {
+          outcome: 'success',
+          step_matrix: [
+            {
+              step: 'Setup database schema',
+              turn_ref: 'User#1',
+              driver: 'User_Decide',
+              target: 'Target_SrcCode',
+              state: 'State_Success',
+            },
+          ],
+        },
+      );
+
+      seedInsight(
+        sessId,
+        projId,
+        'decision',
+        'Use SQLite',
+        'Choice of database',
+        {
+          decided_by: 'user',
+          intent: 'Local persistence',
+          branch_point: 'Avoided PostgreSQL',
+          situation: 'Local analytics required',
+          choice: 'SQLite with WAL mode',
+          reasoning: 'Zero external dependencies',
+        },
+      );
+
+      const app = createApp();
+      const res = await app.request(`/api/export/session/${sessId}/rails`);
+      expect(res.status).toBe(200);
+      const json = await res.json();
+
+      expect(json.format).toBe('rails-v1');
+      expect(json.session.id).toBe(sessId);
+      expect(json.decisions).toHaveLength(1);
+      expect(json.decisions[0].decided_by).toBe('user');
+      expect(json.decisions[0].intent).toBe('Local persistence');
+      expect(json.decisions[0].branch_point).toBe('Avoided PostgreSQL');
+      expect(json.step_matrix).toHaveLength(1);
+      expect(json.step_matrix[0].step).toBe('Setup database schema');
+    });
+  });
+
+  describe('GET /api/export/session/:id/fca', () => {
+    it('returns 404 when session not found', async () => {
+      const app = createApp();
+      const res = await app.request('/api/export/session/non-existent/fca');
+      expect(res.status).toBe(404);
+      const json = await res.json();
+      expect(json.error).toBe('Session not found');
+    });
+
+    it('returns FCA binary context as JSON by default', async () => {
+      const projId = 'proj-' + randomUUID();
+      const sessId = 'sess-' + randomUUID();
+      seedProjectAndSession(projId, sessId);
+
+      seedInsight(
+        sessId,
+        projId,
+        'summary',
+        'Session Summary',
+        'Summary content',
+        {
+          step_matrix: [
+            {
+              step: 'Config env',
+              turn_ref: 'User#1',
+              driver: 'User_Decide',
+              target: 'Target_Config',
+              state: 'State_Success',
+            },
+            {
+              step: 'Write algorithm',
+              turn_ref: 'Assistant#2',
+              driver: 'LLM_Decide',
+              target: 'Target_SrcCode',
+              state: 'State_Success',
+            },
+          ],
+        },
+      );
+
+      const app = createApp();
+      const res = await app.request(`/api/export/session/${sessId}/fca`);
+      expect(res.status).toBe(200);
+      const json = await res.json();
+
+      expect(json.session_id).toBe(sessId);
+      expect(json.objects).toEqual(['Config env', 'Write algorithm']);
+      expect(json.attributes).toContain('LLM_Decide');
+      expect(json.attributes).toContain('User_Decide');
+      expect(json.incidence).toHaveLength(2);
+      expect(json.context[0].attributes.User_Decide).toBe(true);
+      expect(json.context[0].attributes.Target_Config).toBe(true);
+      expect(json.context[1].attributes.LLM_Decide).toBe(true);
+      expect(json.context[1].attributes.Target_SrcCode).toBe(true);
+    });
+
+    it('returns FCA cross-table as CSV when format=csv', async () => {
+      const projId = 'proj-' + randomUUID();
+      const sessId = 'sess-' + randomUUID();
+      seedProjectAndSession(projId, sessId);
+
+      seedInsight(
+        sessId,
+        projId,
+        'summary',
+        'Session Summary',
+        'Summary content',
+        {
+          step_matrix: [
+            {
+              step: 'Config env',
+              turn_ref: 'User#1',
+              driver: 'User_Decide',
+              target: 'Target_Config',
+              state: 'State_Success',
+            },
+          ],
+        },
+      );
+
+      const app = createApp();
+      const res = await app.request(`/api/export/session/${sessId}/fca?format=csv`);
+      expect(res.status).toBe(200);
+      expect(res.headers.get('content-type')).toContain('text/csv');
+      const csv = await res.text();
+      expect(csv).toContain('Step,Turn,LLM_Decide,User_Decide');
+      expect(csv).toContain('"Config env","User#1",0,1,0,1,0,0,0,1,0,0');
+    });
+  });
 });

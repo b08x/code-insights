@@ -125,15 +125,17 @@ ${sessionSummary ? `  <session_summary>${sessionSummary}</session_summary>\n` : 
 <rules>
   1. Enforce strict JSON output schema.
   2. Extract insights containing ONLY concrete references (file paths, endpoints, variables, errors). Filter out generic findings automatically.
-  3. Include 1-3 literal quote citations per insight referencing turn labels (e.g., "User#5").
+  3. Include 1-3 literal quote citations per insight referencing turn labels (e.g., "User#5"). Ground decision attribution in turn citations: cite User#N for "user", Assistant#N for "agent", or both for "collaborative". Use a compact _reasoning field during generation.
   4. Require a minimum confidence score of 70 for any decision or learning. Drop insights below this threshold.
   5. Return empty arrays for categories yielding no valid findings.
   6. Fill every field in the schema. Use null for unavailable data where permitted.
+  7. Extract a compact semantic step matrix (4-10 steps) summarizing key milestones of the session with driver attribution, target scope, and outcome state.
 </rules>
 
 <definitions>
   <facet name="outcome_satisfaction">high | medium | low | abandoned</facet>
   <facet name="workflow_pattern">plan-then-implement | iterative-refinement | debug-fix-verify | explore-then-build | direct-execution | null</facet>
+  <decision_attribution name="decided_by">user (user explicitly directed/commanded) | agent (AI proposed and autonomously acted) | collaborative (joint exploration/co-designed)</decision_attribution>
 </definitions>
 
 ${FRICTION_CLASSIFICATION_GUIDANCE}
@@ -177,7 +179,11 @@ ${EFFECTIVE_PATTERN_CLASSIFICATION_GUIDANCE}
   },
   "decisions": [
     {
+      "_reasoning": "Brief rationale grounding attribution in turn evidence (e.g., 'User#3 specified SQLite')",
       "title": "Technical choice (max 80 chars)",
+      "decided_by": "user | agent | collaborative",
+      "intent": "Initiating intent or problem triggering the decision",
+      "branch_point": "Alternative path or design branched away from",
       "situation": "Problem context",
       "choice": "Chosen implementation",
       "reasoning": "Decision factors",
@@ -197,6 +203,15 @@ ${EFFECTIVE_PATTERN_CLASSIFICATION_GUIDANCE}
       "applies_when": "Relevant conditions",
       "confidence": 80,
       "evidence": ["User#1: Quote", "Assistant#2: Quote"]
+    }
+  ],
+  "step_matrix": [
+    {
+      "step": "Concise episode name (e.g., 'Configure build pipeline')",
+      "turn_ref": "User#1 or Assistant#2",
+      "driver": "LLM_Decide | User_Decide | Collab_Decide",
+      "target": "Target_Config | Target_SrcCode | Target_Test | Target_Docs",
+      "state": "State_Success | State_Error | State_Blocked"
     }
   ]
 }

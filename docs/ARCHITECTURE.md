@@ -229,6 +229,9 @@ Dashboard (dashboard/src/)   -> Reads from Server API
 | `SessionCharacter` | 7 classifications: deep_focus, bug_hunt, feature_build, exploration, refactor, learning, quick_task |
 | `ClaudeInsightConfig` | Config format |
 | `PQDimensionScores` | Per-dimension PQ averages (overall, context_provision, request_specificity, scope_management, information_timing, correction_quality); used by share card |
+| `DecisionDriver` | Agency attribution for decision insights: `'user' \| 'agent' \| 'collaborative'` |
+| `SemanticStep` | Structured milestone step: `{ step, turn_ref, driver, target, state }` for Formal Concept Analysis |
+| `FcaDriver` / `FcaTarget` / `FcaState` | 10 canonical binary attributes across 3 facets: Drivers (`LLM_Decide`, `User_Decide`, `Collab_Decide`), Targets (`Target_Config`, `Target_SrcCode`, `Target_Test`, `Target_Docs`), States (`State_Success`, `State_Error`, `State_Blocked`) |
 | `SyncState` | File modification tracking for incremental sync |
 
 ### Friction & Pattern Normalization
@@ -293,8 +296,10 @@ Both friction points and effective patterns use canonical category taxonomies wi
 | `/api/export/markdown` | POST | Session-level markdown export (Knowledge Base / Agent Rules templates) |
 | `/api/export/generate` | POST | LLM-powered cross-session export synthesis (supports `dateFrom`/`dateTo` parameters for datetime range filtering) |
 | `/api/export/generate/stream` | GET | SSE streaming for export generation |
+| `/api/export/session/:id/rails` | GET | Relational ActiveRecord-ready export (`rails-v1`) with unpacked decision attributes and episode step matrix |
+| `/api/export/session/:id/fca` | GET | Formal Concept Analysis (FCA) incidence matrix $(G, M, I)$ as JSON or CSV (`?format=json\|csv` or `Accept: text/csv`) |
 
-**Export Filtering:** The export system supports datetime range filtering via optional `dateFrom`/`dateTo` parameters. Filtering is applied server-side on `insights.timestamp` using half-open interval semantics. See [ADR-export-datetime-range-filter.md](./architecture/decisions/ADR-export-datetime-range-filter.md) for implementation details.
+**Export Filtering & Formats:** The export system supports datetime range filtering for cross-session synthesis (see [ADR-export-datetime-range-filter.md](./architecture/decisions/ADR-export-datetime-range-filter.md)) as well as single-session ActiveRecord relational and Formal Concept Analysis (FCA) binary context exports. See [docs/modules/export.md](./modules/export.md) for endpoint contracts and schema definitions.
 
 ### Facets
 
@@ -336,7 +341,7 @@ Both friction points and effective patterns use canonical category taxonomies wi
 |------|-------|---------|
 | Dashboard | `/dashboard` | Overview with charts (`/` redirects here) |
 | Sessions | `/sessions` | Session list with filters, inline session renaming via `RenameSessionDialog` |
-| Session Detail | `/sessions/:id` | Full session with analyze button and session renaming capability |
+| Session Detail | `/sessions/:id` | Dedicated full-page session view with back navigation, `SessionDetailPanel`, `VitalsStrip`, `FcaMatrixCard`, and Rails/FCA export actions |
 | Insights | `/insights` | Browse generated insights |
 | Analytics | `/analytics` | Charts: cost, models, projects |
 | Patterns | `/patterns` | Cross-session synthesis (Friction & Wins, Rules & Skills, Working Style) |

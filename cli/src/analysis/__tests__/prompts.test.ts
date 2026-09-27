@@ -633,6 +633,99 @@ describe('parseAnalysisResponse', () => {
     expect(Array.isArray(result.data.facets?.friction_points)).toBe(true);
     expect(Array.isArray(result.data.facets?.effective_patterns)).toBe(true);
   });
+
+  it('extracts and normalizes decided_by, intent, and branch_point in decisions', () => {
+    const response = `<json>{
+      "summary": { "title": "Test", "content": "c", "bullets": [] },
+      "decisions": [
+        {
+          "title": "Use SQLite",
+          "decided_by": "user",
+          "intent": "Local-first storage requirement",
+          "branch_point": "Avoided cloud PostgreSQL",
+          "_reasoning": "User#1 explicitly asked for SQLite",
+          "reasoning": "Simple file-based storage",
+          "confidence": 90
+        },
+        {
+          "title": "Add retry wrapper",
+          "decided_by": "AGENT",
+          "reasoning": "Handles transient failures",
+          "confidence": 85
+        },
+        {
+          "title": "Default fallback",
+          "reasoning": "No attribution provided",
+          "confidence": 80
+        }
+      ]
+    }</json>`;
+    const result = parseAnalysisResponse(response);
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.data.decisions[0].decided_by).toBe('user');
+    expect(result.data.decisions[0].intent).toBe('Local-first storage requirement');
+    expect(result.data.decisions[0].branch_point).toBe('Avoided cloud PostgreSQL');
+    expect(result.data.decisions[0]._reasoning).toBe('User#1 explicitly asked for SQLite');
+
+    expect(result.data.decisions[1].decided_by).toBe('agent');
+    expect(result.data.decisions[2].decided_by).toBe('collaborative');
+  });
+
+  it('extracts and canonicalizes semantic step_matrix for FCA', () => {
+    const response = `<json>{
+      "summary": { "title": "Test", "content": "c", "bullets": [] },
+      "decisions": [],
+      "step_matrix": [
+        {
+          "step": "Setup Vite config",
+          "turn_ref": "User#1",
+          "driver": "User_Decide",
+          "target": "Target_Config",
+          "state": "State_Success"
+        },
+        {
+          "step": "Implement parser",
+          "turn_ref": "Assistant#2",
+          "driver": "agent",
+          "target": "src_code",
+          "state": "ok"
+        },
+        {
+          "step": "Run tests and handle error",
+          "turn_ref": "Assistant#4",
+          "driver": "collab",
+          "target": "spec",
+          "state": "failure"
+        }
+      ]
+    }</json>`;
+    const result = parseAnalysisResponse(response);
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.data.step_matrix).toHaveLength(3);
+    expect(result.data.step_matrix?.[0]).toEqual({
+      step: 'Setup Vite config',
+      turn_ref: 'User#1',
+      driver: 'User_Decide',
+      target: 'Target_Config',
+      state: 'State_Success',
+    });
+    expect(result.data.step_matrix?.[1]).toEqual({
+      step: 'Implement parser',
+      turn_ref: 'Assistant#2',
+      driver: 'LLM_Decide',
+      target: 'Target_SrcCode',
+      state: 'State_Success',
+    });
+    expect(result.data.step_matrix?.[2]).toEqual({
+      step: 'Run tests and handle error',
+      turn_ref: 'Assistant#4',
+      driver: 'Collab_Decide',
+      target: 'Target_Test',
+      state: 'State_Error',
+    });
+  });
 });
 
 // ──────────────────────────────────────────────────────

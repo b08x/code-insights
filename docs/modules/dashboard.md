@@ -16,21 +16,50 @@ flowchart TD
 
 ## Key Views & Component Trees
 
-### Session Detail Panel (`SessionDetailPanel.tsx`)
+### Session Detail Views (`SessionDetailPage.tsx` & `SessionDetailPanel.tsx`)
 
-The `SessionDetailPanel` acts as the primary analytical view for a given AI session.
+The dashboard provides both a standalone full-page view (`/sessions/:id`) and an embedded panel component for analyzing session details.
 
 ```mermaid
 flowchart TD
-    SessionDetail[SessionDetailPanel] --> VitalsStrip[VitalsStrip]
+    SessionPage[SessionDetailPage.tsx] --> BackNav[Back to Sessions Link]
+    SessionPage --> SessionDetail[SessionDetailPanel.tsx]
+    SessionDetail --> VitalsStrip[VitalsStrip]
     SessionDetail --> AnalysisCostLine[AnalysisCostLine]
+    SessionDetail --> ActionsMenu[Actions Dropdown Menu]
+    ActionsMenu --> ExportRails[Export Rails JSON]
+    ActionsMenu --> ExportFca[Export FCA Matrix CSV]
     SessionDetail --> SessionTimeline[SessionTimeline]
     SessionDetail --> InsightCards[InsightCards]
+    SessionDetail --> FcaMatrixCard[FcaMatrixCard.tsx]
+    SessionPage --> FcaMatrixContainer[Full-width FcaMatrixCard]
 ```
 
-- **`SessionDetailPanel`**: Container component that orchestrates data fetching (`useSession`) and state for a single session.
+- **`SessionDetailPage`**: Dedicated full-page route at `/sessions/:id` featuring top back navigation (`ArrowLeft` ghost button) and responsive containers for session vitals, timeline, insight cards, and FCA matrix exploration.
+- **`SessionDetailPanel`**: Container component orchestrating data fetching (`useSession`) and state. Provides the session dropdown menu with quick exports (`Export Rails JSON`, `Export FCA Matrix (CSV)`).
 - **`VitalsStrip`**: Displays high-level session metrics (Duration, Prompts, Turn Count, AI Fluency Score) in a horizontal badge format.
 - **`AnalysisCostLine`**: Visualizes token consumption and LLM API cost using `useAnalysisUsage` to provide per-session economic visibility.
+
+### Formal Concept Analysis (FCA) Incidence Matrix (`FcaMatrixCard.tsx`)
+
+Visualizes the session's semantic episode milestones against 10 binary Formal Concept Analysis attributes $(G, M, I)$ for concept lattice derivation.
+
+- **Grouped Categories**:
+  - **Decision Drivers (3)**: `LLM_Decide` (agent-led), `User_Decide` (user-directed), `Collab_Decide` (co-designed).
+  - **Target Scope (4)**: `Target_Config`, `Target_SrcCode`, `Target_Test`, `Target_Docs`.
+  - **Outcome State (3)**: `State_Success`, `State_Error`, `State_Blocked`.
+- **Interactive UX**: Two-tier header, column tooltips with formal attribute definitions, emerald checkmark indicators for positive incidence ($gIm$), and subtle center dots for non-incidence.
+- **Direct Downloads**: Action buttons for instant downloading of `session-${id}-fca.csv` and `session-${id}-rails.json` with toast feedback and disabled states during download.
+
+### Decision Cards & Attribution Badges (`insight-metadata.tsx`, `InsightCard.tsx`)
+
+Decision insight cards render structured attribution and architectural branching points:
+- **`DecidedByBadge`**: Prominent driver badge with color coding:
+  - **User** (`User` icon): Blue badge (`bg-blue-500/10 text-blue-600 border-blue-500/20`).
+  - **Agent** (`Bot` icon): Purple badge (`bg-purple-500/10 text-purple-600 border-purple-500/20`).
+  - **Collaborative** (`Users` icon): Emerald badge (`bg-emerald-500/10 text-emerald-600 border-emerald-500/20`).
+- **Initiating Intent**: Indigo target icon displaying the user requirement or overarching goal behind the decision.
+- **Branch Point**: Amber split icon highlighting the critical alternative design path branched away from.
 
 ### Patterns Page (`PatternsPage.tsx`)
 

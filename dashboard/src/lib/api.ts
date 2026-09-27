@@ -2,7 +2,7 @@
 // Base URL is relative in production (SPA served by the same server).
 // In Vite dev mode, the proxy forwards /api -> localhost:7890.
 
-import type { Project, Session, Message, Insight, DashboardStats, LLMConfig, ExportTemplate } from '@/lib/types';
+import type { Project, Session, Message, Insight, DashboardStats, LLMConfig, ExportTemplate, SemanticStep } from '@/lib/types';
 
 const BASE = '/api';
 
@@ -526,4 +526,59 @@ export interface AnalysisQueueStatus {
 export function fetchAnalysisQueue() {
   return request<AnalysisQueueStatus>('/analysis/queue');
 }
+
+// ── Session Rails & FCA Exports ──────────────────────────────────────────────
+
+export interface RailsExportDecision {
+  id: string;
+  session_id: string;
+  project_id: string;
+  title: string;
+  decided_by: string;
+  intent: string | null;
+  branch_point: string | null;
+  situation: string | null;
+  choice: string | null;
+  reasoning: string | null;
+  alternatives: Array<string | { option: string; rejected_because: string }>;
+  trade_offs: string | null;
+  revisit_when: string | null;
+  confidence: number;
+  created_at: string;
+}
+
+export interface RailsSessionExport {
+  exported_at: string;
+  format: 'rails-v1';
+  session: Record<string, unknown>;
+  decisions: RailsExportDecision[];
+  step_matrix: SemanticStep[];
+}
+
+export interface FcaExportData {
+  session_id: string;
+  objects: string[];
+  attributes: string[];
+  incidence: boolean[][];
+  context: Array<{
+    step: string;
+    turn_ref: string;
+    attributes: Record<string, boolean>;
+  }>;
+}
+
+export function fetchSessionRailsExport(sessionId: string) {
+  return request<RailsSessionExport>(`/export/session/${sessionId}/rails`);
+}
+
+export function fetchSessionFcaExport(sessionId: string, format: 'json' | 'csv' = 'json') {
+  if (format === 'csv') {
+    return fetch(`${BASE}/export/session/${sessionId}/fca?format=csv`).then(res => {
+      if (!res.ok) throw new Error(`Export failed: ${res.statusText}`);
+      return res.text();
+    });
+  }
+  return request<FcaExportData>(`/export/session/${sessionId}/fca?format=json`);
+}
+
 

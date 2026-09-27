@@ -1,0 +1,52 @@
+{
+  "stage": "interview",
+  "title": "Distinguish Agent vs User Decisions & FCA Step Matrix",
+  "goalSlug": "distinguish-agent-vs-user-decisions",
+  "resolvedVia": "grill-me-session",
+  "answers": {
+    "taxonomy": {
+      "selection": "tri-state",
+      "values": ["user", "agent", "collaborative"],
+      "fca_drivers": ["LLM_Decide", "User_Decide", "Collab_Decide"]
+    },
+    "grounding": {
+      "method": "explicit-rules-with-reasoning",
+      "token_budget": "minimal",
+      "strip_reasoning_at_ingestion": true,
+      "evidence_turn_anchors": true
+    },
+    "persistence": {
+      "strategy": "structured-metadata-with-rails-compat",
+      "sqlite_table": "insights.metadata",
+      "future_target": "Rails/Postgres/pgvector/Redis"
+    },
+    "granularity": {
+      "model": "dual-layer",
+      "macro_decisions": true,
+      "micro_step_matrix": true
+    },
+    "extraction_strategy": {
+      "step_matrix_mode": "compact-llm-semantic-steps",
+      "step_count_target": "4-10 semantic episodes",
+      "binary_attributes": [
+        "LLM_Decide", "User_Decide", "Collab_Decide",
+        "Target_Config", "Target_SrcCode", "Target_Test", "Target_Docs",
+        "State_Success", "State_Error", "State_Blocked"
+      ]
+    },
+    "presentation_and_export": {
+      "dashboard_decision_card": {
+        "show_driver_badge": true,
+        "show_intent": true,
+        "show_branch_point": true
+      },
+      "dashboard_step_matrix": {
+        "render_incidence_table": true
+      },
+      "export": {
+        "rails_json": true,
+        "fca_incidence_format": true
+      }
+    }
+  }
+}

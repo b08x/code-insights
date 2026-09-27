@@ -5,7 +5,17 @@ import { jsonrepair } from 'jsonrepair';
 import { writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
-import type { AnalysisResponse, ParseError, ParseResult, PromptQualityResponse, PromptQualityDimensionScores } from './prompt-types.js';
+import type {
+  AnalysisResponse,
+  ParseError,
+  ParseResult,
+  PromptQualityResponse,
+  PromptQualityDimensionScores,
+  SemanticStep,
+  FcaDriver,
+  FcaTarget,
+  FcaState,
+} from './prompt-types.js';
 
 function buildResponsePreview(text: string, head = 500, tail = 500): string {
   if (text.length <= head + tail + 20) return text;
@@ -330,6 +340,87 @@ export function parseAnalysisResponse(response: string): ParseResult<AnalysisRes
   // || [] alone won't catch truthy non-arrays — Array.isArray is required.
   parsed.decisions = Array.isArray(parsed.decisions) ? parsed.decisions : [];
   parsed.learnings = Array.isArray(parsed.learnings) ? parsed.learnings : [];
+
+  // Normalize decisions: ensure decided_by attribution, trim intent and branch_point
+  const VALID_DECIDED_BY = new Set(['user', 'agent', 'collaborative']);
+  for (const decision of parsed.decisions) {
+    if (typeof decision === 'object' && decision !== null) {
+      const rawDecidedBy = typeof decision.decided_by === 'string' ? decision.decided_by.toLowerCase().trim() : '';
+      if (rawDecidedBy && VALID_DECIDED_BY.has(rawDecidedBy)) {
+        decision.decided_by = rawDecidedBy as 'user' | 'agent' | 'collaborative';
+      } else {
+        decision.decided_by = 'collaborative';
+      }
+      if (typeof decision.intent === 'string' && decision.intent.trim()) {
+        decision.intent = decision.intent.trim();
+      } else {
+        delete decision.intent;
+      }
+      if (typeof decision.branch_point === 'string' && decision.branch_point.trim()) {
+        decision.branch_point = decision.branch_point.trim();
+      } else {
+        delete decision.branch_point;
+      }
+    }
+  }
+
+  // Parse and validate step_matrix
+  if (Array.isArray(parsed.step_matrix)) {
+    const canonicalSteps: SemanticStep[] = [];
+    for (let i = 0; i < parsed.step_matrix.length; i++) {
+      const s = parsed.step_matrix[i];
+      if (!s || typeof s !== 'object') continue;
+
+      const stepName = typeof s.step === 'string' && s.step.trim() ? s.step.trim() : `Step ${i + 1}`;
+      const turnRef = typeof s.turn_ref === 'string' && s.turn_ref.trim() ? s.turn_ref.trim() : `Turn#${i + 1}`;
+
+      // Canonicalize driver: 'LLM_Decide' | 'User_Decide' | 'Collab_Decide'
+      let driver: FcaDriver = 'Collab_Decide';
+      const dStr = String(s.driver || '').trim().toLowerCase();
+      if (dStr.includes('llm') || dStr.includes('agent') || dStr.includes('ai')) {
+        driver = 'LLM_Decide';
+      } else if (dStr.includes('user') || dStr.includes('human')) {
+        driver = 'User_Decide';
+      } else if (dStr.includes('collab')) {
+        driver = 'Collab_Decide';
+      }
+
+      // Canonicalize target: 'Target_Config' | 'Target_SrcCode' | 'Target_Test' | 'Target_Docs'
+      let target: FcaTarget = 'Target_SrcCode';
+      const tStr = String(s.target || '').trim().toLowerCase();
+      if (tStr.includes('config') || tStr.includes('env') || tStr.includes('setting') || tStr.includes('infra')) {
+        target = 'Target_Config';
+      } else if (tStr.includes('test') || tStr.includes('spec') || tStr.includes('verify')) {
+        target = 'Target_Test';
+      } else if (tStr.includes('doc') || tStr.includes('readme') || tStr.includes('wiki') || tStr.includes('text')) {
+        target = 'Target_Docs';
+      } else if (tStr.includes('src') || tStr.includes('code')) {
+        target = 'Target_SrcCode';
+      }
+
+      // Canonicalize state: 'State_Success' | 'State_Error' | 'State_Blocked'
+      let state: FcaState = 'State_Success';
+      const stStr = String(s.state || '').trim().toLowerCase();
+      if (stStr.includes('err') || stStr.includes('fail')) {
+        state = 'State_Error';
+      } else if (stStr.includes('block') || stStr.includes('stuck') || stStr.includes('wait')) {
+        state = 'State_Blocked';
+      } else if (stStr.includes('succ') || stStr.includes('ok') || stStr.includes('pass')) {
+        state = 'State_Success';
+      }
+
+      canonicalSteps.push({
+        step: stepName,
+        turn_ref: turnRef,
+        driver,
+        target,
+        state,
+      });
+    }
+    parsed.step_matrix = canonicalSteps;
+  } else {
+    parsed.step_matrix = undefined;
+  }
 
   // Normalize facet arrays before monitors access .some() — a non-array truthy value
   // (e.g. LLM returns "friction_points": "none") would throw a TypeError on .some().

@@ -66,9 +66,9 @@ Opens the built-in React dashboard at `http://localhost:7890`. The dashboard pro
 
 - **Session Browser** — global search (`Cmd+K`), advanced filters (date range, outcome, saved presets), soft-delete, and full session details with chat view
 - **Analytics** — usage patterns, cost trends, activity charts
-- **LLM Insights** — AI-generated summaries, decisions, learnings, and prompt quality analysis (7 deficit + 3 strength categories with dimension scores)
+- **LLM Insights** — AI-generated summaries, decisions (with agency attribution: user, agent, collaborative; initiating intent; branch points), learnings, prompt quality analysis, and Formal Concept Analysis (FCA) incidence matrix (4–10 semantic steps across 10 binary attributes with CSV and Rails JSON downloads)
 - **Patterns** — weekly cross-session synthesis: friction points (with attribution), effective patterns (with driver classification), working style rules, and shareable AI Fluency Score card (downloadable 1200×630 PNG with score circle, fingerprint bars, and effective patterns)
-- **Export** — LLM-powered cross-session synthesis in 4 formats (Agent Rules, Knowledge Brief, Obsidian, Notion)
+- **Export** — Single-session ActiveRecord Rails JSON (`rails-v1`), Formal Concept Analysis context (CSV/JSON), and LLM-powered cross-session synthesis in 4 formats (Agent Rules, Knowledge Brief, Obsidian, Notion)
 - **Settings** — configure your LLM provider for analysis
 
 <p align="center">

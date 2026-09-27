@@ -65,17 +65,57 @@ CREATE TABLE insights (
   id TEXT PRIMARY KEY,
   session_id TEXT NOT NULL,
   title TEXT NOT NULL,
-  type TEXT NOT NULL,        -- learning, decision, outcome, friction, pattern
+  type TEXT NOT NULL,        -- learning, decision, outcome, friction, pattern, summary
   content TEXT NOT NULL,
   evidence TEXT,             -- JSON array of evidence strings
   categories TEXT,           -- JSON array of category strings
   actionable INTEGER,        -- 0 or 1
   confidence REAL,           -- 0.0 to 1.0
-  metadata TEXT,            -- JSON object
+  metadata TEXT,            -- Structured JSON object (see below)
   created_at TEXT NOT NULL,  -- ISO timestamp
   updated_at TEXT NOT NULL
 );
 ```
+
+##### Structured `metadata` JSON Contracts
+
+`insights.metadata` stores domain-specific attributes serialized as JSON:
+
+**1. Decision Insights (`type = 'decision'`):**
+```json
+{
+  "situation": "Context or technical situation demanding a choice",
+  "choice": "Adopted technical approach",
+  "reasoning": "Underlying justification",
+  "alternatives": [
+    { "option": "Alternative 1", "rejected_because": "Trade-off justification" }
+  ],
+  "trade_offs": "Compromises accepted",
+  "revisit_when": "Trigger condition for reconsidering the decision",
+  "evidence": ["User#1: ...", "Assistant#2: ..."],
+  "decided_by": "user | agent | collaborative",
+  "intent": "Initiating intent or user goal (optional)",
+  "branch_point": "Critical bifurcation point or rejected design (optional)"
+}
+```
+> **Note on `_reasoning` lifecycle:** During LLM generation, a transient `_reasoning` scratchpad is used by the model to ground attribution in turn citations (`User#N` vs `Assistant#N`). In `analysis-db.ts` (`convertToInsightRows`), this transient field is intentionally stripped prior to SQLite insertion to maintain lean relational storage.
+
+**2. Summary Insights (`type = 'summary'`):**
+```json
+{
+  "outcome": "success | partial | abandoned | blocked",
+  "step_matrix": [
+    {
+      "step": "Configure build pipeline",
+      "turn_ref": "User#1",
+      "driver": "User_Decide",
+      "target": "Target_Config",
+      "state": "State_Success"
+    }
+  ]
+}
+```
+The `step_matrix` contains 4–10 semantic episodes capturing major session milestones for Formal Concept Analysis (FCA) and concept lattice derivation.
 
 #### sessions Table
 

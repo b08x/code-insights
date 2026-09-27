@@ -27,6 +27,8 @@
 - **Hierarchical RAG Chunking Strategy** — Intelligently segment code and session history to avoid context length errors and dramatically improve retrieval precision.
 - **Retrieval-Augmented Analysis** — Enhanced session analysis with annotated chunking (role-boundary grouping, parent/child splitting) and context augmentation from historical sessions.
 - **Rich Terminal Output** — Detailed CLI analysis with score bars, severity dots, emoji headers, and dimension breakdowns.
+- **Decision Driver Attribution** — Distinguish technical and architectural choices by agency (`user`, `agent`, `collaborative`), tracking initiating intent, critical design branch points, and turn citations.
+- **Formal Concept Analysis (FCA) & Rails Export** — Extract compact 4–10 step semantic incidence matrices $(G, M, I)$ over 10 canonical binary attributes for concept lattice derivation and ActiveRecord-ready Rails/Postgres ingestion (`/api/export/session/:id/rails` & `/api/export/session/:id/fca`).
 - **Privacy First** — Completely local SQLite backend with zero external dependencies (unless configuring cloud LLM models).
 
 ---

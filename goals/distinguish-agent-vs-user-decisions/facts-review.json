@@ -1,0 +1,63 @@
+{
+  "stage": "facts",
+  "title": "Distinguish Agent vs User Decisions & FCA Step Matrix",
+  "goalSlug": "distinguish-agent-vs-user-decisions",
+  "facts": [
+    {
+      "id": "fact-1",
+      "text": "The session analysis prompt instructions and output schema extract `decided_by` ('user' | 'agent' | 'collaborative'), `intent`, and `branch_point` for each decision insight.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-2",
+      "text": "The analysis prompt instructs the LLM to ground decision attribution in turn citations (User#N vs Assistant#N), using a compact _reasoning field during generation that is stripped before database storage.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-3",
+      "text": "The analysis prompt schema extracts a compact semantic step matrix (4–10 steps) capturing episode name, turn reference, driver (LLM_Decide / User_Decide / Collab_Decide), target scope (Target_Config / Target_SrcCode / Target_Test / Target_Docs), and state (State_Success / State_Error / State_Blocked).",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-4",
+      "text": "The analysis ingestion pipeline (parseAnalysisResponse and convertToInsightRows) validates and persists decision attributes and the semantic step matrix into insights.metadata in a structured, relational-ready JSON format.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-5",
+      "text": "The dashboard DecisionContent component renders a visual Decided By badge (with distinct color treatments for User, Agent, and Collaborative), Initiating Intent, and Branch Point.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-6",
+      "text": "The dashboard SessionDetailPage renders a Formal Concept Analysis (FCA) Incidence Matrix table displaying semantic steps as rows and binary attributes (drivers, targets, and states) as columns with checkmarks.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-7",
+      "text": "The API server and dashboard export feature provide session decisions and FCA step incidence matrices in Rails-ready JSON format.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    }
+  ]
+}

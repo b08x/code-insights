@@ -118,7 +118,10 @@ None detected. The codebase has no circular dependencies.
 - [Data Flow](data-flow.md) - Sequence diagram of primary operations
 - [Decisions](decisions.md) - Design rationale and trade-offs
 - [Modules](./modules/) - Per-module documentation
-  - [Dashboard Architecture](./modules/dashboard.md) - UI Components, Chat Subsystem, and State Management
+  - [Dashboard Architecture](./modules/dashboard.md) - UI Components, Session Detail, and State Management
+  - [Export Module](./modules/export.md) - Rails ActiveRecord JSON & FCA Incidence Matrix Exports
+  - [Analysis Engine](./modules/analysis-engine.md) - Prompt pipeline, Decision Attribution, and Step Matrix
+  - [Database Layer](./modules/database-layer.md) - SQLite Persistence, Schema Contracts, and Migrations
 
 ---
 

@@ -12,6 +12,11 @@ import {
   GitFork,
   ArrowRightLeft,
   Clock,
+  User,
+  Bot,
+  Users,
+  Target,
+  Split,
 } from 'lucide-react';
 import type { InsightType, InsightMetadata } from '@/lib/types';
 import type { LucideIcon } from 'lucide-react';
@@ -37,6 +42,26 @@ export function OutcomeBadge({ outcome }: { outcome: string }) {
   );
 }
 
+// --- Decided By Badge ---
+
+export const DECISION_DRIVER_CONFIG: Record<string, { label: string; className: string; icon: LucideIcon }> = {
+  user: { label: 'User', className: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20', icon: User },
+  agent: { label: 'Agent', className: 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20', icon: Bot },
+  collaborative: { label: 'Collaborative', className: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20', icon: Users },
+};
+
+export function DecidedByBadge({ driver }: { driver?: string }) {
+  const normalized = (driver || 'collaborative').toLowerCase();
+  const config = DECISION_DRIVER_CONFIG[normalized] || DECISION_DRIVER_CONFIG.collaborative;
+  const Icon = config.icon;
+  return (
+    <Badge variant="outline" className={config.className}>
+      <Icon className="h-3 w-3 mr-1" />
+      Decided by: {config.label}
+    </Badge>
+  );
+}
+
 // --- Field icon config ---
 
 const FIELD_CONFIG: Record<string, { icon: LucideIcon; color: string }> = {
@@ -44,6 +69,8 @@ const FIELD_CONFIG: Record<string, { icon: LucideIcon; color: string }> = {
   'Why': { icon: HelpCircle, color: 'text-muted-foreground' },
   'Takeaway': { icon: Lightbulb, color: 'text-yellow-500' },
   'Applies When': { icon: CalendarClock, color: 'text-muted-foreground' },
+  'Initiating Intent': { icon: Target, color: 'text-indigo-500' },
+  'Branch Point': { icon: Split, color: 'text-amber-500' },
   'Situation': { icon: FileText, color: 'text-muted-foreground' },
   'Choice': { icon: CheckCircle2, color: 'text-blue-500' },
   'Reasoning': { icon: Scale, color: 'text-muted-foreground' },
@@ -86,11 +113,16 @@ export function formatAlternatives(alternatives: InsightMetadata['alternatives']
 // --- Type-specific content components ---
 
 export function DecisionContent({ metadata }: { metadata: InsightMetadata }) {
-  const hasStructured = metadata.situation || metadata.choice || metadata.reasoning;
+  const hasStructured = metadata.situation || metadata.choice || metadata.reasoning || metadata.decided_by || metadata.intent || metadata.branch_point;
   if (!hasStructured) return null;
 
   return (
     <div className="space-y-2.5">
+      <div className="flex items-center gap-2 pb-0.5">
+        <DecidedByBadge driver={metadata.decided_by} />
+      </div>
+      {metadata.intent && <MetadataSection label="Initiating Intent">{metadata.intent}</MetadataSection>}
+      {metadata.branch_point && <MetadataSection label="Branch Point">{metadata.branch_point}</MetadataSection>}
       {metadata.situation && <MetadataSection label="Situation">{metadata.situation}</MetadataSection>}
       {metadata.choice && <MetadataSection label="Choice" prominent>{metadata.choice}</MetadataSection>}
       {metadata.reasoning && <MetadataSection label="Reasoning">{metadata.reasoning}</MetadataSection>}

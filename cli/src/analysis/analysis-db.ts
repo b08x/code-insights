@@ -55,6 +55,14 @@ export function convertToInsightRows(response: AnalysisResponse, session: Sessio
   const insights: InsightRow[] = [];
   const now = new Date().toISOString();
 
+  const summaryMeta: Record<string, unknown> = {};
+  if (response.summary.outcome) {
+    summaryMeta.outcome = response.summary.outcome;
+  }
+  if (response.step_matrix && response.step_matrix.length > 0) {
+    summaryMeta.step_matrix = response.step_matrix;
+  }
+
   insights.push({
     id: randomUUID(),
     session_id: session.id,
@@ -67,8 +75,8 @@ export function convertToInsightRows(response: AnalysisResponse, session: Sessio
     bullets: JSON.stringify(response.summary.bullets),
     confidence: 0.9,
     source: 'llm',
-    metadata: response.summary.outcome
-      ? JSON.stringify({ outcome: response.summary.outcome })
+    metadata: Object.keys(summaryMeta).length > 0
+      ? JSON.stringify(summaryMeta)
       : null,
     timestamp: session.ended_at,
     created_at: now,
@@ -89,6 +97,23 @@ export function convertToInsightRows(response: AnalysisResponse, session: Sessio
       .filter((a): a is { option: string; rejected_because: string } => Boolean(a?.option))
       .map(a => `${a.option}: ${a.rejected_because || 'no reason given'}`);
 
+    const decisionMeta: Record<string, unknown> = {
+      situation: decision.situation,
+      choice: decision.choice,
+      reasoning: decision.reasoning,
+      alternatives: decision.alternatives,
+      trade_offs: decision.trade_offs,
+      revisit_when: decision.revisit_when,
+      evidence: decision.evidence,
+      decided_by: decision.decided_by || 'collaborative',
+    };
+    if (decision.intent) {
+      decisionMeta.intent = decision.intent;
+    }
+    if (decision.branch_point) {
+      decisionMeta.branch_point = decision.branch_point;
+    }
+
     insights.push({
       id: randomUUID(),
       session_id: session.id,
@@ -101,15 +126,7 @@ export function convertToInsightRows(response: AnalysisResponse, session: Sessio
       bullets: JSON.stringify(altBullets),
       confidence: confidence / 100,
       source: 'llm',
-      metadata: JSON.stringify({
-        situation: decision.situation,
-        choice: decision.choice,
-        reasoning: decision.reasoning,
-        alternatives: decision.alternatives,
-        trade_offs: decision.trade_offs,
-        revisit_when: decision.revisit_when,
-        evidence: decision.evidence,
-      }),
+      metadata: JSON.stringify(decisionMeta),
       timestamp: session.ended_at,
       created_at: now,
       scope: 'session',

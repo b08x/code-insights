@@ -508,4 +508,231 @@ app.get('/generate/stream', requireLLM(), async (c) => {
   });
 });
 
+// FCA Standard Binary Attributes
+const FCA_ATTRIBUTES = [
+  'LLM_Decide',
+  'User_Decide',
+  'Collab_Decide',
+  'Target_Config',
+  'Target_SrcCode',
+  'Target_Test',
+  'Target_Docs',
+  'State_Success',
+  'State_Error',
+  'State_Blocked',
+] as const;
+
+/**
+ * GET /api/export/session/:id/rails
+ *
+ * Exports session metadata, unpacked relational decision insights (with decided_by,
+ * intent, and branch_point), and semantic step matrices in a normalized ActiveRecord-ready
+ * JSON structure (`rails-v1`).
+ *
+ * @param id - Session UUID
+ * @returns JSON object containing session, decisions, and step_matrix
+ */
+app.get('/session/:id/rails', (c) => {
+  const id = c.req.param('id');
+  const db = getDb();
+
+  const session = db.prepare(
+    `SELECT id, project_id, project_name, generated_title, custom_title,
+            started_at, ended_at, message_count, estimated_cost_usd, session_character, source_tool
+     FROM sessions WHERE id = ? AND deleted_at IS NULL`,
+  ).get(id) as Record<string, unknown> | undefined;
+
+  if (!session) {
+    return c.json({ error: 'Session not found' }, 404);
+  }
+
+  const insightRows = db.prepare(
+    `SELECT id, session_id, project_id, project_name, type, title, content,
+            summary, bullets, confidence, metadata, timestamp, created_at, scope, analysis_version
+     FROM insights WHERE session_id = ? ORDER BY created_at ASC`,
+  ).all(id) as Array<{
+    id: string;
+    session_id: string;
+    project_id: string;
+    project_name: string;
+    type: string;
+    title: string;
+    content: string;
+    summary: string;
+    bullets: string;
+    confidence: number;
+    metadata: string | null;
+    timestamp: string;
+    created_at: string;
+    scope: string;
+    analysis_version: string;
+  }>;
+
+  const decisions = insightRows
+    .filter(r => r.type === 'decision')
+    .map(r => {
+      let meta: Record<string, unknown> = {};
+      try {
+        meta = r.metadata ? JSON.parse(r.metadata) : {};
+      } catch {}
+
+      return {
+        id: r.id,
+        session_id: r.session_id,
+        project_id: r.project_id,
+        title: r.title,
+        decided_by: meta.decided_by || 'collaborative',
+        intent: meta.intent || null,
+        branch_point: meta.branch_point || null,
+        situation: meta.situation || null,
+        choice: meta.choice || null,
+        reasoning: meta.reasoning || null,
+        alternatives: meta.alternatives || [],
+        trade_offs: meta.trade_offs || null,
+        revisit_when: meta.revisit_when || null,
+        confidence: r.confidence,
+        created_at: r.created_at,
+      };
+    });
+
+  let stepMatrix: Array<{
+    step: string;
+    turn_ref: string;
+    driver: string;
+    target: string;
+    state: string;
+  }> = [];
+
+  const summaryRow = insightRows.find(r => r.type === 'summary');
+  if (summaryRow?.metadata) {
+    try {
+      const meta = JSON.parse(summaryRow.metadata);
+      if (Array.isArray(meta.step_matrix)) {
+        stepMatrix = meta.step_matrix;
+      }
+    } catch {}
+  }
+
+  return c.json({
+    exported_at: new Date().toISOString(),
+    format: 'rails-v1',
+    session,
+    decisions,
+    step_matrix: stepMatrix,
+  });
+});
+
+/**
+ * GET /api/export/session/:id/fca
+ *
+ * Exports the Formal Concept Analysis (FCA) incidence matrix for a session as a formal
+ * context (G, M, I). G represents semantic episode steps, M represents 10 canonical binary
+ * attributes (Drivers, Targets, States), and I represents incidence.
+ *
+ * @param id - Session UUID
+ * @param format - Query param: 'json' (default) or 'csv'. Also respects 'Accept: text/csv' header.
+ * @returns JSON formal context object or downloadable CSV file attachment
+ */
+app.get('/session/:id/fca', (c) => {
+  const id = c.req.param('id');
+  const format = c.req.query('format') || 'json';
+  const db = getDb();
+
+  const session = db.prepare(
+    `SELECT id, project_name, generated_title, custom_title
+     FROM sessions WHERE id = ? AND deleted_at IS NULL`,
+  ).get(id) as { id: string; project_name: string; generated_title: string; custom_title?: string } | undefined;
+
+  if (!session) {
+    return c.json({ error: 'Session not found' }, 404);
+  }
+
+  const summaryRow = db.prepare(
+    `SELECT metadata FROM insights WHERE session_id = ? AND type = 'summary' LIMIT 1`,
+  ).get(id) as { metadata: string | null } | undefined;
+
+  let stepMatrix: Array<{
+    step: string;
+    turn_ref: string;
+    driver: string;
+    target: string;
+    state: string;
+  }> = [];
+
+  if (summaryRow?.metadata) {
+    try {
+      const meta = JSON.parse(summaryRow.metadata);
+      if (Array.isArray(meta.step_matrix)) {
+        stepMatrix = meta.step_matrix;
+      }
+    } catch {}
+  }
+
+  if (format === 'csv' || c.req.header('accept')?.includes('text/csv')) {
+    const header = ['Step', 'Turn', ...FCA_ATTRIBUTES].join(',');
+    const rows = stepMatrix.map(s => {
+      const cells = [
+        `"${(s.step || '').replace(/"/g, '""')}"`,
+        `"${(s.turn_ref || '').replace(/"/g, '""')}"`,
+        s.driver === 'LLM_Decide' ? '1' : '0',
+        s.driver === 'User_Decide' ? '1' : '0',
+        s.driver === 'Collab_Decide' ? '1' : '0',
+        s.target === 'Target_Config' ? '1' : '0',
+        s.target === 'Target_SrcCode' ? '1' : '0',
+        s.target === 'Target_Test' ? '1' : '0',
+        s.target === 'Target_Docs' ? '1' : '0',
+        s.state === 'State_Success' ? '1' : '0',
+        s.state === 'State_Error' ? '1' : '0',
+        s.state === 'State_Blocked' ? '1' : '0',
+      ];
+      return cells.join(',');
+    });
+
+    const csvContent = [header, ...rows].join('\n');
+    return c.text(csvContent, 200, {
+      'Content-Type': 'text/csv; charset=utf-8',
+      'Content-Disposition': `attachment; filename="session-${id}-fca.csv"`,
+    });
+  }
+
+  const objects = stepMatrix.map(s => s.step);
+  const incidence = stepMatrix.map(s => [
+    s.driver === 'LLM_Decide',
+    s.driver === 'User_Decide',
+    s.driver === 'Collab_Decide',
+    s.target === 'Target_Config',
+    s.target === 'Target_SrcCode',
+    s.target === 'Target_Test',
+    s.target === 'Target_Docs',
+    s.state === 'State_Success',
+    s.state === 'State_Error',
+    s.state === 'State_Blocked',
+  ]);
+
+  const context = stepMatrix.map(s => ({
+    step: s.step,
+    turn_ref: s.turn_ref,
+    attributes: {
+      LLM_Decide: s.driver === 'LLM_Decide',
+      User_Decide: s.driver === 'User_Decide',
+      Collab_Decide: s.driver === 'Collab_Decide',
+      Target_Config: s.target === 'Target_Config',
+      Target_SrcCode: s.target === 'Target_SrcCode',
+      Target_Test: s.target === 'Target_Test',
+      Target_Docs: s.target === 'Target_Docs',
+      State_Success: s.state === 'State_Success',
+      State_Error: s.state === 'State_Error',
+      State_Blocked: s.state === 'State_Blocked',
+    },
+  }));
+
+  return c.json({
+    session_id: id,
+    objects,
+    attributes: FCA_ATTRIBUTES,
+    incidence,
+    context,
+  });
+});
+
 export default app;

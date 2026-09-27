@@ -167,6 +167,55 @@ describe('convertToInsightRows', () => {
     expect(rows.find(r => r.type === 'decision')).toBeUndefined();
   });
 
+  it('persists decided_by, intent, branch_point in decision metadata and strips _reasoning', () => {
+    const response: AnalysisResponse = {
+      ...ANALYSIS_RESPONSE,
+      decisions: [
+        {
+          title: 'Pick SQLite',
+          situation: 'Local analytics',
+          choice: 'better-sqlite3',
+          reasoning: 'WAL mode support',
+          confidence: 90,
+          decided_by: 'user',
+          intent: 'Local privacy without cloud dependencies',
+          branch_point: 'Rejected PostgreSQL',
+          _reasoning: 'User#1 insisted on zero cloud exposure',
+        },
+      ],
+    };
+    const rows = convertToInsightRows(response, SESSION);
+    const decision = rows.find(r => r.type === 'decision');
+    expect(decision).toBeDefined();
+    const meta = JSON.parse(decision!.metadata!);
+    expect(meta.decided_by).toBe('user');
+    expect(meta.intent).toBe('Local privacy without cloud dependencies');
+    expect(meta.branch_point).toBe('Rejected PostgreSQL');
+    expect(meta._reasoning).toBeUndefined();
+  });
+
+  it('persists step_matrix into summary row metadata', () => {
+    const response: AnalysisResponse = {
+      ...ANALYSIS_RESPONSE,
+      step_matrix: [
+        {
+          step: 'Setup DB schema',
+          turn_ref: 'User#1',
+          driver: 'User_Decide',
+          target: 'Target_SrcCode',
+          state: 'State_Success',
+        },
+      ],
+    };
+    const rows = convertToInsightRows(response, SESSION);
+    const summary = rows.find(r => r.type === 'summary');
+    expect(summary).toBeDefined();
+    const meta = JSON.parse(summary!.metadata!);
+    expect(meta.step_matrix).toHaveLength(1);
+    expect(meta.step_matrix[0].step).toBe('Setup DB schema');
+    expect(meta.step_matrix[0].driver).toBe('User_Decide');
+  });
+
   it('produces a learning row', () => {
     const rows = convertToInsightRows(ANALYSIS_RESPONSE, SESSION);
     const learning = rows.find(r => r.type === 'learning');

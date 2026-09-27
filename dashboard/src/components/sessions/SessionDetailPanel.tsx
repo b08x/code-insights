@@ -40,6 +40,8 @@ import { AnalyzeButton } from '@/components/analysis/AnalyzeButton';
 import { useAnalysis } from '@/components/analysis/AnalysisContext';
 import { useMissingFacets, useBackfillFacets } from '@/hooks/useFacets';
 import { exportSession } from '@/lib/export-session';
+import { FcaMatrixCard } from '@/components/insights/FcaMatrixCard';
+import { fetchSessionRailsExport, fetchSessionFcaExport } from '@/lib/api';
 import { CollapsibleInsightItem } from '@/components/sessions/CollapsibleInsightItem';
 import { PromptQualityAnalyzeButton } from '@/components/sessions/PromptQualityAnalyzeButton';
 import { EditSessionDialog } from '@/components/sessions/EditSessionDialog';
@@ -260,6 +262,38 @@ export function SessionDetailPanel({ sessionId, onDelete }: SessionDetailPanelPr
     toast.success(`Exported as ${format === 'plain' ? 'Markdown' : format}`);
   }
 
+  async function handleExportRails() {
+    try {
+      const data = await fetchSessionRailsExport(session!.id);
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `session-${session!.id}-rails.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success('Exported Rails-ready session JSON');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to export Rails JSON');
+    }
+  }
+
+  async function handleExportFcaCsv() {
+    try {
+      const csv = await fetchSessionFcaExport(session!.id, 'csv');
+      const blob = new Blob([csv as string], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `session-${session!.id}-fca.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success('Exported FCA matrix CSV');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to export FCA CSV');
+    }
+  }
+
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
@@ -321,6 +355,12 @@ export function SessionDetailPanel({ sessionId, onDelete }: SessionDetailPanelPr
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => handleExport('notion')}>
                   Export for Notion
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleExportRails}>
+                  Export Rails JSON
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleExportFcaCsv}>
+                  Export FCA Matrix (CSV)
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -526,6 +566,11 @@ export function SessionDetailPanel({ sessionId, onDelete }: SessionDetailPanelPr
                 )}
               </div>
             </div>
+          )}
+
+          {/* FCA Step Incidence Matrix */}
+          {summaryMetadata.step_matrix && summaryMetadata.step_matrix.length > 0 && (
+            <FcaMatrixCard sessionId={sessionId} stepMatrix={summaryMetadata.step_matrix} />
           )}
 
           {/* PR Links */}

@@ -158,10 +158,39 @@ The system categorizes insights into several types:
 | Type | Description | Category |
 |------|-------------|----------|
 | `learning` | New knowledge acquired | Knowledge |
-| `decision` | Decision made | Decision |
+| `decision` | Decision made with driver attribution (`user` \| `agent` \| `collaborative`) | Decision |
+| `summary` | Session summary milestone containing 4–10 step semantic incidence matrix | Summary |
 | `outcome` | Result/outcome achieved | Outcome |
 | `friction` | Problem or obstacle | Friction |
 | `pattern` | Recurring pattern | Pattern |
+
+## Decision Attribution & Semantic Step Matrix Pipeline
+
+### 1. Decision Driver Attribution (`prompts.ts`)
+The analysis engine categorizes decision agency to distinguish autonomous AI decisions from user instructions and co-designed choices:
+- **`decided_by`**:
+  - `'user'`: Decisions explicitly commanded or instructed by the user (`User#N` turn citations).
+  - `'agent'`: Architectural or technical choices proposed and executed by the AI (`Assistant#N` turn citations).
+  - `'collaborative'`: Co-designed choices converged upon jointly (both `User#N` and `Assistant#N` citations).
+- **`intent`**: Initiating intent or user goal that prompted the decision.
+- **`branch_point`**: Critical bifurcation point or alternative design branched away from.
+- **Attribution Grounding (`_reasoning`)**: The prompt enforces a transient `_reasoning` scratchpad field during generation where the LLM quotes turn citations before outputting the decision. This field is stripped before database persistence in `analysis-db.ts` to keep storage lean.
+
+### 2. Semantic Step Matrix (`step_matrix`)
+Prompt Rule 7 extracts a compact semantic incidence matrix (4–10 major session episodes) structured as `SemanticStep`:
+- `step`: Concise episode milestone name (e.g. `"Setup Vite config"`).
+- `turn_ref`: Turn citation anchor (e.g. `"User#1"`, `"Assistant#2"`).
+- `driver`: `LLM_Decide` | `User_Decide` | `Collab_Decide`.
+- `target`: `Target_Config` | `Target_SrcCode` | `Target_Test` | `Target_Docs`.
+- `state`: `State_Success` | `State_Error` | `State_Blocked`.
+
+### 3. Response Normalization (`response-parsers.ts`)
+The response parser applies fuzzy canonicalization across all semantic step dimensions:
+- Driver aliases (`agent`, `ai`, `llm` → `LLM_Decide`; `user`, `human` → `User_Decide`; `collab` → `Collab_Decide`).
+- Target aliases (`config`, `infra`, `env` → `Target_Config`; `test`, `spec` → `Target_Test`; `doc`, `readme` → `Target_Docs`; `src`, `code` → `Target_SrcCode`).
+- State aliases (`err`, `fail` → `State_Error`; `block`, `wait` → `State_Blocked`; `succ`, `ok`, `pass` → `State_Success`).
+
+The parsed `step_matrix` is stored in the `summary` insight's `metadata` field, feeding downstream Formal Concept Analysis (`GET /api/export/session/:id/fca`) and ActiveRecord Rails exports (`GET /api/export/session/:id/rails`).
 
 ## Quality Metrics
 

@@ -4,6 +4,13 @@ All notable changes to `@code-insights/cli` will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Decision Driver Attribution & Turn Grounding** — Extended session analysis prompt and SQLite persistence to extract `decided_by` (`'user' | 'agent' | 'collaborative'`), `intent`, and `branch_point` with turn citations (`User#N` vs `Assistant#N`) and transient `_reasoning` scratchpad.
+- **Formal Concept Analysis (FCA) Step Matrix** — Extracts 4–10 compact session episode steps across 10 canonical binary attributes (`LLM_Decide`, `User_Decide`, `Collab_Decide`, `Target_Config`, `Target_SrcCode`, `Target_Test`, `Target_Docs`, `State_Success`, `State_Error`, `State_Blocked`) with fuzzy canonicalization.
+- **Rails ActiveRecord & FCA Export Endpoints** — Added `GET /api/export/session/:id/rails` (`rails-v1` schema) and `GET /api/export/session/:id/fca` (formal context $G, M, I$ as JSON or CSV).
+- **Dashboard FCA Matrix Card & Agency Badges** — Interactive `FcaMatrixCard` table rendering incidence matrix with attribute tooltips and direct CSV/JSON downloads, `DecidedByBadge` on decision cards, and expanded standalone `SessionDetailPage` at `/sessions/:id`.
+
 ### Fixed
 
 - **Hermes Agent profile session discovery** — Corrected Hermes Agent provider to properly discover sessions from both the centralized SQLite database (`~/.hermes/state.db`) and profile-specific SQLite databases (`~/.hermes/profiles/<profile_name>/state.db`). Previously only the central database was scanned, missing all profile-based sessions. Unified SQLite handling across all databases with proper error handling and comprehensive test coverage.

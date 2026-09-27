@@ -1,3 +1,6 @@
+.trackboi/
+.agents/skills/trackboi/*
+.mcp.json
 # Dependencies
 node_modules/
 .pnpm-store/

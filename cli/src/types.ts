@@ -180,6 +180,19 @@ export interface Insight {
   analysisVersion: string;
 }
 
+export type DecisionDriver = 'user' | 'agent' | 'collaborative';
+export type FcaDriver = 'LLM_Decide' | 'User_Decide' | 'Collab_Decide';
+export type FcaTarget = 'Target_Config' | 'Target_SrcCode' | 'Target_Test' | 'Target_Docs';
+export type FcaState = 'State_Success' | 'State_Error' | 'State_Blocked';
+
+export interface SemanticStep {
+  step: string;
+  turn_ref: string;
+  driver: FcaDriver;
+  target: FcaTarget;
+  state: FcaState;
+}
+
 export interface InsightMetadata {
   // Decision-specific (v3.0.0 decomposed schema)
   situation?: string;
@@ -189,6 +202,9 @@ export interface InsightMetadata {
   trade_offs?: string;
   revisit_when?: string;
   evidence?: string[];
+  decided_by?: DecisionDriver;
+  intent?: string;
+  branch_point?: string;
   // Learning-specific (v3.0.0 decomposed schema)
   symptom?: string;
   root_cause?: string;
@@ -198,6 +214,8 @@ export interface InsightMetadata {
   // Distinct from session_facets.outcome_satisfaction ('high'|'medium'|'low'|'abandoned')
   // which is a quantitative satisfaction rating used for Patterns/Reflect aggregation.
   outcome?: 'success' | 'partial' | 'abandoned' | 'blocked';
+  // Semantic step matrix for FCA (Formal Concept Analysis)
+  step_matrix?: SemanticStep[];
   // Technique/learning-specific (legacy v2)
   context?: string;
   applicability?: string;

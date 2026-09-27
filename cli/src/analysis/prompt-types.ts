@@ -78,6 +78,10 @@ export interface AnalysisResponse {
     revisit_when?: string;
     confidence?: number;
     evidence?: string[];
+    decided_by?: 'user' | 'agent' | 'collaborative';
+    intent?: string;
+    branch_point?: string;
+    _reasoning?: string;
   }>;
   learnings: Array<{
     title: string;
@@ -88,6 +92,20 @@ export interface AnalysisResponse {
     confidence?: number;
     evidence?: string[];
   }>;
+  step_matrix?: SemanticStep[];
+}
+
+export type DecisionDriver = 'user' | 'agent' | 'collaborative';
+export type FcaDriver = 'LLM_Decide' | 'User_Decide' | 'Collab_Decide';
+export type FcaTarget = 'Target_Config' | 'Target_SrcCode' | 'Target_Test' | 'Target_Docs';
+export type FcaState = 'State_Success' | 'State_Error' | 'State_Blocked';
+
+export interface SemanticStep {
+  step: string;
+  turn_ref: string;
+  driver: FcaDriver;
+  target: FcaTarget;
+  state: FcaState;
 }
 
 export interface ParseError {
