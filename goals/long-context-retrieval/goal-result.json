@@ -1,0 +1,1 @@
+Usage: plannotator setup-goal <interview|facts> <bundle.json | -> [--json]

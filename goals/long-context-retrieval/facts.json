@@ -1,0 +1,84 @@
+{
+  "stage": "facts",
+  "title": "Long Context Retrieval-Augmented Analysis",
+  "goalSlug": "long-context-retrieval",
+  "facts": [
+    {
+      "id": "scope",
+      "text": "Both CLI and server paths via a shared retrieval layer.",
+      "question": "Which analysis paths should get retrieval-augmented chunking?",
+      "rationale": "They share the same analysis prompts and should produce consistent results."
+    },
+    {
+      "id": "chunking_strategy",
+      "text": "Role-boundary exchanges with parent/child chunking.",
+      "question": "What should drive the chunking boundaries?",
+      "rationale": "Preserves conversational semantics. Parent max 4000 chars, child max 512 chars, delimiters \\n\\n, \\n, ., ?, !, ,.",
+      "details": {
+        "parent_max_length": 4000,
+        "child_max_length": 512,
+        "delimiters": ["\\n\\n", "\\n", ".", "?", "!", ",", " "]
+      }
+    },
+    {
+      "id": "annotation_strategy",
+      "text": "Each chunk carries phase, significance, why_context, and related_to metadata.",
+      "question": "How should chunks be annotated?",
+      "rationale": "Chunks need analytical context, not just structural boundaries.",
+      "details": {
+        "phase": "decision | debug | exploration | planning | execution | review",
+        "significance": "high | medium | low",
+        "why_context": "compact string explaining analytical importance",
+        "related_to": "array of related chunk IDs"
+      }
+    },
+    {
+      "id": "embedding_timing",
+      "text": "At ingest time, immediately when messages are ingested/synced.",
+      "question": "When should conversation chunks get embedded?",
+      "rationale": "Chunks are persistent for cross-session trend analysis, not ephemeral."
+    },
+    {
+      "id": "retrieval_strategy",
+      "text": "Option C: Annotated chunks + dynamic query (analysis instructions + session summary + related past insights).",
+      "question": "What drives the retrieval query?",
+      "rationale": "Query adapts per session, resists shortcut learning, prevents duplicate coverage."
+    },
+    {
+      "id": "retrieval_trigger",
+      "text": "Threshold-based: above ~80% of model context window.",
+      "question": "When should retrieval kick in?",
+      "rationale": "Short conversations get full fidelity, long ones get retrieval."
+    },
+    {
+      "id": "context_augmentation",
+      "text": "Hybrid B+C: window augmentation (compact summary + position tag) + neighbor inclusion (±1 adjacent chunks).",
+      "question": "How should retrieved chunks be augmented?",
+      "rationale": "Position tags provide global orientation, neighbors preserve local flow. Deduplication controls token cost."
+    },
+    {
+      "id": "facet_strategy",
+      "text": "Separate pass with sampled summary (existing pattern). Facets stay output-only.",
+      "question": "How should facets work with retrieval?",
+      "rationale": "Facets are holistic, can't be chunked. Not used as retrieval context."
+    },
+    {
+      "id": "embedding_readiness",
+      "text": "Soft gate: compute embeddings in parallel, analysis waits only if not ready by LLM call time.",
+      "question": "What happens when embeddings aren't ready?",
+      "rationale": "No blocking for short sessions, analysis quality depends on retrieval."
+    },
+    {
+      "id": "fallback_behavior",
+      "text": "Block until embeddings are ready.",
+      "question": "What if embeddings are unavailable?",
+      "rationale": "Analysis quality depends on retrieval, so waiting is preferable to silent failure."
+    },
+    {
+      "id": "vector_table",
+      "text": "New table vec_analysis_chunks, separate from vec_messages.",
+      "question": "Reuse vec_messages or create new table?",
+      "rationale": "Analysis chunks are structurally different (annotated, role-grouped, parent/child). Clean separation avoids schema drift."
+    }
+  ]
+}

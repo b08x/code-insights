@@ -1,0 +1,135 @@
+{
+  "stage": "interview",
+  "title": "Long Context Retrieval-Augmented Analysis",
+  "goalSlug": "long-context-retrieval",
+  "questions": [
+    {
+      "id": "scope",
+      "prompt": "Which analysis paths should get retrieval-augmented chunking?",
+      "description": "Currently the CLI path (`insights check --analyze`) sends the entire conversation raw. The server path (`analyzeSession`) already does naive token-based chunking. Which paths get the upgrade?",
+      "answerMode": "multi",
+      "recommendedAnswer": "Both CLI and server paths, since they share the same underlying analysis prompts and should produce consistent results.",
+      "recommendedOptionIds": ["cli", "server"],
+      "options": [
+        { "id": "cli", "label": "CLI (insights check --analyze)" },
+        { "id": "server", "label": "Server (analyzeSession API)" },
+        { "id": "both", "label": "Both — unified shared retrieval layer" }
+      ],
+      "required": true
+    },
+    {
+      "id": "chunking_strategy",
+      "prompt": "What should drive the chunking boundaries?",
+      "description": "The current `chunkMessages()` splits purely by token count. The existing `chunkText()` splits by delimiters. What boundaries make sense for conversation analysis?",
+      "answerMode": "single",
+      "recommendedAnswer": "Role-boundary chunking: each chunk spans a logical exchange (user turn + assistant response + tool results), annotated with role labels, timestamps, and tool context. This preserves conversational semantics that token-count splitting destroys.",
+      "recommendedOptionIds": ["role-boundary"],
+      "options": [
+        { "id": "token-count", "label": "Token count (current approach)" },
+        { "id": "role-boundary", "label": "Role-boundary exchanges (user+assistant+tools)" },
+        { "id": "topic-shift", "label": "Topic-shift detection (semantic boundaries)" },
+        { "id": "hybrid", "label": "Role-boundary + topic-shift hybrid" }
+      ],
+      "required": true
+    },
+    {
+      "id": "retrieval_trigger",
+      "prompt": "When should retrieval kick in vs. sending the full conversation?",
+      "description": "Short conversations don't need retrieval — they fit in the prompt. At what point should the system switch from 'send everything' to 'retrieve relevant chunks'?",
+      "answerMode": "single",
+      "recommendedAnswer": "Threshold-based: when estimated tokens exceed 80% of the model's context window (similar to the existing `MAX_INPUT_TOKENS` check), switch to retrieval mode. Below that, send everything for maximum fidelity.",
+      "recommendedOptionIds": ["threshold"],
+      "options": [
+        { "id": "always", "label": "Always retrieve (even short conversations)" },
+        { "id": "threshold", "label": "Threshold-based (above 80% of context window)" },
+        { "id": "flag", "label": "CLI flag only (--retrieve / --no-retrieve)" }
+      ],
+      "required": true
+    },
+    {
+      "id": "embedding_ingest",
+      "prompt": "When should conversation chunks get embedded?",
+      "description": "The existing `backfillEmbeddings` embeds messages as raw content. For retrieval-augmented analysis, chunks need to be embedded with their annotated context (role, tools, timestamps). When does this happen?",
+      "answerMode": "single",
+      "recommendedAnswer": "Embed on-demand at analysis time: when `insights check --analyze` runs and the conversation exceeds the threshold, chunk + embed + retrieve in one pass. No background embedding job needed — the chunks are ephemeral to the analysis session.",
+      "recommendedOptionIds": ["on-demand"],
+      "options": [
+        { "id": "on-demand", "label": "On-demand at analysis time" },
+        { "id": "ingest-time", "label": "At message ingest/sync time" },
+        { "id": "backfill", "label": "Background backfill job (like insights)" }
+      ],
+      "required": true
+    },
+    {
+      "id": "retrieval_query",
+      "prompt": "What drives the retrieval query — what gets embedded and searched against?",
+      "description": "For similarity search, we need a query vector and corpus vectors. What should they represent?",
+      "answerMode": "single",
+      "recommendedAnswer": "Hybrid: embed each conversation chunk with its annotated text (role + content + tools). For the query, embed the analysis instructions + session metadata + any related insights as the query vector. This retrieves chunks most relevant to what the analyzer is looking for.",
+      "recommendedOptionIds": ["hybrid-query"],
+      "options": [
+        { "id": "message-only", "label": "Embed raw message content, query with analysis prompt" },
+        { "id": "annotated", "label": "Embed annotated chunks (role+content+tools), query with analysis prompt" },
+        { "id": "hybrid-query", "label": "Annotated chunks + combined query (instructions + metadata + related insights)" }
+      ],
+      "required": true
+    },
+    {
+      "id": "context_augmentation",
+      "prompt": "How should retrieved chunks be augmented before sending to the LLM?",
+      "description": "Raw chunks lack conversation flow context. How much surrounding context should each retrieved chunk carry?",
+      "answerMode": "single",
+      "recommendedAnswer": "Window augmentation: each retrieved chunk gets prepended with a compact conversation summary (from `formatMessagesForAnalysis` of preceding messages) and tagged with its position in the full conversation (e.g., 'turn 12 of 45'). This gives the LLM orientation without re-inflating the prompt.",
+      "recommendedOptionIds": ["window"],
+      "options": [
+        { "id": "raw", "label": "Raw chunks (no augmentation)" },
+        { "id": "window", "label": "Window augmentation (summary + position tag)" },
+        { "id": "neighbor", "label": "Neighbor inclusion (include ±1 adjacent chunks)" },
+        { "id": "full-flow", "label": "Full flow replay (reconstruct ordered subset)" }
+      ],
+      "required": true
+    },
+    {
+      "id": "facet_strategy",
+      "prompt": "The current server path runs a separate facet extraction pass on the full conversation. How should this work with retrieval?",
+      "description": "Facets (outcome_satisfaction, workflow_pattern) are holistic — they can't be merged across chunks. How should retrieval handle them?",
+      "answerMode": "single",
+      "recommendedAnswer": "Keep the facet pass separate: use retrieval for the main analysis (decisions, learnings, friction), but for facets, use a truncated summary of the full conversation (first/last/middle samples) since facets need global view. This matches the existing pattern where facets already get a separate truncated pass.",
+      "recommendedOptionIds": ["separate-summary"],
+      "options": [
+        { "id": "separate-summary", "label": "Separate pass with sampled summary (existing pattern)" },
+        { "id": "retrieve-facets", "label": "Retrieve facet-relevant chunks specifically" },
+        { "id": "skip-facets", "label": "Skip facets for long conversations" }
+      ],
+      "required": true
+    },
+    {
+      "id": "fallback_behavior",
+      "prompt": "What should happen if embeddings aren't available (no Ollama, no vector extension, backfill not run)?",
+      "description": "The existing code falls back gracefully in many places. How should this feature handle missing infrastructure?",
+      "answerMode": "single",
+      "recommendedAnswer": "Graceful degradation: if embeddings aren't available, fall back to the current naive token-count chunking (server path) or truncation (CLI path). Log a warning suggesting `code-insights embeddings backfill`. Never block analysis on missing embeddings.",
+      "recommendedOptionIds": ["graceful"],
+      "options": [
+        { "id": "graceful", "label": "Graceful fallback to naive chunking" },
+        { "id": "error", "label": "Error with instructions to set up embeddings" },
+        { "id": "auto-setup", "label": "Auto-setup: prompt to install Ollama + run backfill" }
+      ],
+      "required": true
+    },
+    {
+      "id": "reuse_vector_store",
+      "prompt": "Should this reuse the existing `vec_messages` vector table or create a new one?",
+      "description": "The existing backfill embeds raw message content into `vec_messages`. The new system needs annotated chunks with role/tool context. These are different embeddings.",
+      "answerMode": "single",
+      "recommendedAnswer": "New table `vec_analysis_chunks`: the existing `vec_messages` embeds raw content for cross-session search. Analysis chunks are ephemeral, annotated, and session-scoped. Separate tables keep concerns clean and avoid re-embedding existing data.",
+      "recommendedOptionIds": ["new-table"],
+      "options": [
+        { "id": "reuse", "label": "Reuse vec_messages (add annotation to source text)" },
+        { "id": "new-table", "label": "New table vec_analysis_chunks" },
+        { "id": "ephemeral", "label": "Ephemeral in-memory vectors (no SQLite table)" }
+      ],
+      "required": true
+    }
+  ]
+}
