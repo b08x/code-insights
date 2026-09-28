@@ -7,6 +7,7 @@ import { autoDetectOllama } from '../utils/ollama-detect.js';
 import { trackEvent, identifyUser, captureError, classifyError } from '../utils/telemetry.js';
 import { insertSessionWithProjectAndReturnIsNew, insertMessages, recalculateUsageStats } from '../db/write.js';
 import { getDb, getMigrationResult } from '../db/client.js';
+import { isSessionTombstoned } from '../db/purge.js';
 import { getAllProviders, getProvider } from '../providers/registry.js';
 import { setProviderVerbose } from '../providers/context.js';
 import type { SessionProvider } from '../providers/types.js';
@@ -140,6 +141,15 @@ export async function runSync(options: SyncOptions = {}): Promise<SyncResult> {
   let totalDiscoveredFiles = 0;
   let discoveryWarned = false;
 
+  const db = getDb();
+  let tombstonedSessionIds = new Set<string>();
+  try {
+    const tombstoneRows = db.prepare('SELECT id FROM deleted_sessions').all() as Array<{ id: string }>;
+    tombstonedSessionIds = new Set(tombstoneRows.map(r => r.id));
+  } catch {
+    // If migration v16 hasn't run yet
+  }
+
   for (const provider of providers) {
     const providerName = provider.getProviderName();
     try {
@@ -187,6 +197,14 @@ export async function runSync(options: SyncOptions = {}): Promise<SyncResult> {
           const session = await provider.parse(filePath);
           if (!session) {
             providerSkippedCount++;
+            continue;
+          }
+
+          // Skip permanently tombstoned / deleted sessions
+          if (tombstonedSessionIds.has(session.id)) {
+            providerSkippedCount++;
+            updateSyncState(syncState, filePath, session.id);
+            saveSyncState(syncState);
             continue;
           }
 
@@ -248,12 +266,6 @@ export async function runSync(options: SyncOptions = {}): Promise<SyncResult> {
         console.error(chalk.red(`  ${error instanceof Error ? error.message : 'Unknown error'}`));
       }
     }
-  }
-
-  // Resurrect soft-deleted sessions on --force so users get a clean slate
-  if (options.force) {
-    const db = getDb();
-    db.prepare('UPDATE sessions SET deleted_at = NULL WHERE deleted_at IS NOT NULL').run();
   }
 
   // Reconcile usage stats after force sync (skip if nothing changed)
@@ -379,7 +391,7 @@ export async function syncSingleFile(options: {
 }): Promise<void> {
   const provider = getProvider(options.sourceTool ?? 'claude-code');
   const session = await provider.parse(options.filePath);
-  if (!session) return;
+  if (!session || isSessionTombstoned(session.id)) return;
   insertSessionWithProjectAndReturnIsNew(session, false);
   insertMessages(session, false);
 }

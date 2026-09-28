@@ -187,6 +187,10 @@ code-insights sync --source cursor         # Sync only from a specific tool
 code-insights sync --verbose               # Verbose output
 code-insights sync --regenerate-titles     # Regenerate session titles
 code-insights sync prune                   # Soft-delete trivial sessions (≤2 messages, restorable with sync --force)
+code-insights sync prune --hard            # Permanently purge and tombstone soft-deleted sessions
+code-insights purge [id]                   # Permanently delete session(s) and record tombstone to prevent re-sync
+code-insights reprocess                    # Zero-cost local backfill (v15 steps, decision attributions, FTS)
+code-insights reprocess --dry-run          # Preview backfill counts without modifying database
 code-insights status                       # Show sync statistics
 code-insights install-hook                 # Auto-sync on session end (defaults to native codex and claude target)
 code-insights install-hook --target vibe   # Install hook for Mistral Vibe

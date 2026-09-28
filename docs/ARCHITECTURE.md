@@ -121,7 +121,7 @@ Providers are registered in `providers/registry.ts`. To add a new source tool:
 - **Location:** `~/.code-insights/data.db`
 - **Mode:** WAL (concurrent reads during CLI sync)
 - **Driver:** better-sqlite3 (synchronous, fast, no async overhead)
-- **Schema:** Versioned migrations (V1–V12) applied on startup
+- **Schema:** Versioned migrations (V1–V16) applied on startup
 - **Timestamps:** ISO 8601 strings
 
 ### Tables
@@ -131,15 +131,18 @@ Providers are registered in `providers/registry.ts`. To add a new source tool:
 | `projects` | Project metadata (id = hash of git remote URL or path) | V1 |
 | `sessions` | Session metadata, titles, character classification, `deleted_at` soft-delete; V6 adds `compact_count INTEGER`, `auto_compact_count INTEGER`, `slash_commands TEXT`; V10 adds `parent_session_id`, `agent_type` | V1, V5, V6, V10 |
 | `messages` | Full message content (stored during sync) | V1 |
-| `messages_fts` | SQLite FTS5 virtual table for lightning-fast keyword search (BM25) | V12 |
+| `messages_fts` | SQLite FTS5 virtual table for lightning-fast keyword search (BM25) across content, tool_calls, tool_results | V12, V13 |
 | `insights` | LLM-generated insights (5 types) | V1, V2, V11 |
 | `usage_stats` | Global usage aggregation | V1 |
 | `session_facets` | Cross-session facet data (friction, patterns, workflow) | V3 |
 | `reflect_snapshots` | Cached synthesis results, composite PK `(period, project_id, source_tool)` | V4 |
 | `analysis_usage` | Per-session LLM analysis cost data, composite PK `(session_id, analysis_type)` | V7, V8 |
 | `analysis_queue` | Analysis job queue for background processing, PK `session_id`, status lifecycle: pending → processing → completed/failed with retry logic | V9 |
-| `embedding_metadata` | Provenance for computed embeddings (model, dim, source text) | V11 |
+| `embedding_metadata` | Provenance for computed embeddings (model, dim, source text, parent_chunk_id) | V11, V14 |
 | `vec_analysis_chunks` | sqlite-vec virtual table for analysis chunk KNN search (parent/child chunks) | V13 |
+| `entity_chunks` | Parent/child RAG chunks for insights and messages | V14 |
+| `session_steps` | Enriched sequential milestone steps for Formal Concept Analysis (FCA) | V15 |
+| `deleted_sessions` | Permanent tombstone registry preventing deleted sessions from re-importing on resync | V16 |
 | `schema_version` | Migration tracking | V1 |
 
 ---

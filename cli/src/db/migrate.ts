@@ -12,6 +12,7 @@ export interface MigrationResult {
   v13Applied: boolean;
   v14Applied: boolean;
   v15Applied: boolean;
+  v16Applied: boolean;
 }
 
 /**
@@ -123,7 +124,13 @@ export function runMigrations(db: Database.Database): MigrationResult {
     v15Applied = true;
   }
 
-  return { v6Applied, v7Applied, v8Applied, v9Applied, v10Applied, v11Applied, v12Applied, v13Applied, v14Applied, v15Applied };
+  let v16Applied = false;
+  if (currentVersion < 16) {
+    applyV16(db);
+    v16Applied = true;
+  }
+
+  return { v6Applied, v7Applied, v8Applied, v9Applied, v10Applied, v11Applied, v12Applied, v13Applied, v14Applied, v15Applied, v16Applied };
 }
 
 function getCurrentVersion(db: Database.Database): number {
@@ -429,4 +436,18 @@ function applyV15(db: Database.Database): void {
   db.exec(`CREATE INDEX IF NOT EXISTS idx_session_steps_state ON session_steps(state);`);
   db.prepare('INSERT OR IGNORE INTO schema_version (version) VALUES (?)').run(15);
 }
+
+function applyV16(db: Database.Database): void {
+  // deleted_sessions tombstone table to prevent deleted sessions from being re-imported on resync
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS deleted_sessions (
+      id         TEXT PRIMARY KEY,
+      deleted_at TEXT NOT NULL DEFAULT (datetime('now')),
+      reason     TEXT
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_deleted_sessions_deleted_at ON deleted_sessions(deleted_at DESC);`);
+  db.prepare('INSERT OR IGNORE INTO schema_version (version) VALUES (?)').run(16);
+}
+
 

@@ -1,5 +1,6 @@
 import { getDb } from './client.js';
 import { sessionExists } from './read.js';
+import { isSessionTombstoned } from './purge.js';
 import { generateStableProjectId, getDeviceInfo } from '../utils/device.js';
 import type { ParsedSession, ParsedMessage } from '../types.js';
 import type BetterSqlite3 from 'better-sqlite3';
@@ -191,12 +192,15 @@ export function insertSessionWithProject(session: ParsedSession, isForce = false
  * Insert a session and return whether it was new to the DB.
  * Lets callers avoid a duplicate sessionExists() query.
  */
-export function insertSessionWithProjectAndReturnIsNew(session: ParsedSession, isForce = false): boolean {
-  return insertSessionWithProjectInternal(session, isForce);
+export function insertSessionWithProjectAndReturnIsNew(session: ParsedSession, isForce = false, dbOverride?: BetterSqlite3.Database): boolean {
+  return insertSessionWithProjectInternal(session, isForce, dbOverride);
 }
 
-function insertSessionWithProjectInternal(session: ParsedSession, isForce: boolean): boolean {
-  const db = getDb();
+function insertSessionWithProjectInternal(session: ParsedSession, isForce: boolean, dbOverride?: BetterSqlite3.Database): boolean {
+  const db = dbOverride ?? getDb();
+  if (isSessionTombstoned(session.id, db)) {
+    return false;
+  }
   const { projectId, source: projectIdSource, gitRemoteUrl } = generateStableProjectId(session.projectPath);
   const deviceInfo = getDeviceInfo();
 
@@ -308,10 +312,12 @@ function upsertSession(
  * Insert messages for a session.
  * Replaces firebase/client.ts uploadMessages().
  */
-export function insertMessages(session: ParsedSession, _isForce = false): void {
+export function insertMessages(session: ParsedSession, _isForce = false, dbOverride?: BetterSqlite3.Database): void {
   if (session.messages.length === 0) return;
 
-  const db = getDb();
+  const db = dbOverride ?? getDb();
+  if (isSessionTombstoned(session.id, db)) return;
+
   const stmts = getStmts();
 
   const tx = db.transaction((messages: ParsedMessage[]) => {

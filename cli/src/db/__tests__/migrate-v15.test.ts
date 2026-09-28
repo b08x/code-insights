@@ -10,7 +10,7 @@ describe('Migration v15: session_steps table', () => {
     expect(result.v15Applied).toBe(true);
 
     const versionRow = db.prepare('SELECT MAX(version) as version FROM schema_version').get() as { version: number };
-    expect(versionRow.version).toBe(15);
+    expect(versionRow.version).toBeGreaterThanOrEqual(15);
 
     // Verify session_steps table exists
     const tableInfo = db.prepare("PRAGMA table_info('session_steps')").all() as Array<{
@@ -63,7 +63,7 @@ describe('Migration v15: session_steps table', () => {
     expect(result.v15Applied).toBe(true);
 
     const versionRow = db.prepare('SELECT MAX(version) as version FROM schema_version').get() as { version: number };
-    expect(versionRow.version).toBe(15);
+    expect(versionRow.version).toBeGreaterThanOrEqual(15);
 
     // Seed session
     db.prepare('INSERT INTO projects (id, name, path, last_activity) VALUES (?, ?, ?, ?)').run('proj-001', 'Test', '/path', '2026-01-01');

@@ -49,7 +49,8 @@ const syncCmd = program
 syncCmd
   .command('prune')
   .description('Soft-delete sessions with ≤2 messages (trivial abandoned sessions)')
-  .action(async () => {
+  .option('--hard', 'Permanently purge and tombstone so sessions are never re-imported on resync')
+  .action(async (opts) => {
     const chalk = (await import('chalk')).default;
     const { default: inquirer } = await import('inquirer');
     console.log(chalk.cyan('\n  Code Insights — Prune\n'));
@@ -67,23 +68,30 @@ syncCmd
     }
     console.log('');
 
+    const actionLabel = opts.hard ? 'Permanently purge and tombstone' : 'Soft-delete';
     const { confirmed } = await inquirer.prompt<{ confirmed: boolean }>([
       {
         type: 'confirm',
         name: 'confirmed',
-        message: `Soft-delete these ${sessions.length} session${sessions.length !== 1 ? 's' : ''}? (Restorable with sync --force)`,
+        message: `${actionLabel} these ${sessions.length} session${sessions.length !== 1 ? 's' : ''}?`,
         default: false,
       },
     ]);
 
     if (!confirmed) {
-      console.log(chalk.yellow('\n  Cancelled. No sessions were hidden.'));
+      console.log(chalk.yellow('\n  Cancelled. No sessions were deleted.'));
       return;
     }
 
-    const { deleted } = pruneTrivialSessions(sessions.map((s) => s.id));
-    console.log(chalk.green(`\n  Hidden ${deleted} session${deleted !== 1 ? 's' : ''}.`));
-    console.log(chalk.dim('  Use code-insights sync --force to restore hidden sessions.'));
+    if (opts.hard) {
+      const { purgeSessions } = await import('./db/purge.js');
+      const { purgedCount } = purgeSessions(undefined, { sessionIds: sessions.map((s) => s.id), reason: 'sync prune --hard' });
+      console.log(chalk.green(`\n  Permanently purged and tombstoned ${purgedCount} session${purgedCount !== 1 ? 's' : ''}.`));
+      console.log(chalk.dim('  Tombstones in deleted_sessions ensure these will never be re-imported on resync.'));
+    } else {
+      const { deleted } = pruneTrivialSessions(sessions.map((s) => s.id));
+      console.log(chalk.green(`\n  Hidden ${deleted} session${deleted !== 1 ? 's' : ''}.`));
+    }
   });
 
 program
@@ -121,6 +129,8 @@ program
   .action(dashboardCommand);
 
 import { buildSearchCommands } from './commands/search.js';
+import { buildReprocessCommand } from './commands/reprocess.js';
+import { buildPurgeCommand } from './commands/purge.js';
 
 program.addCommand(resetCommand);
 program.addCommand(statsCommand);
@@ -130,6 +140,8 @@ program.addCommand(reflectCommand);
 program.addCommand(buildQueueCommand());
 program.addCommand(buildEmbeddingsCommand());
 program.addCommand(buildOptimizeCommand());
+program.addCommand(buildReprocessCommand());
+program.addCommand(buildPurgeCommand());
 buildSearchCommands().forEach(cmd => program.addCommand(cmd));
 
 program

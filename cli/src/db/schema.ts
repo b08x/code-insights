@@ -184,8 +184,18 @@ CREATE TABLE IF NOT EXISTS session_steps (
 CREATE INDEX IF NOT EXISTS idx_session_steps_session_id ON session_steps(session_id);
 CREATE INDEX IF NOT EXISTS idx_session_steps_driver ON session_steps(driver);
 CREATE INDEX IF NOT EXISTS idx_session_steps_state ON session_steps(state);
+
+-- ============================================================
+-- Deleted Sessions (Tombstones preventing resync re-import)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS deleted_sessions (
+  id         TEXT PRIMARY KEY,
+  deleted_at TEXT NOT NULL DEFAULT (datetime('now')),
+  reason     TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_deleted_sessions_deleted_at ON deleted_sessions(deleted_at DESC);
 `;
 
-export const CURRENT_SCHEMA_VERSION = 15;
+export const CURRENT_SCHEMA_VERSION = 16;
 
 export { runMigrations } from './migrate.js';

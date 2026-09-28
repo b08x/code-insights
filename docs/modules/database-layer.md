@@ -176,7 +176,64 @@ CREATE INDEX idx_session_steps_state ON session_steps(state);
 CREATE INDEX idx_session_steps_target ON session_steps(target);
 ```
 
+#### deleted_sessions Table (v16)
+
+```sql
+CREATE TABLE deleted_sessions (
+  id TEXT PRIMARY KEY,
+  deleted_at TEXT NOT NULL DEFAULT (datetime('now')),
+  reason TEXT
+);
+CREATE INDEX idx_deleted_sessions_deleted_at ON deleted_sessions(deleted_at DESC);
+```
+
+The `deleted_sessions` table acts as a permanent tombstone registry. Whenever sessions are permanently purged (via `code-insights purge` or `code-insights sync prune --hard`), their IDs are recorded here. Ingestion guards in `sync.ts` and `write.ts` verify `isSessionTombstoned(id)` so that tombstoned sessions are never re-discovered or re-imported from raw disk log files during subsequent sync runs (including `code-insights sync --force`).
+
 ## Core Functions
+
+### purgeSessions()
+
+**Location**: `cli/src/db/purge.ts`
+
+**Purpose**: Permanently purge soft-deleted or specific sessions and record their tombstone IDs
+
+**Behavior**:
+1. Identifies target sessions (all with `deleted_at IS NOT NULL` if no specific IDs passed, or specific ID list)
+2. Records session IDs into `deleted_sessions` tombstone table
+3. Cascades deletion across SQLite child tables (`insights`, `session_steps`, `session_facets`, `analysis_usage`, `messages`, `sessions`)
+4. Guarantees that subsequent syncs permanently ignore these sessions without touching raw tool files on disk
+
+**Signature**:
+```typescript
+function purgeSessions(
+  options?: {
+    sessionIds?: string[];
+    reason?: string;
+    db?: Database.Database;
+  }
+): PurgeResult;
+```
+
+### reprocessDatabase()
+
+**Location**: `cli/src/db/reprocess.ts`
+
+**Purpose**: Zero-cost local backfill and schema normalization without invoking LLM APIs
+
+**Behavior**:
+1. Unpacks `step_matrix` JSON from summary `insights.metadata` into relational `session_steps` (Schema v15)
+2. Enriches step attributes with co-occurring flags (`ran_tests`, `used_tools`, `has_course_correction`, `targets`)
+3. Attributes legacy decision insights lacking `decided_by` using evidence turn citations (`User#N` vs `Assistant#N`)
+4. Normalizes facet friction categories to canonical formats
+5. Rebuilds FTS5 full-text index for fast search
+
+**Signature**:
+```typescript
+async function reprocessDatabase(
+  options?: ReprocessOptions
+): Promise<ReprocessStats>;
+```
+
 
 ### getDb()
 
