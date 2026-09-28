@@ -61,6 +61,7 @@
                   "context-loss",
                   "scope-creep",
                   "repeated-mistakes",
+                  "rage-loop",
                   "documentation-gap",
                   "tooling-limitation"
                 ]
@@ -178,6 +179,31 @@
           "applies_when": { "type": "string" },
           "confidence": { "type": "number", "minimum": 0, "maximum": 100 },
           "evidence": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "step_matrix": {
+      "type": "array",
+      "description": "Sequential milestones mapping workflow progression",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["step", "turn_ref", "driver", "target", "state"],
+        "properties": {
+          "step": { "type": "string" },
+          "turn_ref": { "type": "string" },
+          "driver": {
+            "type": "string",
+            "enum": ["LLM_Decide", "User_Decide", "Collab_Decide"]
+          },
+          "target": {
+            "type": "string",
+            "enum": ["Target_Config", "Target_SrcCode", "Target_Test", "Target_Docs"]
+          },
+          "state": {
+            "type": "string",
+            "enum": ["State_Success", "State_Error", "State_Blocked"]
+          }
         }
       }
     }

@@ -34,7 +34,7 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["type", "category", "label", "message_ref", "original", "better_prompt", "why", "what_worked", "why_effective"],
+        "required": ["type", "category", "label", "message_ref"],
         "properties": {
           "type": {
             "type": "string",
@@ -47,7 +47,17 @@
           "better_prompt": { "type": "string" },
           "why": { "type": "string" },
           "what_worked": { "type": "string" },
-          "why_effective": { "type": "string" }
+          "why_effective": { "type": "string" },
+          "sfl_breakdown": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["ideational", "interpersonal", "textual"],
+            "properties": {
+              "ideational": { "type": "string" },
+              "interpersonal": { "type": "string" },
+              "textual": { "type": "string" }
+            }
+          }
         }
       }
     },
@@ -89,7 +99,17 @@
             "minimum": 0,
             "maximum": 100
           },
-          "suggested_improvement": { "type": "string" }
+          "suggested_improvement": { "type": "string" },
+          "sfl_breakdown": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["ideational", "interpersonal", "textual"],
+            "properties": {
+              "ideational": { "type": "string" },
+              "interpersonal": { "type": "string" },
+              "textual": { "type": "string" }
+            }
+          }
         }
       }
     },

@@ -204,7 +204,7 @@ code-insights reflect backfill --prompt-quality
 ```
 
 The Reflect feature analyzes your sessions to surface:
-- **Friction points** — recurring obstacles classified into 9 categories with attribution (user-actionable, AI capability, environmental)
+- **Friction points** — recurring obstacles classified into 10 categories (including `rage-loop`) with attribution (user-actionable, AI capability, environmental)
 - **Effective patterns** — working strategies across 8 categories with driver classification (user-driven, AI-driven, collaborative)
 - **Prompt quality** — how well you communicate with AI tools (7 deficit + 3 strength categories)
 - **Working style** — rules and skills derived from your sessions

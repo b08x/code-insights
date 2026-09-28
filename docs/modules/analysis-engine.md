@@ -164,7 +164,7 @@ The system categorizes insights into several types:
 | `friction` | Problem or obstacle | Friction |
 | `pattern` | Recurring pattern | Pattern |
 
-## Decision Attribution & Semantic Step Matrix Pipeline
+## Decision Attribution & Semantic Step Matrix Pipeline / SFL
 
 ### 1. Decision Driver Attribution (`prompts.ts`)
 The analysis engine categorizes decision agency to distinguish autonomous AI decisions from user instructions and co-designed choices:
@@ -191,6 +191,10 @@ The response parser applies fuzzy canonicalization across all semantic step dime
 - State aliases (`err`, `fail` → `State_Error`; `block`, `wait` → `State_Blocked`; `succ`, `ok`, `pass` → `State_Success`).
 
 The parsed `step_matrix` is stored in the `summary` insight's `metadata` field, feeding downstream Formal Concept Analysis (`GET /api/export/session/:id/fca`) and ActiveRecord Rails exports (`GET /api/export/session/:id/rails`).
+
+### 4. SFL & Schema Synchronization (`schemas/`)
+- **SFL-Compliant Prompt Structure**: Prompts now feature explicit `<task>` extraction boundaries and validation rules (acceptance criteria) for outputs including tri-stratal SFL breakdowns for findings and takeaways (Ideational/Field, Interpersonal/Tenor, Textual/Mode).
+- **Schema Synchronization**: Schema definitions are actively synchronized between TypeScript types (`prompt-types.ts`) and JSON schemas (`prompt-quality.json`, `session-analysis.json`).
 
 ## Quality Metrics
 

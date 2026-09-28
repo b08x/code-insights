@@ -397,6 +397,29 @@ describe('buildSessionAnalysisInstructions', () => {
     expect(result).toContain('<json>...</json>');
   });
 
+  it('specifies explicit extraction boundaries in <task>', () => {
+    const result = buildSessionAnalysisInstructions('proj', null);
+    expect(result).toContain('Session execution facets:');
+    expect(result).toContain('Architectural decisions:');
+    expect(result).toContain('Transferable learnings:');
+    expect(result).toContain('Semantic step matrix:');
+    expect(result).toContain('wrong-approach');
+    expect(result).toContain('structured-planning');
+  });
+
+  it('includes output validation rules in <rules>', () => {
+    const result = buildSessionAnalysisInstructions('proj', null);
+    expect(result).toContain('Output Validation Rules (Acceptance Criteria)');
+    expect(result).toContain('Summary narrative constraint:');
+  });
+
+  it('includes category_enforcement block', () => {
+    const result = buildSessionAnalysisInstructions('proj', null);
+    expect(result).toContain('<category_enforcement>');
+    expect(result).toContain('Friction MUST use:');
+    expect(result).toContain('Patterns MUST use:');
+  });
+
   it('includes related_insights block when relatedInsights provided', () => {
     const relatedInsights = [
       { type: 'decision', title: 'Use Vitest', content: 'Chose Vitest for speed', confidence: 0.85 },
@@ -502,6 +525,36 @@ describe('buildPromptQualityInstructions', () => {
     const result = buildPromptQualityInstructions('proj', sessionMeta);
     expect(result).toContain('<json>...</json>');
   });
+
+  it('specifies explicit extraction boundaries with canonical categories in <task>', () => {
+    const result = buildPromptQualityInstructions('proj', sessionMeta);
+    expect(result).toContain('vague-request');
+    expect(result).toContain('missing-context');
+    expect(result).toContain('late-constraint');
+    expect(result).toContain('unclear-correction');
+    expect(result).toContain('scope-drift');
+    expect(result).toContain('missing-acceptance-criteria');
+    expect(result).toContain('assumption-not-surfaced');
+    expect(result).toContain('precise-request');
+    expect(result).toContain('effective-context');
+    expect(result).toContain('productive-correction');
+  });
+
+  it('includes output validation rules and SFL requirements in <rules>', () => {
+    const result = buildPromptQualityInstructions('proj', sessionMeta);
+    expect(result).toContain('Output Validation Rules (Acceptance Criteria)');
+    expect(result).toContain('Reject findings that violate these criteria');
+    expect(result).toContain('Ideational (Field)');
+    expect(result).toContain('Interpersonal (Tenor)');
+    expect(result).toContain('Textual (Mode)');
+  });
+
+  it('includes category_enforcement block', () => {
+    const result = buildPromptQualityInstructions('proj', sessionMeta);
+    expect(result).toContain('<category_enforcement>');
+    expect(result).toContain('Deficits MUST use:');
+    expect(result).toContain('Strengths MUST use:');
+  });
 });
 
 // ──────────────────────────────────────────────────────
@@ -522,6 +575,27 @@ describe('buildFacetOnlyInstructions', () => {
   it('omits session summary when null', () => {
     const result = buildFacetOnlyInstructions('my-app', null);
     expect(result).not.toContain('<session_summary>');
+  });
+
+  it('specifies explicit extraction boundaries in <task>', () => {
+    const result = buildFacetOnlyInstructions('proj', null);
+    expect(result).toContain('Execution dynamics: outcome satisfaction');
+    expect(result).toContain('Friction points using canonical categories:');
+    expect(result).toContain('Effective workflow patterns using canonical categories:');
+  });
+
+  it('includes output validation rules in <rules>', () => {
+    const result = buildFacetOnlyInstructions('proj', null);
+    expect(result).toContain('Output Validation Rules (Acceptance Criteria)');
+    expect(result).toContain('attribution decision tree');
+  });
+
+  it('interpolates category_enforcement without literal escapes', () => {
+    const result = buildFacetOnlyInstructions('proj', null);
+    expect(result).toContain('<category_enforcement>');
+    expect(result).not.toContain('${CANONICAL_FRICTION_CATEGORIES');
+    expect(result).toContain('wrong-approach');
+    expect(result).toContain('structured-planning');
   });
 
   it('ends with json tags instruction', () => {

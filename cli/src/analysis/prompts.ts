@@ -114,7 +114,12 @@ export function buildSessionAnalysisInstructions(
     : '';
 
   return `<task>
-Extract analytical session facets, decisions, and learnings from the provided session transcript into structured JSON.
+Analyze the provided AI coding session transcript. Extract:
+1. Session execution facets: outcome satisfaction (high | medium | low | abandoned), workflow pattern, course corrections, iteration count, friction points using canonical categories (${CANONICAL_FRICTION_CATEGORIES.join(', ')}), and effective workflow patterns using canonical categories (${CANONICAL_PATTERN_CATEGORIES.join(', ')}).
+2. Architectural decisions: technical choices with trade-offs, alternatives considered, and turn-based attribution (user | agent | collaborative).
+3. Transferable learnings: operational discoveries with observable symptoms, root causes, and applicable conditions.
+4. Semantic step matrix: sequential milestones (4-10 steps) mapping workflow progression, driver attribution, target scope, and outcome state.
+Output strictly valid JSON matching the schema.
 </task>
 
 <context>
@@ -124,12 +129,15 @@ ${sessionSummary ? `  <session_summary>${sessionSummary}</session_summary>\n` : 
 
 <rules>
   1. Enforce strict JSON output schema.
-  2. Extract insights containing ONLY concrete references (file paths, endpoints, variables, errors). Filter out generic findings automatically.
-  3. Include 1-3 literal quote citations per insight referencing turn labels (e.g., "User#5"). Ground decision attribution in turn citations: cite User#N for "user", Assistant#N for "agent", or both for "collaborative". Use a compact _reasoning field during generation.
-  4. Require a minimum confidence score of 70 for any decision or learning. Drop insights below this threshold.
-  5. Return empty arrays for categories yielding no valid findings.
-  6. Fill every field in the schema. Use null for unavailable data where permitted.
-  7. Extract a compact semantic step matrix (4-10 steps) summarizing key milestones of the session with driver attribution, target scope, and outcome state.
+  2. Output Validation Rules (Acceptance Criteria):
+     - For decisions, validate that each entry: (a) contains concrete technical choice and alternatives, (b) grounds decided_by attribution in turn citations (User#N for user, Assistant#N for agent, both for collaborative), (c) includes 1-3 literal quote citations, (d) meets minimum confidence >= 70. Reject decisions failing these criteria.
+     - For learnings, validate that each entry: (a) identifies observable symptom, root cause, and transferable takeaway, (b) includes literal quote citations, (c) meets minimum confidence >= 70. Reject generic advice.
+     - For friction points, validate that each entry: (a) uses a canonical category (${CANONICAL_FRICTION_CATEGORIES.join(', ')}), (b) sets attribution to user-actionable, ai-capability, or environmental strictly per the decision tree, (c) describes the specific GAP with concrete technical details (file paths, APIs, error messages), not the actor, (d) includes _reasoning scratchpad.
+     - For effective patterns, validate that each entry: (a) uses a canonical category (${CANONICAL_PATTERN_CATEGORIES.join(', ')}), (b) sets driver to user-driven, ai-driven, or collaborative per the driver decision tree, (c) satisfies exclusion rules (exclude routine file reads, trivial syntax fixes, standard commands), (d) includes _reasoning scratchpad.
+     - For step matrix, validate that it: (a) contains 4-10 discrete chronological milestones, (b) assigns driver (LLM_Decide | User_Decide | Collab_Decide), target (Target_Config | Target_SrcCode | Target_Test | Target_Docs), and state (State_Success | State_Error | State_Blocked).
+  3. Summary narrative constraint: Describe HOW the user and AI collaborated, the workflow strategy utilized, and the friction-resolving path. Do NOT mechanically list modified files or commit hashes.
+  4. Extract insights containing ONLY concrete references (file paths, endpoints, variables, errors). Filter out generic findings automatically.
+  5. Fill every field in the schema. Return empty arrays for categories yielding no valid findings. Use null for unavailable data where permitted.
 </rules>
 
 <definitions>
@@ -217,6 +225,12 @@ ${EFFECTIVE_PATTERN_CLASSIFICATION_GUIDANCE}
 }
 </output_schema>
 
+<category_enforcement>
+Friction MUST use: ${CANONICAL_FRICTION_CATEGORIES.join(', ')}
+Patterns MUST use: ${CANONICAL_PATTERN_CATEGORIES.join(', ')}
+Create a custom kebab-case category ONLY if the behavior strictly diverges from canonical bounds.
+</category_enforcement>
+
 Respond with valid JSON only, wrapped in <json>...</json> tags.`;
 }
 
@@ -239,7 +253,10 @@ export function buildPromptQualityInstructions(
   meta?: SessionMetadata
 ): string {
   return `<task>
-Extract structural inefficiencies and effective prompt patterns from the preceding conversation. Assess ONLY the user's input messages.
+Analyze the user's input messages in the provided conversation transcript. Extract:
+1. Structural inefficiencies (prompting deficits) using categories: ${CANONICAL_PQ_DEFICIT_CATEGORIES.join(', ')}.
+2. Effective prompt patterns (prompting strengths) using categories: ${CANONICAL_PQ_STRENGTH_CATEGORIES.join(', ')}.
+Assess ONLY the user's input messages (labeled User#N). For each finding, include: category, type, description, message_ref, impact, confidence, suggested_improvement, and SFL breakdown (ideational, interpersonal, textual). For each takeaway, generate a concrete before/after pair with a tri-stratal SFL breakdown. Output as valid JSON strictly adhering to the schema.
 </task>
 
 <context>
@@ -256,11 +273,17 @@ Extract structural inefficiencies and effective prompt patterns from the precedi
   1. Distinguish strictly between user input quality and model capability.
   2. Evaluate the user's prompt quality independently of model outcome.
   3. Assistant hallucination despite a high-quality prompt is an AI capability deficit. Do NOT penalize the user.
-  4. Use the assistant's responses ONLY as evidence of interpretation, not intent.
+  4. Use the assistant's responses ONLY as evidence of interpretation, not user intent.
   5. Output neutral, factual assessments. Avoid prescriptive or lecturing tones.
-  6. Extract both deficit and strength patterns based ONLY on explicit evidence.
+  6. Output Validation Rules (Acceptance Criteria):
+     - For each finding, validate that it: (a) references a specific user message (e.g., 'User#3'), (b) uses one of the predefined canonical categories, (c) includes all required fields (category, type, description, message_ref, impact, confidence, suggested_improvement, sfl_breakdown). Reject findings that violate these criteria.
+     - For each takeaway, validate that it: (a) references a specific user message, (b) provides a concrete standalone rewrite ('better_prompt' for improve, 'what_worked' for reinforce), (c) includes an explicit tri-stratal sfl_breakdown analyzing Ideational (Field), Interpersonal (Tenor), and Textual (Mode) structural enhancements. Reject takeaways lacking concrete rewrites or structural rationale.
   7. If the session had context compactions, classify repetition immediately following compaction as environmental restatement, NOT a prompting deficit.
-  8. When generating a 'better_prompt', actively apply Systemic Functional Linguistics (SFL) and explain the structural enhancements in the 'sfl_breakdown' block.
+  8. When generating a 'better_prompt', actively apply Systemic Functional Linguistics (SFL):
+     - Ideational (Field): Define concrete task boundaries, explicit entities, file paths, endpoints, and input parameters.
+     - Interpersonal (Tenor): Remove conversational filler and polite hedging; enforce explicit operational constraints and clear imperatives.
+     - Textual (Mode): Isolate dynamic variables, enforce structured formatting (XML tags or markdown delimiters), and specify boolean acceptance criteria.
+  9. Anchor dimension scores to explicit SFL criteria [0-100] (0 = catastrophic deficit, 50 = baseline functioning, 100 = flawless systemic execution). Score each dimension strictly based on observed user input behavior, independently of model outcome.
 </rules>
 
 ${PROMPT_QUALITY_CLASSIFICATION_GUIDANCE}
@@ -277,13 +300,15 @@ ${PROMPT_QUALITY_CLASSIFICATION_GUIDANCE}
       "label": "Short Actionable Heading",
       "message_ref": "User#N",
       "original": "The user's original message (abbreviated)",
-      "better_prompt": "A concrete standalone prompt rewrite handling the missing constraints",
+      "better_prompt": "A concrete standalone prompt rewrite handling the missing constraints (for improve)",
       "sfl_breakdown": {
         "ideational": "How the rewrite defines concrete task boundaries, explicit entities, and context inputs (Field)",
         "interpersonal": "How the rewrite removes conversational filler/politeness and enforces rigid operational constraints (Tenor)",
         "textual": "How the rewrite isolates dynamic variables and enforces data packaging/formatting (Mode)"
       },
-      "why": "One exact reason the original caused friction"
+      "why": "One exact reason the original caused friction (for improve)",
+      "what_worked": "Specific prompting technique that drove high-efficiency execution (for reinforce)",
+      "why_effective": "Why this approach prevented misunderstandings or reduced iterations (for reinforce)"
     }
   ],
   "findings": [
@@ -363,17 +388,26 @@ export function buildFacetOnlyInstructions(
     : '';
 
   return `<task>
-Extract session facets for cross-session pattern analysis. Focus on holistic session execution, friction points, and effective workflow patterns.
+Analyze the provided AI coding session transcript for cross-session facet aggregation. Extract:
+1. Execution dynamics: outcome satisfaction (high | medium | low | abandoned), primary workflow pattern, course corrections, and iteration count.
+2. Friction points using canonical categories: ${CANONICAL_FRICTION_CATEGORIES.join(', ')}.
+3. Effective workflow patterns using canonical categories: ${CANONICAL_PATTERN_CATEGORIES.join(', ')}.
+For each friction point and effective pattern, include the _reasoning scratchpad, canonical category, attribution/driver classification, and concrete technical description. Output strictly valid JSON matching the schema.
 </task>
 
 <context>
   <project_name>${projectName}</project_name>
-${sessionSummary ? `  <session_summary>${sessionSummary}</session_summary>\n` : ''}${loopInfo}${formatSessionMetaLine(meta)}</context>${relatedBlock}
+${sessionSummary ? `  <session_summary>${sessionSummary}</session_summary>\n` : ''}${loopInfo}  <system_metadata>${formatSessionMetaLine(meta)}</system_metadata>
+</context>${relatedBlock}
 
 <rules>
-  1. Evaluate the session boundaries and overall progress explicitly.
-  2. Map friction and effective patterns onto specific user workflows or AI capability gaps.
-  3. Respond with neutral analysis and strictly adhere to provided categorization rules.
+  1. Enforce strict JSON output schema.
+  2. Output Validation Rules (Acceptance Criteria):
+     - For friction points, validate that each entry: (a) uses a canonical category (${CANONICAL_FRICTION_CATEGORIES.join(', ')}), (b) sets attribution to user-actionable, ai-capability, or environmental strictly following the attribution decision tree, (c) describes the specific GAP with concrete details (file paths, APIs, error messages), not the actor, (d) includes _reasoning scratchpad. Reject vague or ungrounded entries.
+     - For effective patterns, validate that each entry: (a) uses a canonical category (${CANONICAL_PATTERN_CATEGORIES.join(', ')}), (b) sets driver to user-driven, ai-driven, or collaborative, (c) satisfies exclusion rules (exclude routine file reads, trivial syntax fixes, standard commands), (d) includes _reasoning scratchpad. Reject trivial behaviors.
+     - For execution facets, validate that: (a) outcome_satisfaction is one of: high, medium, low, abandoned; (b) workflow_pattern is one of the defined patterns or null; (c) had_course_correction is a boolean with course_correction_reason populated if true; (d) iteration_count is a non-negative integer.
+  3. Map friction and effective patterns onto specific user workflows or AI capability gaps with neutral, factual descriptions.
+  4. Fill every field in the schema. Return empty arrays for categories yielding no valid findings.
 </rules>
 
 ${FRICTION_CLASSIFICATION_GUIDANCE}
@@ -410,8 +444,8 @@ ${EFFECTIVE_PATTERN_CLASSIFICATION_GUIDANCE}
 </output_schema>
 
 <category_enforcement>
-Friction MUST use: \${CANONICAL_FRICTION_CATEGORIES.join(', ')}
-Patterns MUST use: \${CANONICAL_PATTERN_CATEGORIES.join(', ')}
+Friction MUST use: ${CANONICAL_FRICTION_CATEGORIES.join(', ')}
+Patterns MUST use: ${CANONICAL_PATTERN_CATEGORIES.join(', ')}
 Create a custom kebab-case category ONLY if the behavior strictly diverges from canonical bounds.
 </category_enforcement>
 
