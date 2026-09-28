@@ -302,12 +302,59 @@ This roadmap outlines the development phases for Code Insights. Timelines are fl
 
 ---
 
-## What's Next (After Phase 13)
+## Phase 14: Systemic Functional Linguistics (SFL) Analysis ✅
 
-- Progress tracking: weekly snapshots, friction-to-pattern affinity map, transformation detection, `driver`-based filtering for user growth signals
-- Test suite expansion (Vitest)
-- Session merging across tools (linking related sessions from different AI tools)
-- Shareable badges Phase 2: stats card variant, milestone-specific cards (see `docs/plans/2026-03-08-gamification-shareable-badges.md`)
+**Goal:** Ground session insight extraction and prompt quality evaluation in formal linguistic constraints.
+
+### Milestones
+- [x] **14.1 Explicit XML Prompt Architecture** — Structured prompts using `<task>`, `<context>`, `<rules>`, `<output_schema>` boundaries for deterministic LLM behavior.
+- [x] **14.2 SFL Breakdown** — Mandatory Ideational, Interpersonal, and Textual logging for structural design choices in takeaways and prompt quality evaluations.
+- [x] **14.3 Dimension Scoring Anchors** — Calibrated 0–100 scoring anchored by hard constraints (0=catastrophic, 50=baseline, 100=flawless).
+- [x] **14.4 Methodological Narratives** — Session summaries strictly forbid mechanical file listing; focus on analytical methodology and problem-solving arcs.
+
+---
+
+## Phase 15: Hybrid Vector & Semantic Retrieval (RAG) ✅
+
+**Goal:** Sub-second hybrid search and conversational RAG interface over local session history.
+
+### Milestones
+- [x] **15.1 sqlite-vec Native Extension** — High-performance vector KNN search stored alongside relational SQLite data.
+- [x] **15.2 FTS5 BM25 Virtual Tables** — Schema v12 and v13 migrations indexing message contents, tool calls, and tool outputs.
+- [x] **15.3 Reciprocal Rank Fusion (RRF)** — Combines sparse lexical BM25 rankings and dense semantic embeddings.
+- [x] **15.4 Parent/Child Chunking** — Schema v14 `entity_chunks` table for fine-grained chunk retrieval with macro-session context.
+- [x] **15.5 Interactive RAG Chat** — Next-gen `RagChatPage` with SSE streaming, AxAgent memories API, and codebase context injection.
+
+---
+
+## Phase 16: Formal Concept Analysis (FCA) & Decision Attribution ✅
+
+**Goal:** Structured trajectory tracking and verifiable decision attribution.
+
+### Milestones
+- [x] **16.1 FCA Step Matrix** — Schema v15 `session_steps` table recording sequential milestone steps, drivers, targets, and tool runs.
+- [x] **16.2 Agency Attribution** — Distinguishes `user` vs `agent` vs `collaborative` decisions backed by verifiable turn citations (`User#N` vs `Assistant#N`).
+- [x] **16.3 Concept Lattice & Rails Export** — Dedicated export endpoints (`/api/export/session/:id/fca` and `/api/export/session/:id/rails`) for concept lattice derivation and ActiveRecord ingestion.
+
+---
+
+## Phase 17: Zero-Cost Reprocessing & Permanent Session Tombstoning ✅
+
+**Goal:** Safe, zero-cost data maintenance and permanent deletion guarantees.
+
+### Milestones
+- [x] **17.1 Zero-Cost Schema Reprocessing** — Local backfill via `code-insights reprocess` normalizing `session_steps` and decision attributions at $0.00 LLM spend.
+- [x] **17.2 Permanent Session Tombstoning** — Schema v16 `deleted_sessions` registry and sync ingestion guards preventing purged sessions from resurrecting.
+- [x] **17.3 Subscription Leverage Economics** — Compares flat-rate subscription models against token usage to calculate developer leverage metrics.
+
+---
+
+## What's Next (Cognitive Engine Evolution)
+
+- **Concept Lattice Interactive Explorer:** Visual derivation of FCA concept lattices in the dashboard to map architectural dependencies.
+- **Cross-Session Agent Trajectory Handoff:** Exporting cognitive state directly to runtime agent contexts (e.g. MCP memory servers, Claude Code memory).
+- **Autonomous Prompt Synthesis Sidecar:** Real-time background prompt refinement injecting dynamic suggestions into active IDE workflows.
+
 
 ---
 

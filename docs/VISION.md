@@ -2,113 +2,108 @@
 
 ## Philosophy
 
-**Your data, your machine, your insights.**
+**Cognitive telemetry, systemic linguistic auditing, and local-first agent memory.**
 
-Code Insights is a free, open-source tool that helps developers who use multiple AI coding tools analyze their sessions, collect insights, track decisions and learnings, and build knowledge over time. It's built on a simple principle: your session data never leaves your machine.
+Code Insights is an open-source **Agent Cognitive Engine & Telemetry Infrastructure Platform**. It moves beyond passive retrospective journaling to transform raw human-agent conversations into structured semantic intelligence, rigorous linguistic evaluations, and autonomous agent memories.
 
-## Core Beliefs
+Built on the principle of absolute data sovereignty, all cognitive artifacts, vector embeddings, and concept matrices remain 100% local on your machine.
 
-### 1. Privacy by Architecture
+---
 
-There is no central Code Insights server. No accounts, no sign-ups, no cloud. All session data lives in a local SQLite database at `~/.code-insights/data.db`. The dashboard runs locally at `http://localhost:7890` — it never phones home.
+## Core Pillars
 
-### 2. Developers Can Handle It
+### 1. Cognitive Architecture & Runtime Continuity
+Unlike tools that merely build a retrospective "mirror" or focus on social publishing, Code Insights provides the foundational substrate for agent runtime intelligence:
+- **Systemic Functional Linguistics (SFL):** Deconstructs human-AI collaboration across three metafunctions: *Ideational* (logical domain content), *Interpersonal* (power dynamics, directive vs. collaborative agency), and *Textual* (cohesion and structural framing).
+- **Formal Concept Analysis (FCA):** Captures sequential execution episodes into structured step matrices (`session_steps`), deriving concept lattices over canonical binary attributes (test verification, tool execution, course correction, targeting).
+- **Decision Attribution:** Distinguishes human intent from agent execution (`user` vs `agent` vs `collaborative`) grounded in verifiable turn-level evidence citations (`User#N` vs `Assistant#N`).
 
-Developers using AI coding tools are technical. They can:
-- Run `code-insights` and get a working dashboard immediately (no setup required)
-- Optionally run `code-insights init` to customize settings and answer three questions
-- Install a post-session hook with one command
-- Open a local dashboard that just works
+### 2. Genetic Prompt Evolution (GEPA)
+Through deep integration with `@ax-llm/ax`, Code Insights treats prompt engineering as an empirical, automated science. The **Gradient-free Evolutionary Prompt Adaptation (GEPA)** engine continually optimizes extraction and analysis signatures against multi-objective fitness functions (coverage, precision, brevity, actionability).
 
-We don't need to hide complexity behind a managed service. Clear documentation beats magic.
+### 3. Hybrid Semantic Memory (RAG)
+Trapped conversational history is unlocked through a unified multi-strategy retrieval pipeline:
+- High-performance **`sqlite-vec`** vector similarity search with cosine distance.
+- **FTS5 BM25** full-text search indexing messages, tool calls, and tool execution outputs.
+- **Reciprocal Rank Fusion (RRF)** merging sparse lexical and dense semantic signals.
+- **Parent/Child RAG Chunking** (`entity_chunks`) preserving granular semantic citations alongside macro-session context.
+- **Interactive Agent Chat** (`RagChatPage`) with streaming SSE and AxAgent memory integration.
 
-### 3. Single-Repo, Local-First
+### 4. Zero-Cost Data Hygiene & Sovereignty
+- **Zero-Cost Reprocessing:** Schema upgrades (such as step matrix extraction and decision backfilling) run purely against local SQLite metadata at **$0.00 API cost**.
+- **Permanent Tombstoning:** Schema v16 `deleted_sessions` guards permanently prevent purged sessions from being resurrected during sync.
+- **Economic Leverage:** Computes true developer leverage by contrasting flat subscription fees against raw token consumption.
 
-Everything ships in one repository:
-- **CLI** (open source, MIT) — the parser, sync engine, and stats commands
-- **Dashboard** (embedded SPA) — served locally by a Hono server via `code-insights dashboard`
-- **Server** (local API) — Hono API on `localhost:7890`, proxies LLM calls server-side
-
-No hosted infrastructure. No Vercel. No Firebase. No Supabase. One install, zero cloud dependencies.
-
-### 4. Tool, Not Platform
-
-Code Insights is a utility, not a product. It should:
-- Do one thing well (extract insights from AI coding sessions)
-- Support multiple source tools (Claude Code, Cursor, Codex CLI, Copilot CLI, VS Code Copilot Chat)
-- Be easy to install and configure
-- Stay out of the way once set up
+---
 
 ## Long-Term Direction
 
-### Phase 1: Foundation ✅
-- CLI tool that parses JSONL → SQLite
-- Web dashboard with session views, character classification, smart titles
-- Claude Code hook for automatic session sync
+### Phases 1–10: Foundation to Reflect & UX ✅
+- **Phase 1–4**: CLI sync, SQLite schema (V1–V5), multi-source parsers (Claude Code, Cursor, Codex, Copilot), Vite+React SPA, Hono server.
+- **Phase 5–7**: Anonymous telemetry (opt-out), npm distribution, Knowledge Base & Agent Rules export, prompt quality analysis.
+- **Phase 8–10**: Session facets (Schema V3/V4), ISO week navigation, message classification (Schema V6), LLM cost tracking (Schema V7), shareable AI Fluency cards.
 
-### Phase 2: Integration ✅
-- Auto-sync via Claude Code post-session hook
-- CLI stats command suite (`stats`, `stats cost`, `stats projects`, `stats today`, `stats models`)
-- Terminal analytics powered by local SQLite
+### Phase 11: GEPA Prompt Optimization (`@ax-llm/ax`) ✅
+- Gradient-free Evolutionary Prompt Adaptation engine for auto-tuning insight extraction.
+- Multi-objective fitness evaluations (coverage, precision, actionability, brevity).
+- 12 comprehensive AxAgent skills and `code-insights optimize` CLI command suite.
 
-### Phase 3: Intelligence ✅
-- Multi-provider LLM analysis (OpenAI, Anthropic, Gemini, Ollama)
-- On-demand and bulk session analysis
-- Cross-session insight types (summary, decision, learning, technique)
+### Phase 12: Native Analysis & Multi-Level Runner Chains ✅
+- Zero-config headless session analysis using locally installed CLIs.
+- Robust fallback chains: **Codex → Claude Code → Antigravity → Mistral Vibe**.
+- Automatic limit detection with mid-stream runner switching.
 
-### Phase 4: Feature Parity ✅
-- Vite + React SPA replacing the hosted web dashboard
-- Hono server embedding the SPA — served via `code-insights dashboard`
-- Multi-source support: Claude Code, Cursor, Codex CLI, Copilot CLI, VS Code Copilot Chat
-- Full feature parity between CLI stats and dashboard views
+### Phase 13: Sub-Agent Hierarchies & Multi-Provider Ingestion ✅
+- First-class support for nested sub-agent architectures (Mistral Vibe recursive hierarchy).
+- Multi-profile SQLite WAL ingestion for Hermes Agent.
+- Protocol buffer decoding and CLI runner integration for Google Antigravity.
+- Resilient SQLite extraction with JSON repair for OpenCode.
 
-### Phase 5: Telemetry ✅
-- Anonymous aggregate usage signals via PostHog (opt-out model, enabled by default)
-- 14 event types tracked (cli_sync, cli_stats, analysis_run, dashboard_loaded, export_run, etc.)
-- Respects `CODE_INSIGHTS_TELEMETRY_DISABLED` and `DO_NOT_TRACK` environment variables
+### Phase 14: SFL Linguistic Auditing & Rage Loop Detection ✅
+- Hard SFL constraint scoring (0=catastrophic, 50=baseline, 100=flawless).
+- Pre-analysis heuristic rage loop detector (`loop-detector.ts`) and Sunk Cost Alert dashboard banner.
+- Methodological narrative enforcement forbidding superficial file listing.
 
-### Phase 6: Polish & Distribution ✅
-- Published as `@code-insights/cli` on npm (v3.0.0 – v3.3.0)
-- Landing page and docs at `code-insights.app`
-- README, CONTRIBUTING.md, MIGRATION.md, CHANGELOG.md
+### Phase 15: Hybrid Vector & BM25 Search Engine ✅
+- Integration of `sqlite-vec` for local KNN embedding similarity.
+- Schema v12 & v13 FTS5 virtual tables indexing content, tool calls, and tool results.
+- Reciprocal Rank Fusion (RRF) combining vector and BM25 rank lists.
+- Parent/child chunking (`entity_chunks` table, Schema v14) with dynamic Ollama dimension auto-detection.
+- Interactive RAG Agent Chat (`/chat`) with SSE streaming and codebase context.
 
-### Phase 7: Export & Knowledge Pipeline ✅
-- Session-level export with Knowledge Base and Agent Rules templates (v3.5.1) ✅
-- Prompt quality analysis insight type (efficiency scores, anti-patterns, wasted turns) ✅
-- LLM-powered Export Page: cross-session synthesis into agent rules, Obsidian, Notion formats (v3.6.0) ✅
-- Export Page uses the multi-provider LLM abstraction (same as session analysis) ✅
+### Phase 16: Formal Concept Analysis (FCA) & Decision Attribution ✅
+- Relational `session_steps` table (Schema v15) recording milestone steps, drivers, targets, and tool runs.
+- Evidence-based decision attribution classifying decisions by agency (`user`, `agent`, `collaborative`).
+- Export endpoints for formal concept lattice derivation and Rails ActiveRecord ingestion.
 
-### Phase 8: Reflect & Patterns ✅
-Session facets infrastructure (Schema V3, V4) shipped with per-session structured metadata: friction points, effective patterns, workflow pattern, and outcome satisfaction. Friction normalized to 9 AI-session-focused categories with attribution model (user-actionable / ai-capability / environmental). Effective patterns normalized to 8 canonical categories. Dashboard Patterns page with three sections: Friction & Wins, Rules & Skills, Working Style. `code-insights reflect` and `stats patterns` CLI commands.
+### Phase 17: Zero-Cost Reprocessing & Permanent Tombstoning ✅
+- `code-insights reprocess`: zero-cost local schema and step backfilling without LLM API spend.
+- `deleted_sessions` tombstone table (Schema v16) preventing zombie resurrection on sync.
+- Subscription plan leverage economics calculation.
 
-### Phase 8.5: Taxonomy & Classification Refinement ✅
-Effective pattern taxonomy upgraded with `driver` field (`user-driven`/`ai-driven`/`collaborative`), contrastive classification guidance, and in-session signal detection (PR #129). Prompt quality taxonomy revised to 7 deficit + 3 strength categories with 5 dimension scores and a two-layer output (user takeaways + Reflect findings) (PR #136). Reflect navigation switched from sliding windows to ISO week-based navigation with week history endpoint (PR #132). Attribution rewrite added CoT `_reasoning` scratchpad and actor-neutral friction definitions (PR #138). Backfill updated to find both missing and outdated sessions in one pass (PR #130).
+---
 
-### Phase 9: Infrastructure & Reliability ✅
-Message classification V6 schema added `compact_count`, `auto_compact_count`, and `slash_commands` to sessions, with prompt alignment for V6 signals (PRs #151, #154). Prompt caching implemented using provider-native shared prefix caching for Anthropic (PR #180). LLM cost tracking V7 schema (`analysis_usage` table) captures per-session token counts, cache metrics, and estimated USD cost with a pricing calculator and dashboard cost UI (PR #181).
+## What's Next
 
-### Phase 10: User Experience & Shareability ✅
-Zero-config first run: `code-insights` with no args auto-syncs and opens the dashboard — no `init` required (v4.1.0). Guided empty states for first-time users. Dashboard auto-sync before server start. Knowledge Journal page with chronological timeline of learnings and decisions by ISO week. Shareable AI Fluency Score card (v4.2.0–v4.3.0): 1200×630 PNG export with hero score (0–100 composite from 5 PQ dimensions), rainbow fingerprint bars, tool logos, effective pattern pills, and 4-week rolling scoring window.
+- **Concept Lattice Visualization:** Interactive FCA concept lattice explorer in the dashboard showing structural workflows and skill progression.
+- **Cross-Session Agent Trajectory Handoff:** Exporting cognitive state directly to runtime agent contexts (e.g. MCP memory servers, Claude Code memory).
+- **Autonomous Prompt Synthesis Sidecar:** Real-time background prompt refinement injecting dynamic suggestions into active IDE workflows.
 
-### What's Next
-- Progress tracking: "Am I getting better?" — weekly snapshots comparing friction trends and pattern emergence, tracking user-actionable friction declining and new patterns solidifying
-- Friction-to-pattern affinity map (e.g., stale-assumptions friction → context-gathering pattern)
-- Test suite expansion (Vitest)
-- Session merging across tools (linking related sessions from different AI tools)
-- Shareable badges Phase 2: stats card variant, milestone-specific cards
+---
 
 ## Non-Goals
 
-- **Not a business** — No monetization, no paywall, no premium tier
-- **Not a central platform** — No central database for user session data
-- **Not a dependency** — Users can stop using it anytime, data remains theirs
-- **Not a team tool** — This is a personal learning tool; no org/team features
+- **Not a social distribution / blogging platform:** Unlike upstream's Dispatch feature, this project does not prioritize generating public LinkedIn posts or blog summaries.
+- **Not a centralized cloud platform:** No hosted accounts, no multi-tenant Supabase database. Everything remains local.
+- **No paid API lock-in for data maintenance:** Schema evolutions and structural normalization must always support zero-cost local backfilling.
+
+---
 
 ## Success Looks Like
 
-A developer installs Code Insights, runs `code-insights` (or `npx @code-insights/cli`), installs the hook, and from then on has a local dashboard showing:
-- What they built with AI coding tools this week
-- Key decisions and why they made them
-- Patterns in how they use AI assistance across tools
+An engineer or autonomous agent launches Code Insights and gains:
+1. Complete, queryable cognitive telemetry across every AI coding tool on their system.
+2. Verifiable attribution of every architectural decision and milestone step.
+3. Sub-second hybrid semantic retrieval across all historical conversations and tool executions.
+4. Continuous, self-optimizing prompt performance grounded in systemic functional linguistics.
 
-They own all the data. They can export it. They can delete it. They can modify the CLI tool. Complete autonomy.

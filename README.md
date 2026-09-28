@@ -1,35 +1,34 @@
 <div align="center">
   <img src="docs/assets/logo.svg" width="120" height="120" alt="Code Insights logo" />
   <h1>Code Insights</h1>
-  <p><strong>Turn your AI coding sessions into actionable knowledge with local-first analytics and self-optimizing LLM prompts.</strong></p>
+  <p><strong>Local-first Agent Cognitive Engine & Telemetry Platform: Systemic Linguistic Auditing (SFL), Formal Concept Analysis (FCA), and Self-Optimizing LLM Prompts (GEPA).</strong></p>
   <p>
     <a href="https://deepwiki.com/b08x/code-insights"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki"></a>
     <a href="https://zread.ai/b08x/code-insights" target="_blank"><img src="https://img.shields.io/badge/Ask_Zread-_.svg?style=flat&color=00b0aa&labelColor=000000&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTQuOTYxNTYgMS42MDAxSDIuMjQxNTZDMS44ODgxIDEuNjAwMSAxLjYwMTU2IDEuODg2NjQgMS42MDE1NiAyLjI0MDFWNC45NjAxQzEuNjAxNTYgNS4zMTM1NiAxLjg4ODEgNS42MDAxIDIuMjQxNTYgNS42MDAxSDQuOTYxNTZDNS4zMTUwMiA1LjYwMDEgNS42MDE1NiA1LjMxMzU2IDUuNjAxNTYgNC45NjAxVjIuMjQwMUM1LjYwMTU2IDEuODg2NjQgNS4zMTUwMiAxLjYwMDEgNC45NjE1NiAxLjYwMDFaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00Ljk2MTU2IDEwLjM5OTlIMi4yNDE1NkMxLjg4ODEgMTAuMzk5OSAxLjYwMTU2IDEwLjY4NjQgMS42MDE1NiAxMS4wMzk5VjEzLjc1OTlDMS42MDE1NiAxNC4xMTM0IDEuODg4MSAxNC4zOTk5IDIuMjQxNTYgMTQuMzk5OUg0Ljk2MTU2QzUuMzE1MDIgMTQuMzk5OSA1LjYwMTU2IDE0LjExMzQgNS42MDE1NiAxMy43NTk5VjExLjAzOTlDNS42MDE1NiAxMC42ODY0IDUuMzE1MDIgMTAuMzk5OSA0Ljk2MTU2IDEwLjM5OTlaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik0xMy43NTg0IDEuNjAwMUgxMS4wMzg0QzEwLjY4NSAxLjYwMDEgMTAuMzk4NCAxLjg4NjY0IDEwLjM5ODQgMi4yNDAxVjQuOTYwMUMxMC4zOTg0IDUuMzEzNTYgMTAuNjg1IDUuNjAwMSAxMS4wMzg0IDUuNjAwMUgxMy43NTg0QzE0LjExMTkgNS42MDAxIDE0LjM5ODQgNS4zMTM1NiAxNC4zOTg0IDQuOTYwMVYyLjI0MDFDMTQuMzk4NCAxLjg4NjY0IDE0LjExMTkgMS42MDAxIDEzLjc1ODQgMS42MDAxWiIgZmlsbD0iI2ZmZiIvPgo8cGF0aCBkPSJNNCAxMkwxMiA0TDQgMTJaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00IDEyTDEyIDQiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgo8L3N2Zz4K&logoColor=ffffff" alt="zread"/></a>
-    <a href="https://github.com/melagiri/code-insights/blob/master/LICENSE"><img src="https://img.shields.io/github/license/melagiri/code-insights" alt="License" /></a>
+    <a href="https://github.com/b08x/code-insights/blob/development/LICENSE"><img src="https://img.shields.io/github/license/b08x/code-insights" alt="License" /></a>
     <a href="https://www.npmjs.com/package/@code-insights/cli"><img src="https://img.shields.io/npm/v/@code-insights/cli" alt="NPM Version" /></a>
-    <a href="https://github.com/melagiri/code-insights/actions/workflows/ci.yml"><img src="https://github.com/melagiri/code-insights/actions/workflows/ci.yml/badge.svg" alt="Build Status" /></a>
   </p>
 </div>
 
-**Code Insights** is a local-first analytics platform that extracts structured decisions, learnings, and prompt quality scores from your AI coding sessions. Surfacing cross-session patterns, friction points, and cost tracking—all persisted locally in SQLite—it features a self-optimizing prompt engine powered by **`@ax-llm/ax`** to continually align and improve LLM insight extraction.
+**Code Insights** is a local-first **Agent Cognitive Engine & Telemetry Infrastructure Platform**. It transforms raw AI coding conversations across 9+ developer tools and autonomous agents into structured decision networks, Systemic Functional Linguistics (SFL) breakdowns, concept lattices (FCA), and semantic vector memories—all persisted locally in SQLite with a self-optimizing prompt engine powered by **`@ax-llm/ax`**.
 
 ---
 
 ## Key Capabilities
 
-- **Automated Session Discovery** — Automatically parse history from Claude Code, Cursor, Codex, Copilot, Gemini CLI, Hermes, OpenCode, and Crush.
-- **Knowledge Journal** — Chronological timeline of learnings and decisions, grouped by ISO week with pattern indicators.
-- **Weekly Pattern Synthesis & Configuration Artifacts** — Synthesize cross-session behaviors into shareable rules and agent instructions.
+- **Automated Session Discovery & Sub-Agent Bundling** — Automatically parse history and recursively bundle nested sub-agents across Claude Code, Cursor, Codex, Copilot, Gemini CLI, Hermes Agent, Mistral Vibe, Google Antigravity, OpenCode, and Pi AI.
+- **SFL Linguistic Auditing & Prompt Quality** — Deconstruct interactions into Systemic Functional Linguistics metafunctions (*Ideational*, *Interpersonal*, *Textual*) with hard constraint scoring (0–100) and actionable prompt refinement.
+- **Formal Concept Analysis (FCA) & Step Matrix** — Extract sequential milestone steps into structured relational matrices (`session_steps`), tracking drivers, target files, test executions (`ran_tests`), tool calls (`used_tools`), and course corrections.
+- **Verifiable Decision Attribution** — Attribute technical decisions to `user`, `agent`, or `collaborative` agency, backed by concrete turn citations (`User#N` vs `Assistant#N`).
+- **Rage Loop & Sunk Cost Detection** — Identify temporal looping and context stasis ("Sunk Cost Alerts") via pre-analysis heuristic loop detection.
 - **Self-Optimizing Prompts (GEPA)** — Automate prompt engineering using Gradient-free Evolutionary Prompt Adaptation powered by `@ax-llm/ax`.
-- **Rage Loop & Friction Detection** — Identify temporal looping and context stasis ("Sunk Cost Alerts") via SFL (Systemic Functional Linguistics) criteria.
-- **AI Fluency Scoring** — Evaluate your prompts using multi-dimensional prompt quality metrics.
-- **Vector-Based Recurring Insights** — Group similar insights using local `sqlite-vec` KNN search + MMR deduplication (~90% token savings).
-- **Hierarchical RAG Chunking Strategy** — Intelligently segment code and session history to avoid context length errors and dramatically improve retrieval precision.
-- **Retrieval-Augmented Analysis** — Enhanced session analysis with annotated chunking (role-boundary grouping, parent/child splitting) and context augmentation from historical sessions.
-- **Rich Terminal Output** — Detailed CLI analysis with score bars, severity dots, emoji headers, and dimension breakdowns.
-- **Decision Driver Attribution** — Distinguish technical and architectural choices by agency (`user`, `agent`, `collaborative`), tracking initiating intent, critical design branch points, and turn citations.
-- **Formal Concept Analysis (FCA) & Rails Export** — Extract compact 4–10 step semantic incidence matrices $(G, M, I)$ over 10 canonical binary attributes for concept lattice derivation and ActiveRecord-ready Rails/Postgres ingestion (`/api/export/session/:id/rails` & `/api/export/session/:id/fca`).
-- **Privacy First** — Completely local SQLite backend with zero external dependencies (unless configuring cloud LLM models).
+- **Hybrid Semantic Memory (RAG)** — Combine local `sqlite-vec` KNN cosine similarity + FTS5 BM25 search via Reciprocal Rank Fusion (RRF) with parent/child chunking (`entity_chunks`).
+- **Interactive RAG Agent Chat** — Chat with your historical session memory and codebase context via streaming SSE.
+- **Multi-Level Native Runner Fallbacks** — Headless, zero-config local analysis supporting automatic failover chains: Codex → Claude → Antigravity → Mistral Vibe.
+- **Zero-Cost Reprocessing & Permanent Tombstoning** — Backfill schemas and attribute historical data locally ($0.00 API spend) while permanently tombstoning deleted sessions via Schema v16.
+- **Developer Leverage Economics** — Measure ROI by comparing flat-rate subscriptions against pay-as-you-go token consumption.
+- **Privacy by Architecture** — Completely local SQLite backend with zero cloud dependencies.
+
 
 ---
 

@@ -2,42 +2,35 @@
 
 ## What It Is
 
-Turn your AI coding sessions into knowledge. Code Insights extracts patterns from your conversations—what you built, decisions you made, lessons learned—and presents them in a local visual dashboard.
+**Code Insights** is a local-first **Agent Cognitive Engine & Telemetry Infrastructure Platform**. It ingests raw AI coding conversations across 9+ developer tools and autonomous agents, extracting structured decision networks, systemic linguistic breakdowns (SFL), concept lattices (FCA), and semantic vector memories—all persisted locally in SQLite.
 
 ## The Problem
 
-AI coding tools store every conversation as files on your machine. Claude Code uses JSONL in `~/.claude/projects/`. Cursor stores state in SQLite. Codex CLI and Copilot CLI write their own session formats. This is valuable data:
-- What features did you work on last week?
-- Why did you choose that architecture?
-- What mistakes did you make (and fix)?
-- How much time went into different parts of the codebase?
+Modern AI coding workflows generate vast amounts of trapped cognitive telemetry across disparate formats:
+- Claude Code streams append-only JSONL files.
+- Cursor stores state in SQLite databases.
+- OpenCode, Hermes Agent, and Codex CLI maintain their own relational and JSON schemas.
+- Autonomous sub-agents (Mistral Vibe, Antigravity) branch into hierarchical, multi-turn trees.
 
-But it's trapped in raw files. You can't search it, visualize it, or learn from it.
+Without a unified cognitive infrastructure:
+- **Zero Attribution:** Critical architectural trade-offs blur between human intent and autonomous agent hallucinations.
+- **Rage Loops & Sunk Cost:** Developers waste hours trapped in circular context loops without early detection.
+- **Lost Semantic Memory:** Prior problem-solving breakthroughs, bug resolutions, and codebase context remain siloed and unsearchable.
+- **Static Prompts:** Analysis and extraction prompts remain rigid rather than adapting to complex codebase patterns.
 
 ## The Solution
 
-Code Insights provides:
+Code Insights delivers a comprehensive, local-first intelligence stack:
 
-1. **Automated extraction** — Parses session files from multiple AI coding tools and structures the data
-2. **Smart session titles** — Auto-generates meaningful titles from session content
-3. **Session classification** — Categorizes sessions (deep focus, bug hunt, feature build, etc.)
-4. **LLM-powered analysis** — Two analysis paths:
-   - **Native (zero-config):** Claude Code users get automatic analysis via `SessionEnd` hook using their existing Claude subscription. No API key needed. Install with `code-insights install-hook`.
-   - **On-demand:** Configure any LLM provider (OpenAI, Anthropic, Gemini, Ollama) with your own API key for manual analysis from the dashboard or CLI.
-5. **Visual dashboard** — Local web interface with charts, timelines, and filters at `http://localhost:7890`
-6. **CLI analytics** — Terminal stats via `code-insights stats` and subcommands
+1. **Multi-Source Ingestion & Sub-Agent Bundling** — Normalizes 9+ AI coding tools and recursively merges hierarchical sub-agent sessions.
+2. **SFL-Compliant Analysis Pipeline** — Deconstructs sessions into Systemic Functional Linguistics metafunctions (*Ideational*, *Interpersonal*, *Textual*) with hard constraint scoring (0–100) and pre-analysis rage loop detection.
+3. **Formal Concept Analysis (FCA) Step Matrix** — Extracts sequential milestone steps into structured relational matrices (`session_steps`), tracking drivers, target files, test executions, and tool calls.
+4. **Decision Attribution** — Attributes every technical choice to `user`, `agent`, or `collaborative` drivers with verifiable turn citations (`User#N` vs `Assistant#N`).
+5. **Self-Optimizing Prompts (GEPA)** — Evolves extraction prompts against multi-objective fitness functions via `@ax-llm/ax`.
+6. **Hybrid Semantic Memory (RAG)** — Unifies BM25 (FTS5 across messages and tool calls) + `sqlite-vec` KNN embeddings via Reciprocal Rank Fusion (RRF) with parent/child chunking (`entity_chunks`).
+7. **Interactive RAG Agent Chat** — Chat with historical sessions and codebase memory via SSE streaming.
+8. **Zero-Cost Reprocessing & Tombstoning** — Rebuilds schemas and attributes historical data purely locally ($0.00 spend) while permanently tombstoning deleted sessions.
 
-## Who It's For
-
-- **Developers using multiple AI coding tools** who want to understand their AI-assisted work patterns across Claude Code, Cursor, Codex CLI, Copilot CLI, and VS Code Copilot Chat
-- **Learners** who want to review and reinforce what they've built with AI assistants
-- **Privacy-conscious developers** who want insights without giving up their data to a cloud service
-
-## Privacy Model
-
-**Fully local. No cloud. No accounts.**
-
-Code Insights stores all session data in a SQLite database at `~/.code-insights/data.db` on your own machine. There is no central server, no sign-up, and no data sent anywhere. The dashboard runs locally at `http://localhost:7890` — served by a Hono API process on your own machine.
 
 LLM analysis uses your own API key, stored in `~/.code-insights/config.json` (mode 0o600). API calls go directly from the local server to your chosen LLM provider — not through any Code Insights infrastructure.
 
@@ -50,20 +43,28 @@ LLM analysis uses your own API key, stored in `~/.code-insights/config.json` (mo
 | Source Tool | What's Captured |
 |-------------|-----------------|
 | **Claude Code** | JSONL sessions from `~/.claude/projects/` |
-| **Cursor** | Sessions from Cursor's local SQLite state |
+| **Cursor** | Sessions from Cursor's local SQLite state (`state.vscdb`) |
 | **Codex CLI** | Rollout files from `~/.codex/sessions/` |
 | **Copilot CLI** | Event files from `~/.copilot/session-state/` |
 | **VS Code Copilot Chat** | Sessions from VS Code Copilot Chat local storage |
+| **Mistral Vibe** | Sub-agent hierarchy, recursive child session discovery, tool trajectories |
+| **Hermes Agent** | Multi-profile SQLite databases in WAL mode |
+| **Google Antigravity** | Protocol buffer (.pb) session state and CLI runner automation |
+| **OpenCode** | Multi-schema SQLite storage (column and JSON-in-data formats) with JSON repair |
+| **Pi AI** | Structured local conversation state |
+| **Claude Desktop** | Local agent mode conversation archives |
 
-### Insight Categories
+### Insight & Telemetry Categories
 
 | Category | What It Captures |
 |----------|-----------------|
-| **Summary** | High-level narrative of what was accomplished |
-| **Decision** | Architecture choices, trade-offs, reasoning, alternatives considered |
-| **Learning** | Technical discoveries, mistakes, transferable knowledge |
-| **Technique** | Problem-solving approaches and debugging strategies |
-| **Prompt Quality** | Categorized prompt analysis: 7 deficit + 3 strength categories, 5 dimension scores, two-layer output (user takeaways + Reflect findings) |
+| **Summary** | Methodological narrative of what was accomplished (strictly avoiding mechanical file lists) |
+| **Decision** | Architecture choices, trade-offs, reasoning, and agency attribution (`user` vs `agent`) with turn citations |
+| **Learning** | Technical discoveries, mistakes, and transferable principles with SFL structural breakdown |
+| **Technique** | Problem-solving approaches, debugging workflows, and optimization heuristics |
+| **Prompt Quality** | Hard SFL constraint scoring (0–100) across 5 dimensions, 7 deficit + 3 strength categories, and actionable prompt refinement |
+| **Step Matrix (FCA)** | 4–10 sequential milestones tracking driver, target, state, test runs (`ran_tests`), and tool usage (`used_tools`) |
+
 
 ### Export
 
@@ -160,15 +161,17 @@ Session detail chat view includes robust system event rendering across 7 user me
 
 ### Dashboard Views
 
-- **Dashboard** — Overview with activity charts
-- **Sessions** — Session list with source, project, date, character filters
-- **Session Detail** — Full session view featuring Rage Loop alerts and remediation suggestions, conversation search & pagination, structured exports, missing facet backfilling, cost tracking, and chat view enhancements.
-- **Insights** — Browse and search generated insights
-- **Analytics** — Charts showing effort distribution, cost, models, projects
-- **Patterns** — Cross-session pattern synthesis (Friction & Wins, Rules & Skills, Working Style) + Share Card download + Week-at-a-Glance strip with streak, session count, AI Fluency Score
-- **Export** — LLM-powered export wizard (4 formats, 3 depths)
+- **Dashboard** — Overview with activity charts, telemetry vitestrips, and active project scopes
+- **Sessions** — Session list with source, project, date, and character filters
+- **Session Detail** — Full session view featuring Rage Loop alerts, FCA step matrix, conversation search & pagination, structured exports, missing facet backfilling, and chat view enhancements
+- **RAG Chat** — Interactive agent conversation interface powered by SSE streaming, AxAgent memories API, codebase memory tools, and hybrid vector+BM25 context
+- **Insights** — Browse and search generated insights, decisions, and takeaways
+- **Analytics** — Charts showing effort distribution, cost, models, projects, and subscription leverage
+- **Patterns** — Cross-session pattern synthesis (Friction & Wins, Rules & Skills, Working Style) + Share Card download + Week-at-a-Glance strip
+- **Export** — LLM-powered export wizard (4 formats, 3 depths, including Rails/FCA step matrices)
 - **Journal** — Chronological timeline of learnings and decisions by ISO week
-- **Settings** — Configuration UI
+- **Settings** — Configuration UI for LLM providers, embedding models, and subscription plans
+
 
 ### CLI Command Reference
 
@@ -308,18 +311,24 @@ Each provider implements the `SessionProvider` interface (`discover()`, `parse()
 | Cursor | `~/Library/Application Support/Cursor/User/` | `~/.config/Cursor/User/` | `%APPDATA%\Cursor\User\` |
 | Codex CLI | `~/.codex/sessions/` | `~/.codex/sessions/` | `%USERPROFILE%\.codex\sessions\` |
 | Copilot CLI | `~/.copilot/session-state/` | `~/.copilot/session-state/` | `%USERPROFILE%\.copilot\session-state\` |
+| Mistral Vibe | `~/.vibe/logs/session/` | `~/.vibe/logs/session/` | `%USERPROFILE%\.vibe\logs\session\` |
+| Hermes Agent | `~/.hermes/` | `~/.hermes/` | `%USERPROFILE%\.hermes\` |
+| Antigravity | `~/.gemini/antigravity-cli/brain/` | `~/.gemini/antigravity-cli/brain/` | `%USERPROFILE%\.gemini\antigravity-cli\brain\` |
+| OpenCode | `~/.local/share/opencode/` | `~/.local/share/opencode/` | `%APPDATA%\opencode\` |
 
 Adding a new source tool requires implementing the `SessionProvider` interface in `cli/src/providers/`, registering it in the provider registry, and adding dashboard display support (colors, avatars, filter options).
 
 ## Tech Stack
 
-- **CLI**: Node.js (ES2022, ES Modules), Commander.js
-- **Database**: SQLite (`better-sqlite3`) at `~/.code-insights/data.db` — WAL mode, local, Schema V7
+- **CLI**: Node.js (ES2022, ES Modules), Commander.js, `@ax-llm/ax`
+- **Database**: SQLite (`better-sqlite3`) with WAL mode at `~/.code-insights/data.db` — **Schema V16**
+- **Vector Engine**: `sqlite-vec` native extension for KNN cosine embeddings
 - **Server**: Hono — lightweight API server, serves dashboard SPA at `localhost:7890`
 - **Dashboard**: Vite + React 19 SPA, Tailwind CSS 4 + shadcn/ui
-- **AI**: Multi-provider — OpenAI, Anthropic, Gemini, Ollama (your own API keys, proxied server-side)
+- **AI & RAG**: Multi-provider — OpenAI, Anthropic, Gemini, Ollama, OpenRouter, Mistral (local-first proxy)
 - **Telemetry**: PostHog (opt-out, anonymous device ID, no PII)
-- **Package manager**: pnpm (workspace monorepo: `cli/`, `dashboard/`, `server/`)
+- **Package Manager**: pnpm (workspace monorepo: `cli/`, `dashboard/`, `server/`)
+
 
 ## Success Metrics
 
