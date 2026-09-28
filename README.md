@@ -81,7 +81,43 @@ code-insights dashboard       # Start visual dashboard at http://localhost:7890
 | `config` | Configure providers & subscription plans | `plans`, `plans --set <id>.monthlyFee=<amt>` |
 | `optimize` | Tune insight prompts via `@ax-llm/ax` | `run`, `status`, `list`, `apply`, `compare` |
 | `embeddings` | Manage SQLite vector database | `backfill`, `status`, `recompute` |
+| `reprocess` | Zero-cost local schema & step backfill | `--dry-run`, `--resync`, `--no-fts` |
+| `purge [id]` | Hard-delete session & register tombstone | `-y`, `--reason` |
 | `search / vsearch / query` | Hybrid semantic search over messages | `--top-k` |
+
+---
+
+## Zero-Cost Schema Reprocessing & Session Tombstoning
+
+When database schemas evolve (such as extracting relational `session_steps` for Formal Concept Analysis or attributing historical decision makers), re-running multi-thousand-token LLM analysis passes across thousands of historical sessions is prohibitively slow and expensive. Code Insights provides zero-cost local backfilling and permanent session tombstoning:
+
+### Zero-Cost Reprocessing
+```bash
+# Preview what would be backfilled and attributed without modifying the database
+code-insights reprocess --dry-run
+
+# Run local zero-cost backfill and index rebuild ($0.00 API spend)
+code-insights reprocess
+```
+- **Relational Step Backfill**: Extracts and normalizes 4–10 step episodes from existing `summary` insight metadata into `session_steps` (Schema v15), deriving co-occurring flags (`ran_tests`, `used_tools`, `has_course_correction`, `targets`).
+- **Legacy Decision Attribution**: Analyzes evidence turn citations (`User#N` vs `Assistant#N`) in historical decision insights to classify unassigned decisions into `user`, `agent`, or `collaborative`.
+- **FTS5 Index Rebuild**: Automatically resynchronizes full-text search across messages, tool calls, and tool results.
+
+### Permanent Session Tombstoning (Hard Deletes)
+When testing tools or cleaning up malformed or unwanted sessions, soft-deletes or simple SQLite row deletions leave raw session logs on disk—which causes standard sync tools to re-import them as new sessions.
+
+Code Insights introduces the Schema v16 `deleted_sessions` tombstone registry:
+```bash
+# Permanently purge all soft-deleted sessions and record tombstones
+code-insights purge -y
+
+# Purge a specific session and prevent future re-sync
+code-insights purge <session-id> -y
+
+# Prune trivial sessions (≤2 messages) and permanently tombstone them
+code-insights sync prune --hard
+```
+- **Ingestion Guards**: `code-insights sync` (even with `--force`) checks `deleted_sessions` and skips tombstoned session IDs before parsing or writing, without touching your original raw tool logs on disk.
 
 ---
 

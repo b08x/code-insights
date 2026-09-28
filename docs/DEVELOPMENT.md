@@ -92,6 +92,7 @@ Code Insights uses **strategic TDD** — test-first development applied surgical
 | **MUST TDD** | Analysis pricing | `server/src/llm/analysis-pricing.ts` | 85%+ | Cost calculations are silent — wrong math silently under/overcharges users |
 | **MUST TDD** | Response parsers | `server/src/llm/response-parsers.ts` | 85%+ | LLM output parsing failures corrupt stored insights silently |
 | **MUST TDD** | Migrations | `cli/src/db/migrate.ts`, `schema.ts` | 90%+ | Schema changes are irreversible; bugs in migrations can corrupt the database |
+| **MUST TDD** | Reprocessing & Purge | `cli/src/db/reprocess.ts`, `cli/src/db/purge.ts` | 90%+ | Backfill correctness and tombstone persistence prevent data corruption and unwanted re-import |
 | **MUST TDD** | Shared utilities | `server/src/utils.ts`, `cli/src/utils/` | 85%+ | Pure functions — trivial to test, used across the codebase |
 | **SHOULD TDD** | API routes | `server/src/routes/` | 70%+ | High-value but SQLite coupling makes setup harder |
 | **SKIP TDD** | Dashboard components | `dashboard/src/` | — | Visual, React-rendered — unit tests deliver low value here |
@@ -129,6 +130,24 @@ pnpm test:coverage
 ```
 
 Test runner: **vitest** (native ESM support, fast, shared with all packages via root `package.json`).
+
+---
+
+## Database Schema Evolution & Zero-Cost Reprocessing
+
+When introducing schema additions that can be derived or normalized from existing structured data (e.g. relational milestones from summary JSON metadata, agency attribution from turn citations, or search index refreshes):
+
+1. **Lightweight Structural Migrations**:
+   - Schema migrations (`cli/src/db/migrate.ts`) must strictly handle fast structural DDL (`CREATE TABLE`, `ALTER TABLE ADD COLUMN`, `CREATE INDEX`).
+   - Avoid executing long-running data backfills inside startup migrations.
+2. **Deterministic Local Reprocessors**:
+   - Implement zero-cost backfill routines in `cli/src/db/reprocess.ts`.
+   - Never call external LLM APIs during reprocessing; extract, transform, and normalize directly from existing SQLite columns and JSON metadata.
+   - Always provide `--dry-run` capability so users can preview affected session and row counts safely.
+3. **Permanent Tombstone Deletion Pattern**:
+   - Because raw agent session files remain on disk in `~/.claude/` or `~/.gemini/`, simply deleting SQLite rows causes subsequent sync passes to detect and re-import them as new sessions.
+   - Any permanent deletion must insert tombstoned session IDs into `deleted_sessions` (`cli/src/db/purge.ts`).
+   - `sync.ts` and `write.ts` must query `isSessionTombstoned()` to guarantee deleted sessions are never resurrected on future syncs or `sync --force`.
 
 ---
 

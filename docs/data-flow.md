@@ -61,14 +61,64 @@ sequenceDiagram
     Sync->>DB: updateSyncState()
     loop For each file
         Sync->>Parser: extractSessionId()
-        Sync->>Parser: extractProjectName()
-        Sync->>Parser: buildSession()
-        Sync->>DB: insertSessionWithProjectAndReturnIsNew()
-        Sync->>DB: saveSyncState()
+        Sync->>DB: isSessionTombstoned(sessionId)
+        alt Session is tombstoned
+            Sync->>Sync: Skip file (permanent exclusion)
+        else Session active
+            Sync->>Parser: extractProjectName()
+            Sync->>Parser: buildSession()
+            Sync->>DB: insertSessionWithProjectAndReturnIsNew()
+            Sync->>DB: saveSyncState()
+        end
     end
     Sync->>DB: recalculateUsageStats()
     DB->>Sync: Return SyncResult
     Sync->>User: Display sync summary
+```
+
+### Zero-Cost Reprocessing Flow
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant CLI as cli/src/index.ts
+    participant Reprocess as commands/reprocess.ts
+    participant Engine as db/reprocess.ts
+    participant DB as SQLite (data.db)
+    
+    User->>CLI: code-insights reprocess
+    CLI->>Reprocess: reprocessCommand()
+    Reprocess->>Engine: reprocessDatabase({dryRun, resync, rebuildFts})
+    Engine->>DB: Query summary insights (metadata step_matrix)
+    Engine->>Engine: Normalize steps & derive flags (ran_tests, tools, course correction)
+    Engine->>DB: Transaction: saveSessionStepsToDb()
+    Engine->>DB: Query decision insights WHERE decided_by IS NULL
+    Engine->>Engine: Infer agency from evidence turn citations (User# vs Assistant#)
+    Engine->>DB: Batch UPDATE insights SET metadata (decided_by)
+    Engine->>DB: Rebuild messages_fts (FTS5)
+    Engine->>Reprocess: Return ReprocessStats
+    Reprocess->>User: Display backfill and attribution summary
+```
+
+### Permanent Purge & Tombstone Flow
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant CLI as cli/src/index.ts
+    participant PurgeCmd as commands/purge.ts
+    participant PurgeDB as db/purge.ts
+    participant DB as SQLite (data.db)
+    
+    User->>CLI: code-insights purge [id] -y
+    CLI->>PurgeCmd: purgeCommand()
+    PurgeCmd->>PurgeDB: purgeSessions({sessionIds, reason})
+    PurgeDB->>DB: BEGIN TRANSACTION
+    PurgeDB->>DB: INSERT INTO deleted_sessions(id, deleted_at, reason)
+    PurgeDB->>DB: DELETE FROM insights, session_steps, session_facets, messages, sessions
+    PurgeDB->>DB: COMMIT TRANSACTION
+    PurgeDB->>PurgeCmd: Return PurgeResult
+    PurgeCmd->>User: Confirm purged & tombstoned count
 ```
 
 ### Export Generation Flow
