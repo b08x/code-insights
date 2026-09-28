@@ -386,17 +386,28 @@ export function parseAnalysisResponse(response: string): ParseResult<AnalysisRes
       }
 
       // Canonicalize target: 'Target_Config' | 'Target_SrcCode' | 'Target_Test' | 'Target_Docs'
-      let target: FcaTarget = 'Target_SrcCode';
-      const tStr = String(s.target || '').trim().toLowerCase();
-      if (tStr.includes('config') || tStr.includes('env') || tStr.includes('setting') || tStr.includes('infra')) {
-        target = 'Target_Config';
-      } else if (tStr.includes('test') || tStr.includes('spec') || tStr.includes('verify')) {
-        target = 'Target_Test';
-      } else if (tStr.includes('doc') || tStr.includes('readme') || tStr.includes('wiki') || tStr.includes('text')) {
-        target = 'Target_Docs';
-      } else if (tStr.includes('src') || tStr.includes('code')) {
-        target = 'Target_SrcCode';
+      const canonicalizeTarget = (raw: unknown): FcaTarget => {
+        const tStr = String(raw || '').trim().toLowerCase();
+        if (tStr.includes('config') || tStr.includes('env') || tStr.includes('setting') || tStr.includes('infra')) {
+          return 'Target_Config';
+        } else if (tStr.includes('test') || tStr.includes('spec') || tStr.includes('verify')) {
+          return 'Target_Test';
+        } else if (tStr.includes('doc') || tStr.includes('readme') || tStr.includes('wiki') || tStr.includes('text')) {
+          return 'Target_Docs';
+        }
+        return 'Target_SrcCode';
+      };
+
+      let targets: FcaTarget[] | undefined;
+      if (Array.isArray(s.targets)) {
+        const parsedTargets = s.targets.map(canonicalizeTarget);
+        targets = Array.from(new Set(parsedTargets));
+        if (targets.length === 0) targets = undefined;
       }
+
+      const target: FcaTarget = s.target
+        ? canonicalizeTarget(s.target)
+        : (targets && targets.length > 0 ? targets[0] : 'Target_SrcCode');
 
       // Canonicalize state: 'State_Success' | 'State_Error' | 'State_Blocked'
       let state: FcaState = 'State_Success';
@@ -409,13 +420,19 @@ export function parseAnalysisResponse(response: string): ParseResult<AnalysisRes
         state = 'State_Success';
       }
 
-      canonicalSteps.push({
+      const stepEntry: SemanticStep = {
         step: stepName,
         turn_ref: turnRef,
         driver,
         target,
         state,
-      });
+      };
+      if (targets && targets.length > 0) stepEntry.targets = targets;
+      if (s.has_course_correction !== undefined) stepEntry.has_course_correction = Boolean(s.has_course_correction);
+      if (s.ran_tests !== undefined) stepEntry.ran_tests = Boolean(s.ran_tests);
+      if (s.used_tools !== undefined) stepEntry.used_tools = Boolean(s.used_tools);
+
+      canonicalSteps.push(stepEntry);
     }
     parsed.step_matrix = canonicalSteps;
   } else {

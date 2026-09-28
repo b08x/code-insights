@@ -152,6 +152,30 @@ CREATE TABLE analysis_usage (
 );
 ```
 
+#### session_steps Table (v15)
+
+```sql
+CREATE TABLE session_steps (
+  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  idx INTEGER NOT NULL,
+  turn_ref TEXT NOT NULL,
+  label TEXT NOT NULL,
+  driver TEXT NOT NULL,
+  target TEXT NOT NULL,
+  state TEXT NOT NULL,
+  targets TEXT,
+  has_course_correction INTEGER NOT NULL DEFAULT 0,
+  ran_tests INTEGER NOT NULL DEFAULT 0,
+  used_tools INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (session_id, idx)
+);
+CREATE INDEX idx_session_steps_session ON session_steps(session_id);
+CREATE INDEX idx_session_steps_driver ON session_steps(driver);
+CREATE INDEX idx_session_steps_state ON session_steps(state);
+CREATE INDEX idx_session_steps_target ON session_steps(target);
+```
+
 ## Core Functions
 
 ### getDb()
@@ -215,6 +239,25 @@ async function saveInsightsToDbWithDedup(
   insights: InsightRow[],
   options?: SaveOptions
 ): Promise<DedupMetrics>;
+```
+
+### saveSessionStepsToDb()
+
+**Location**: `cli/src/analysis/analysis-db.ts`
+
+**Purpose**: Persist normalized semantic step episodes to the `session_steps` table
+
+**Behavior**:
+1. Deletes existing steps for `session_id` within a transaction to maintain idempotency
+2. Inserts steps with 0-indexed order `idx`, `turn_ref`, `label`, canonical `driver`, `target`, `state`, JSON-stringified multi-target array `targets`, and boolean flags `has_course_correction`, `ran_tests`, `used_tools`
+
+**Signature**:
+```typescript
+function saveSessionStepsToDb(
+  sessionId: string,
+  steps: SemanticStep[],
+  db?: Database
+): void;
 ```
 
 ### insertSessionWithProjectAndReturnIsNew()

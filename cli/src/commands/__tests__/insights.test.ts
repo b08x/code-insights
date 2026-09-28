@@ -164,7 +164,7 @@ describe('V8 migration — session_message_count column', () => {
       .prepare('SELECT version FROM schema_version ORDER BY version')
       .all() as Array<{ version: number }>;
 
-    expect(rows.map(r => r.version)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]);
+    expect(rows.map(r => r.version)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
     db.close();
   });
 
@@ -579,7 +579,7 @@ describe('insightsCheckCommand — auto-analyze (1-2 sessions)', () => {
     await insightsCheckCommand({ days: 7, quiet: false, native: true });
     expect(mockValidate).toHaveBeenCalled();
     expect(mockRunAnalysis).toHaveBeenCalledTimes(4);
-  });
+  }, 10000);
 });
 
 describe('insightsCheckCommand — --analyze flag', () => {

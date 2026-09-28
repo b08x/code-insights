@@ -508,8 +508,8 @@ app.get('/generate/stream', requireLLM(), async (c) => {
   });
 });
 
-// FCA Standard Binary Attributes
-const FCA_ATTRIBUTES = [
+// FCA Standard Binary Attributes (13 attributes: 3 Drivers, 4 Targets, 3 States, 3 Enriched Flags)
+export const FCA_ATTRIBUTES = [
   'LLM_Decide',
   'User_Decide',
   'Collab_Decide',
@@ -520,7 +520,106 @@ const FCA_ATTRIBUTES = [
   'State_Success',
   'State_Error',
   'State_Blocked',
+  'HasCourseCorrection',
+  'RanTests',
+  'UsedTools',
 ] as const;
+
+export type FcaAttribute = (typeof FCA_ATTRIBUTES)[number];
+
+export interface StepMatrixEntry {
+  step: string;
+  turn_ref: string;
+  driver: string;
+  target: string;
+  state: string;
+  targets?: string[];
+  has_course_correction?: boolean;
+  ran_tests?: boolean;
+  used_tools?: boolean;
+  idx?: number;
+}
+
+/**
+ * Centralized one-hot attribute vector generation for Formal Concept Analysis.
+ * Strict 1:1 mapping with FCA_ATTRIBUTES.
+ */
+export function attributeVector(step: StepMatrixEntry): boolean[] {
+  const targets = Array.isArray(step.targets) ? step.targets : [];
+  return [
+    step.driver === 'LLM_Decide',
+    step.driver === 'User_Decide',
+    step.driver === 'Collab_Decide',
+    step.target === 'Target_Config' || targets.includes('Target_Config'),
+    step.target === 'Target_SrcCode' || targets.includes('Target_SrcCode'),
+    step.target === 'Target_Test' || targets.includes('Target_Test'),
+    step.target === 'Target_Docs' || targets.includes('Target_Docs'),
+    step.state === 'State_Success',
+    step.state === 'State_Error',
+    step.state === 'State_Blocked',
+    Boolean(step.has_course_correction),
+    Boolean(step.ran_tests),
+    Boolean(step.used_tools),
+  ];
+}
+
+/**
+ * Fetch steps for a session, prioritizing the normalized session_steps table (v15+)
+ * and falling back gracefully to summary insight metadata.
+ */
+function fetchSessionSteps(db: ReturnType<typeof getDb>, sessionId: string): StepMatrixEntry[] {
+  const dbSteps = db.prepare(`
+    SELECT idx, turn_ref, label, driver, target, state, targets, has_course_correction, ran_tests, used_tools
+    FROM session_steps
+    WHERE session_id = ?
+    ORDER BY idx ASC
+  `).all(sessionId) as Array<{
+    idx: number;
+    turn_ref: string;
+    label: string;
+    driver: string;
+    target: string;
+    state: string;
+    targets: string | null;
+    has_course_correction: number;
+    ran_tests: number;
+    used_tools: number;
+  }>;
+
+  if (dbSteps.length > 0) {
+    return dbSteps.map(r => ({
+      step: r.label,
+      turn_ref: r.turn_ref,
+      driver: r.driver,
+      target: r.target,
+      state: r.state,
+      targets: r.targets ? JSON.parse(r.targets) : undefined,
+      has_course_correction: Boolean(r.has_course_correction),
+      ran_tests: Boolean(r.ran_tests),
+      used_tools: Boolean(r.used_tools),
+      idx: r.idx,
+    }));
+  }
+
+  // Fallback to latest summary insight metadata (ORDER BY created_at DESC)
+  const summaryRow = db.prepare(
+    `SELECT metadata FROM insights WHERE session_id = ? AND type = 'summary' ORDER BY created_at DESC LIMIT 1`,
+  ).get(sessionId) as { metadata: string | null } | undefined;
+
+  if (summaryRow?.metadata) {
+    try {
+      const meta = JSON.parse(summaryRow.metadata);
+      if (Array.isArray(meta.step_matrix)) {
+        return meta.step_matrix.map((s: any, i: number) => ({
+          ...s,
+          idx: s.idx ?? i,
+        }));
+      }
+    } catch {}
+  }
+
+  return [];
+}
 
 /**
  * GET /api/export/session/:id/rails
@@ -549,7 +648,7 @@ app.get('/session/:id/rails', (c) => {
   const insightRows = db.prepare(
     `SELECT id, session_id, project_id, project_name, type, title, content,
             summary, bullets, confidence, metadata, timestamp, created_at, scope, analysis_version
-     FROM insights WHERE session_id = ? ORDER BY created_at ASC`,
+     FROM insights WHERE session_id = ? ORDER BY created_at DESC`,
   ).all(id) as Array<{
     id: string;
     session_id: string;
@@ -595,23 +694,7 @@ app.get('/session/:id/rails', (c) => {
       };
     });
 
-  let stepMatrix: Array<{
-    step: string;
-    turn_ref: string;
-    driver: string;
-    target: string;
-    state: string;
-  }> = [];
-
-  const summaryRow = insightRows.find(r => r.type === 'summary');
-  if (summaryRow?.metadata) {
-    try {
-      const meta = JSON.parse(summaryRow.metadata);
-      if (Array.isArray(meta.step_matrix)) {
-        stepMatrix = meta.step_matrix;
-      }
-    } catch {}
-  }
+  const stepMatrix = fetchSessionSteps(db, id);
 
   return c.json({
     exported_at: new Date().toISOString(),
@@ -626,8 +709,8 @@ app.get('/session/:id/rails', (c) => {
  * GET /api/export/session/:id/fca
  *
  * Exports the Formal Concept Analysis (FCA) incidence matrix for a session as a formal
- * context (G, M, I). G represents semantic episode steps, M represents 10 canonical binary
- * attributes (Drivers, Targets, States), and I represents incidence.
+ * context (G, M, I). G represents semantic episode steps keyed as `${turn_ref} [step ${idx}]`,
+ * M represents 13 canonical binary attributes, and I represents incidence.
  *
  * @param id - Session UUID
  * @param format - Query param: 'json' (default) or 'csv'. Also respects 'Accept: text/csv' header.
@@ -647,43 +730,18 @@ app.get('/session/:id/fca', (c) => {
     return c.json({ error: 'Session not found' }, 404);
   }
 
-  const summaryRow = db.prepare(
-    `SELECT metadata FROM insights WHERE session_id = ? AND type = 'summary' LIMIT 1`,
-  ).get(id) as { metadata: string | null } | undefined;
-
-  let stepMatrix: Array<{
-    step: string;
-    turn_ref: string;
-    driver: string;
-    target: string;
-    state: string;
-  }> = [];
-
-  if (summaryRow?.metadata) {
-    try {
-      const meta = JSON.parse(summaryRow.metadata);
-      if (Array.isArray(meta.step_matrix)) {
-        stepMatrix = meta.step_matrix;
-      }
-    } catch {}
-  }
+  const stepMatrix = fetchSessionSteps(db, id);
 
   if (format === 'csv' || c.req.header('accept')?.includes('text/csv')) {
-    const header = ['Step', 'Turn', ...FCA_ATTRIBUTES].join(',');
-    const rows = stepMatrix.map(s => {
+    const header = ['Object', 'Step', 'Turn', ...FCA_ATTRIBUTES].join(',');
+    const rows = stepMatrix.map((s, idx) => {
+      const objKey = `${s.turn_ref || 'turn-?'} [step ${idx + 1}]`;
+      const vec = attributeVector(s);
       const cells = [
+        `"${objKey.replace(/"/g, '""')}"`,
         `"${(s.step || '').replace(/"/g, '""')}"`,
         `"${(s.turn_ref || '').replace(/"/g, '""')}"`,
-        s.driver === 'LLM_Decide' ? '1' : '0',
-        s.driver === 'User_Decide' ? '1' : '0',
-        s.driver === 'Collab_Decide' ? '1' : '0',
-        s.target === 'Target_Config' ? '1' : '0',
-        s.target === 'Target_SrcCode' ? '1' : '0',
-        s.target === 'Target_Test' ? '1' : '0',
-        s.target === 'Target_Docs' ? '1' : '0',
-        s.state === 'State_Success' ? '1' : '0',
-        s.state === 'State_Error' ? '1' : '0',
-        s.state === 'State_Blocked' ? '1' : '0',
+        ...vec.map(v => v ? '1' : '0'),
       ];
       return cells.join(',');
     });
@@ -695,36 +753,23 @@ app.get('/session/:id/fca', (c) => {
     });
   }
 
-  const objects = stepMatrix.map(s => s.step);
-  const incidence = stepMatrix.map(s => [
-    s.driver === 'LLM_Decide',
-    s.driver === 'User_Decide',
-    s.driver === 'Collab_Decide',
-    s.target === 'Target_Config',
-    s.target === 'Target_SrcCode',
-    s.target === 'Target_Test',
-    s.target === 'Target_Docs',
-    s.state === 'State_Success',
-    s.state === 'State_Error',
-    s.state === 'State_Blocked',
-  ]);
+  const objects = stepMatrix.map((s, idx) => `${s.turn_ref || 'turn-?'} [step ${idx + 1}]`);
+  const incidence = stepMatrix.map(s => attributeVector(s));
 
-  const context = stepMatrix.map(s => ({
-    step: s.step,
-    turn_ref: s.turn_ref,
-    attributes: {
-      LLM_Decide: s.driver === 'LLM_Decide',
-      User_Decide: s.driver === 'User_Decide',
-      Collab_Decide: s.driver === 'Collab_Decide',
-      Target_Config: s.target === 'Target_Config',
-      Target_SrcCode: s.target === 'Target_SrcCode',
-      Target_Test: s.target === 'Target_Test',
-      Target_Docs: s.target === 'Target_Docs',
-      State_Success: s.state === 'State_Success',
-      State_Error: s.state === 'State_Error',
-      State_Blocked: s.state === 'State_Blocked',
-    },
-  }));
+  const context = stepMatrix.map((s, idx) => {
+    const objKey = `${s.turn_ref || 'turn-?'} [step ${idx + 1}]`;
+    const vec = attributeVector(s);
+    const attributes: Record<string, boolean> = {};
+    FCA_ATTRIBUTES.forEach((attr, i) => {
+      attributes[attr] = vec[i];
+    });
+    return {
+      object: objKey,
+      step: s.step,
+      turn_ref: s.turn_ref,
+      attributes,
+    };
+  });
 
   return c.json({
     session_id: id,
@@ -732,6 +777,217 @@ app.get('/session/:id/fca', (c) => {
     attributes: FCA_ATTRIBUTES,
     incidence,
     context,
+  });
+});
+
+/**
+ * GET /api/export/fca
+ *
+ * Exports a pooled cross-session Formal Concept Analysis (FCA) incidence matrix (G, M, I)
+ * aggregated across sessions from session_steps, with filtering and contingency counts.
+ *
+ * Supported query params:
+ *   - project: filter by project_id or project_name
+ *   - since: ISO datetime or YYYY-MM-DD
+ *   - until: ISO datetime or YYYY-MM-DD
+ *   - driver: filter by driver (LLM_Decide | User_Decide | Collab_Decide)
+ *   - state (or outcome): filter by state (State_Success | State_Error | State_Blocked)
+ *   - format: 'json' (default) or 'csv' (also respects Accept: text/csv)
+ */
+app.get('/fca', (c) => {
+  const db = getDb();
+  const format = c.req.query('format') || 'json';
+  const projectParam = c.req.query('project');
+  const sinceParam = c.req.query('since');
+  const untilParam = c.req.query('until');
+  const driverParam = c.req.query('driver');
+  const stateParam = c.req.query('state') || c.req.query('outcome');
+
+  const conditions: string[] = ['s.deleted_at IS NULL'];
+  const params: (string | number)[] = [];
+
+  if (projectParam) {
+    conditions.push('(s.project_id = ? OR s.project_name = ?)');
+    params.push(projectParam, projectParam);
+  }
+
+  if (sinceParam) {
+    conditions.push('s.started_at >= ?');
+    params.push(sinceParam);
+  }
+
+  if (untilParam) {
+    const effectiveUntil = untilParam.length === 10 ? `${untilParam}T23:59:59.999Z` : untilParam;
+    conditions.push('s.started_at <= ?');
+    params.push(effectiveUntil);
+  }
+
+  if (driverParam) {
+    conditions.push('ss.driver = ?');
+    params.push(driverParam);
+  }
+
+  if (stateParam) {
+    conditions.push('ss.state = ?');
+    params.push(stateParam);
+  }
+
+  const query = `
+    SELECT
+      ss.session_id,
+      ss.idx,
+      ss.turn_ref,
+      ss.label,
+      ss.driver,
+      ss.target,
+      ss.state,
+      ss.targets,
+      ss.has_course_correction,
+      ss.ran_tests,
+      ss.used_tools,
+      s.project_id,
+      s.project_name,
+      s.started_at
+    FROM session_steps ss
+    JOIN sessions s ON ss.session_id = s.id
+    WHERE ${conditions.join(' AND ')}
+    ORDER BY s.started_at DESC, ss.session_id ASC, ss.idx ASC
+  `;
+
+  const rows = db.prepare(query).all(...params) as Array<{
+    session_id: string;
+    idx: number;
+    turn_ref: string;
+    label: string;
+    driver: string;
+    target: string;
+    state: string;
+    targets: string | null;
+    has_course_correction: number;
+    ran_tests: number;
+    used_tools: number;
+    project_id: string;
+    project_name: string;
+    started_at: string;
+  }>;
+
+  const stepEntries: Array<{ objKey: string; entry: StepMatrixEntry; session_id: string }> = rows.map(r => {
+    const objKey = `${r.session_id}:${r.turn_ref}#${r.idx + 1}`;
+    const entry: StepMatrixEntry = {
+      step: r.label,
+      turn_ref: r.turn_ref,
+      driver: r.driver,
+      target: r.target,
+      state: r.state,
+      targets: r.targets ? JSON.parse(r.targets) : undefined,
+      has_course_correction: Boolean(r.has_course_correction),
+      ran_tests: Boolean(r.ran_tests),
+      used_tools: Boolean(r.used_tools),
+      idx: r.idx,
+    };
+    return { objKey, entry, session_id: r.session_id };
+  });
+
+  if (format === 'csv' || c.req.header('accept')?.includes('text/csv')) {
+    const header = ['Object', 'Session', 'Step', 'Turn', ...FCA_ATTRIBUTES].join(',');
+    const csvRows = stepEntries.map(({ objKey, entry, session_id }) => {
+      const vec = attributeVector(entry);
+      const cells = [
+        `"${objKey.replace(/"/g, '""')}"`,
+        `"${session_id.replace(/"/g, '""')}"`,
+        `"${(entry.step || '').replace(/"/g, '""')}"`,
+        `"${(entry.turn_ref || '').replace(/"/g, '""')}"`,
+        ...vec.map(v => v ? '1' : '0'),
+      ];
+      return cells.join(',');
+    });
+
+    const csvContent = [header, ...csvRows].join('\n');
+    return c.text(csvContent, 200, {
+      'Content-Type': 'text/csv; charset=utf-8',
+      'Content-Disposition': 'attachment; filename="pooled-fca.csv"',
+    });
+  }
+
+  // Contingency counts: group occurrences by (driver, target, state) and calculate driver-specific State_Blocked rates
+  const byDriver: Record<string, number> = {};
+  const byTarget: Record<string, number> = {};
+  const byState: Record<string, number> = {};
+  const comboMap = new Map<string, { driver: string; target: string; state: string; count: number }>();
+  const driverTotals: Record<string, { total: number; blocked: number }> = {};
+
+  for (const { entry } of stepEntries) {
+    byDriver[entry.driver] = (byDriver[entry.driver] || 0) + 1;
+    byTarget[entry.target] = (byTarget[entry.target] || 0) + 1;
+    byState[entry.state] = (byState[entry.state] || 0) + 1;
+
+    const comboKey = `${entry.driver}|${entry.target}|${entry.state}`;
+    const existing = comboMap.get(comboKey);
+    if (existing) {
+      existing.count++;
+    } else {
+      comboMap.set(comboKey, { driver: entry.driver, target: entry.target, state: entry.state, count: 1 });
+    }
+
+    if (!driverTotals[entry.driver]) {
+      driverTotals[entry.driver] = { total: 0, blocked: 0 };
+    }
+    driverTotals[entry.driver].total++;
+    if (entry.state === 'State_Blocked') {
+      driverTotals[entry.driver].blocked++;
+    }
+  }
+
+  const driverBlockedRates: Record<string, { total: number; blocked: number; rate: number }> = {};
+  for (const [drv, counts] of Object.entries(driverTotals)) {
+    driverBlockedRates[drv] = {
+      total: counts.total,
+      blocked: counts.blocked,
+      rate: counts.total > 0 ? Math.round((counts.blocked / counts.total) * 1000) / 1000 : 0,
+    };
+  }
+
+  const objects = stepEntries.map(s => s.objKey);
+  const incidence = stepEntries.map(s => attributeVector(s.entry));
+  const context = stepEntries.map(s => {
+    const vec = attributeVector(s.entry);
+    const attributes: Record<string, boolean> = {};
+    FCA_ATTRIBUTES.forEach((attr, i) => {
+      attributes[attr] = vec[i];
+    });
+    return {
+      object: s.objKey,
+      session_id: s.session_id,
+      step: s.entry.step,
+      turn_ref: s.entry.turn_ref,
+      attributes,
+    };
+  });
+
+  const uniqueSessions = new Set(rows.map(r => r.session_id));
+
+  return c.json({
+    objects,
+    attributes: FCA_ATTRIBUTES,
+    incidence,
+    context,
+    contingency_counts: {
+      total_steps: rows.length,
+      by_driver: byDriver,
+      by_target: byTarget,
+      by_state: byState,
+      combinations: Array.from(comboMap.values()),
+      driver_blocked_rates: driverBlockedRates,
+    },
+    filters: {
+      project: projectParam || null,
+      since: sinceParam || null,
+      until: untilParam || null,
+      driver: driverParam || null,
+      state: stateParam || null,
+    },
+    total_sessions: uniqueSessions.size,
+    total_steps: rows.length,
   });
 });
 

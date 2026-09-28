@@ -39,6 +39,7 @@ import {
   saveInsightsToDb,
   deleteSessionInsights,
   saveFacetsToDb,
+  saveSessionStepsToDb,
   convertToInsightRows,
   convertPQToInsightRow,
   updateSessionTitle,
@@ -355,6 +356,10 @@ export async function runInsightsCommand(options: InsightsCommandOptions): Promi
 
   if (parsedSession.data.facets) {
     saveFacetsToDb(session.id, parsedSession.data.facets);
+  }
+
+  if (parsedSession.data.step_matrix && parsedSession.data.step_matrix.length > 0) {
+    saveSessionStepsToDb(session.id, parsedSession.data.step_matrix);
   }
 
   // Auto-apply generated title to the session record

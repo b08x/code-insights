@@ -800,6 +800,59 @@ describe('parseAnalysisResponse', () => {
       state: 'State_Error',
     });
   });
+
+  it('extracts and canonicalizes enriched step_matrix fields (targets, flags)', () => {
+    const response = `<json>{
+      "summary": { "title": "Test", "content": "c", "bullets": [] },
+      "decisions": [],
+      "step_matrix": [
+        {
+          "step": "Configure and test",
+          "turn_ref": "User#1",
+          "driver": "User_Decide",
+          "target": "Target_Config",
+          "targets": ["config", "spec"],
+          "state": "State_Success",
+          "has_course_correction": true,
+          "ran_tests": true,
+          "used_tools": false
+        },
+        {
+          "step": "Fix syntax error",
+          "turn_ref": "Assistant#2",
+          "driver": "LLM_Decide",
+          "target": "Target_SrcCode",
+          "state": "blocked",
+          "has_course_correction": false,
+          "used_tools": true
+        }
+      ]
+    }</json>`;
+    const result = parseAnalysisResponse(response);
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.data.step_matrix).toHaveLength(2);
+    expect(result.data.step_matrix?.[0]).toEqual({
+      step: 'Configure and test',
+      turn_ref: 'User#1',
+      driver: 'User_Decide',
+      target: 'Target_Config',
+      targets: ['Target_Config', 'Target_Test'],
+      state: 'State_Success',
+      has_course_correction: true,
+      ran_tests: true,
+      used_tools: false,
+    });
+    expect(result.data.step_matrix?.[1]).toEqual({
+      step: 'Fix syntax error',
+      turn_ref: 'Assistant#2',
+      driver: 'LLM_Decide',
+      target: 'Target_SrcCode',
+      state: 'State_Blocked',
+      has_course_correction: false,
+      used_tools: true,
+    });
+  });
 });
 
 // ──────────────────────────────────────────────────────

@@ -134,7 +134,7 @@ ${sessionSummary ? `  <session_summary>${sessionSummary}</session_summary>\n` : 
      - For learnings, validate that each entry: (a) identifies observable symptom, root cause, and transferable takeaway, (b) includes literal quote citations, (c) meets minimum confidence >= 70. Reject generic advice.
      - For friction points, validate that each entry: (a) uses a canonical category (${CANONICAL_FRICTION_CATEGORIES.join(', ')}), (b) sets attribution to user-actionable, ai-capability, or environmental strictly per the decision tree, (c) describes the specific GAP with concrete technical details (file paths, APIs, error messages), not the actor, (d) includes _reasoning scratchpad.
      - For effective patterns, validate that each entry: (a) uses a canonical category (${CANONICAL_PATTERN_CATEGORIES.join(', ')}), (b) sets driver to user-driven, ai-driven, or collaborative per the driver decision tree, (c) satisfies exclusion rules (exclude routine file reads, trivial syntax fixes, standard commands), (d) includes _reasoning scratchpad.
-     - For step matrix, validate that it: (a) contains 4-10 discrete chronological milestones, (b) assigns driver (LLM_Decide | User_Decide | Collab_Decide), target (Target_Config | Target_SrcCode | Target_Test | Target_Docs), and state (State_Success | State_Error | State_Blocked).
+     - For step matrix, validate that it: (a) contains 4-10 discrete chronological milestones, (b) assigns driver (LLM_Decide | User_Decide | Collab_Decide), primary target (Target_Config | Target_SrcCode | Target_Test | Target_Docs), and state (State_Success | State_Error | State_Blocked), (c) annotates co-occurring attributes where applicable: targets (array if multiple targets apply), has_course_correction (boolean), ran_tests (boolean), used_tools (boolean).
   3. Summary narrative constraint: Describe HOW the user and AI collaborated, the workflow strategy utilized, and the friction-resolving path. Do NOT mechanically list modified files or commit hashes.
   4. Extract insights containing ONLY concrete references (file paths, endpoints, variables, errors). Filter out generic findings automatically.
   5. Fill every field in the schema. Return empty arrays for categories yielding no valid findings. Use null for unavailable data where permitted.
@@ -219,7 +219,11 @@ ${EFFECTIVE_PATTERN_CLASSIFICATION_GUIDANCE}
       "turn_ref": "User#1 or Assistant#2",
       "driver": "LLM_Decide | User_Decide | Collab_Decide",
       "target": "Target_Config | Target_SrcCode | Target_Test | Target_Docs",
-      "state": "State_Success | State_Error | State_Blocked"
+      "state": "State_Success | State_Error | State_Blocked",
+      "targets": ["Target_Config", "Target_Test"],
+      "has_course_correction": false,
+      "ran_tests": true,
+      "used_tools": true
     }
   ]
 }

@@ -298,12 +298,12 @@ describe('runMigrations', () => {
     db.close();
   });
 
-  it('V14 schema version is 14 after migration', () => {
+  it('V15 schema version is 15 after migration', () => {
     const db = new Database(':memory:');
     runMigrations(db);
 
     const row = db.prepare('SELECT MAX(version) AS v FROM schema_version').get() as { v: number };
-    expect(row.v).toBe(14);
+    expect(row.v).toBe(15);
 
     db.close();
   });
@@ -314,6 +314,7 @@ describe('runMigrations', () => {
     expect(result.v6Applied).toBe(true);
     expect(result.v7Applied).toBe(true);
     expect(result.v8Applied).toBe(true);
+    expect(result.v15Applied).toBe(true);
     db.close();
   });
 
@@ -324,6 +325,7 @@ describe('runMigrations', () => {
     expect(result.v6Applied).toBe(false);
     expect(result.v7Applied).toBe(false);
     expect(result.v8Applied).toBe(false);
+    expect(result.v15Applied).toBe(false);
     db.close();
   });
 });

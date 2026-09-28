@@ -113,6 +113,13 @@ describe('session-analysis.json schema sync', () => {
     expect(epSchema?.required).toContain('confidence');
   });
 
+  it('step_matrix enforces minItems: 4 and maxItems: 10', () => {
+    const smSchema = schema.properties?.step_matrix as { minItems?: number; maxItems?: number } | undefined;
+    expect(smSchema).toBeDefined();
+    expect(smSchema?.minItems).toBe(4);
+    expect(smSchema?.maxItems).toBe(10);
+  });
+
   it('schema file is valid JSON', () => {
     // If loadSchema didn't throw, the file is valid JSON.
     expect(schema).toBeDefined();

@@ -162,8 +162,30 @@ CREATE TABLE IF NOT EXISTS entity_chunks (
   content     TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_entity_chunks_entity ON entity_chunks(entity_type, entity_id);
+
+-- ============================================================
+-- Session Steps (Sequential milestones for FCA & workflow progression)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS session_steps (
+  session_id             TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  idx                    INTEGER NOT NULL,
+  turn_ref               TEXT NOT NULL,
+  label                  TEXT NOT NULL,
+  driver                 TEXT NOT NULL,
+  target                 TEXT NOT NULL,
+  state                  TEXT NOT NULL,
+  targets                TEXT,
+  has_course_correction  INTEGER NOT NULL DEFAULT 0,
+  ran_tests              INTEGER NOT NULL DEFAULT 0,
+  used_tools             INTEGER NOT NULL DEFAULT 0,
+  created_at             TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (session_id, idx)
+);
+CREATE INDEX IF NOT EXISTS idx_session_steps_session_id ON session_steps(session_id);
+CREATE INDEX IF NOT EXISTS idx_session_steps_driver ON session_steps(driver);
+CREATE INDEX IF NOT EXISTS idx_session_steps_state ON session_steps(state);
 `;
 
-export const CURRENT_SCHEMA_VERSION = 14;
+export const CURRENT_SCHEMA_VERSION = 15;
 
 export { runMigrations } from './migrate.js';

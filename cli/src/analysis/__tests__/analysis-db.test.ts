@@ -10,9 +10,10 @@ import {
   ANALYSIS_VERSION,
   convertToInsightRows,
   convertPQToInsightRow,
+  saveSessionStepsToDb,
 } from '../analysis-db.js';
 import type { SessionData } from '../analysis-db.js';
-import type { AnalysisResponse, PromptQualityResponse } from '../prompt-types.js';
+import type { AnalysisResponse, PromptQualityResponse, SemanticStep } from '../prompt-types.js';
 
 // ── In-memory DB helper ───────────────────────────────────────────────────────
 
@@ -47,6 +48,21 @@ function createTestDb() {
       friction_points TEXT,
       effective_patterns TEXT,
       analysis_version TEXT
+    );
+    CREATE TABLE session_steps (
+      session_id TEXT NOT NULL,
+      idx INTEGER NOT NULL,
+      turn_ref TEXT NOT NULL,
+      label TEXT NOT NULL,
+      driver TEXT NOT NULL,
+      target TEXT NOT NULL,
+      state TEXT NOT NULL,
+      targets TEXT,
+      has_course_correction INTEGER NOT NULL DEFAULT 0,
+      ran_tests INTEGER NOT NULL DEFAULT 0,
+      used_tools INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (session_id, idx)
     );
   `);
   return db;
@@ -128,8 +144,8 @@ const PQ_RESPONSE: PromptQualityResponse = {
 // ── ANALYSIS_VERSION ──────────────────────────────────────────────────────────
 
 describe('ANALYSIS_VERSION', () => {
-  it('is 3.0.0', () => {
-    expect(ANALYSIS_VERSION).toBe('3.0.0');
+  it('is 3.1.0', () => {
+    expect(ANALYSIS_VERSION).toBe('3.1.0');
   });
 });
 
@@ -320,8 +336,114 @@ describe('saveFacetsToDb analysisVersion parameter', () => {
     expect(row.analysis_version).toBe('2.5.0');
   });
 
-  it('default ANALYSIS_VERSION constant is 3.0.0', () => {
+  it('default ANALYSIS_VERSION constant is 3.1.0', () => {
     // Verifies the constant that will be used as the default
-    expect(ANALYSIS_VERSION).toBe('3.0.0');
+    expect(ANALYSIS_VERSION).toBe('3.1.0');
+  });
+});
+
+// ── saveSessionStepsToDb ──────────────────────────────────────────────────────
+
+describe('saveSessionStepsToDb', () => {
+  it('persists structured steps to session_steps table', () => {
+    const db = createTestDb();
+    const steps: SemanticStep[] = [
+      {
+        step: 'Configure Vite',
+        turn_ref: 'User#1',
+        driver: 'User_Decide',
+        target: 'Target_Config',
+        state: 'State_Success',
+        targets: ['Target_Config', 'Target_Test'],
+        has_course_correction: false,
+        ran_tests: true,
+        used_tools: true,
+      },
+      {
+        step: 'Fix parser issue',
+        turn_ref: 'Assistant#2',
+        driver: 'LLM_Decide',
+        target: 'Target_SrcCode',
+        state: 'State_Blocked',
+        has_course_correction: true,
+        ran_tests: false,
+        used_tools: true,
+      },
+    ];
+
+    saveSessionStepsToDb('sess-100', steps, db);
+
+    const rows = db.prepare('SELECT * FROM session_steps WHERE session_id = ? ORDER BY idx ASC').all('sess-100') as any[];
+    expect(rows).toHaveLength(2);
+
+    expect(rows[0].idx).toBe(0);
+    expect(rows[0].turn_ref).toBe('User#1');
+    expect(rows[0].label).toBe('Configure Vite');
+    expect(rows[0].driver).toBe('User_Decide');
+    expect(rows[0].target).toBe('Target_Config');
+    expect(rows[0].state).toBe('State_Success');
+    expect(JSON.parse(rows[0].targets)).toEqual(['Target_Config', 'Target_Test']);
+    expect(rows[0].has_course_correction).toBe(0);
+    expect(rows[0].ran_tests).toBe(1);
+    expect(rows[0].used_tools).toBe(1);
+
+    expect(rows[1].idx).toBe(1);
+    expect(rows[1].turn_ref).toBe('Assistant#2');
+    expect(rows[1].label).toBe('Fix parser issue');
+    expect(rows[1].driver).toBe('LLM_Decide');
+    expect(rows[1].target).toBe('Target_SrcCode');
+    expect(rows[1].state).toBe('State_Blocked');
+    expect(rows[1].targets).toBeNull();
+    expect(rows[1].has_course_correction).toBe(1);
+    expect(rows[1].ran_tests).toBe(0);
+    expect(rows[1].used_tools).toBe(1);
+  });
+
+  it('replaces existing steps when re-called for the same session', () => {
+    const db = createTestDb();
+    const initialSteps: SemanticStep[] = [
+      {
+        step: 'Step 1',
+        turn_ref: 'User#1',
+        driver: 'User_Decide',
+        target: 'Target_Config',
+        state: 'State_Success',
+      },
+    ];
+    saveSessionStepsToDb('sess-100', initialSteps, db);
+    expect(db.prepare('SELECT COUNT(*) as count FROM session_steps WHERE session_id = ?').get('sess-100')).toEqual({ count: 1 });
+
+    const newSteps: SemanticStep[] = [
+      {
+        step: 'Step A',
+        turn_ref: 'User#1',
+        driver: 'Collab_Decide',
+        target: 'Target_SrcCode',
+        state: 'State_Success',
+      },
+      {
+        step: 'Step B',
+        turn_ref: 'Assistant#2',
+        driver: 'LLM_Decide',
+        target: 'Target_Test',
+        state: 'State_Success',
+      },
+    ];
+    saveSessionStepsToDb('sess-100', newSteps, db);
+    const rows = db.prepare('SELECT * FROM session_steps WHERE session_id = ? ORDER BY idx ASC').all('sess-100') as any[];
+    expect(rows).toHaveLength(2);
+    expect(rows[0].label).toBe('Step A');
+    expect(rows[1].label).toBe('Step B');
+  });
+
+  it('clears steps when empty array is passed', () => {
+    const db = createTestDb();
+    saveSessionStepsToDb('sess-100', [
+      { step: 'Step 1', turn_ref: 'User#1', driver: 'User_Decide', target: 'Target_Config', state: 'State_Success' },
+    ], db);
+
+    saveSessionStepsToDb('sess-100', [], db);
+    const count = db.prepare('SELECT COUNT(*) as count FROM session_steps WHERE session_id = ?').get('sess-100') as { count: number };
+    expect(count.count).toBe(0);
   });
 });

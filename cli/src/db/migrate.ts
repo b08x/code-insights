@@ -11,6 +11,7 @@ export interface MigrationResult {
   v12Applied: boolean;
   v13Applied: boolean;
   v14Applied: boolean;
+  v15Applied: boolean;
 }
 
 /**
@@ -116,7 +117,13 @@ export function runMigrations(db: Database.Database): MigrationResult {
     v14Applied = true;
   }
 
-  return { v6Applied, v7Applied, v8Applied, v9Applied, v10Applied, v11Applied, v12Applied, v13Applied, v14Applied };
+  let v15Applied = false;
+  if (currentVersion < 15) {
+    applyV15(db);
+    v15Applied = true;
+  }
+
+  return { v6Applied, v7Applied, v8Applied, v9Applied, v10Applied, v11Applied, v12Applied, v13Applied, v14Applied, v15Applied };
 }
 
 function getCurrentVersion(db: Database.Database): number {
@@ -397,3 +404,29 @@ function applyV14(db: Database.Database): void {
 
   db.prepare('INSERT OR IGNORE INTO schema_version (version) VALUES (?)').run(14);
 }
+
+function applyV15(db: Database.Database): void {
+  // session_steps table for Formal Concept Analysis & sequential milestones
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS session_steps (
+      session_id             TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+      idx                    INTEGER NOT NULL,
+      turn_ref               TEXT NOT NULL,
+      label                  TEXT NOT NULL,
+      driver                 TEXT NOT NULL,
+      target                 TEXT NOT NULL,
+      state                  TEXT NOT NULL,
+      targets                TEXT,
+      has_course_correction  INTEGER NOT NULL DEFAULT 0,
+      ran_tests              INTEGER NOT NULL DEFAULT 0,
+      used_tools             INTEGER NOT NULL DEFAULT 0,
+      created_at             TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (session_id, idx)
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_session_steps_session_id ON session_steps(session_id);`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_session_steps_driver ON session_steps(driver);`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_session_steps_state ON session_steps(state);`);
+  db.prepare('INSERT OR IGNORE INTO schema_version (version) VALUES (?)').run(15);
+}
+

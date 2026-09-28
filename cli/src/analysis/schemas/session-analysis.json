@@ -185,6 +185,8 @@
     "step_matrix": {
       "type": "array",
       "description": "Sequential milestones mapping workflow progression",
+      "minItems": 4,
+      "maxItems": 10,
       "items": {
         "type": "object",
         "additionalProperties": false,
@@ -203,7 +205,17 @@
           "state": {
             "type": "string",
             "enum": ["State_Success", "State_Error", "State_Blocked"]
-          }
+          },
+          "targets": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["Target_Config", "Target_SrcCode", "Target_Test", "Target_Docs"]
+            }
+          },
+          "has_course_correction": { "type": "boolean" },
+          "ran_tests": { "type": "boolean" },
+          "used_tools": { "type": "boolean" }
         }
       }
     }

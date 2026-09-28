@@ -1,0 +1,87 @@
+{
+  "stage": "interview",
+  "title": "FCA & Decision Attribution Remediation (#8-#14)",
+  "goalSlug": "fca-remediation",
+  "questions": [
+    {
+      "id": "fca_attribute_design",
+      "prompt": "How should we resolve the degenerate attribute lattice in Issue #14?",
+      "description": "The current 10 attributes (3 drivers, 4 targets, 3 states) are mutually exclusive categoricals, bounding concepts to 48 combinations without internal implications. We can either enrich attributes now with co-occurring flags or retain the taxonomy while implementing endpoints.",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "Keep current 10 attributes for now as a structured step taxonomy/contingency matrix, focusing this remediation on fixing #8–#13 cleanly.",
+      "recommendedOptionIds": ["taxonomy_first"],
+      "options": [
+        {
+          "id": "taxonomy_first",
+          "label": "(Recommended) Keep current 10 attributes for now as a structured step taxonomy/contingency matrix, focusing this remediation on fixing #8–#13 cleanly"
+        },
+        {
+          "id": "enrich_attributes",
+          "label": "Expand step_matrix schema and FCA_ATTRIBUTES now to include co-occurring step attributes (e.g. multi-valued targets, tool usage flags, course corrections)"
+        },
+        {
+          "id": "hybrid",
+          "label": "Keep the 10 core attributes, but add 2–3 binary flags (e.g., ran_tests, touched_config) that can co-occur"
+        }
+      ],
+      "required": true
+    },
+    {
+      "id": "db_backfill_strategy",
+      "prompt": "How should the schema migration (v15 session_steps table) handle existing session step data?",
+      "description": "There are currently ~63 sessions with step matrices stored in insights.metadata. When migrating to session_steps, should existing JSON matrices be parsed and backfilled?",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "Add migration v15 to create session_steps AND parse existing insights.metadata JSON to populate session_steps rows automatically.",
+      "recommendedOptionIds": ["migrate_and_backfill"],
+      "options": [
+        {
+          "id": "migrate_and_backfill",
+          "label": "(Recommended) Add migration v15 to create session_steps AND parse existing insights.metadata JSON to populate session_steps rows automatically"
+        },
+        {
+          "id": "migration_only",
+          "label": "Only create the table in v15; populate session_steps purely for new/re-analyzed sessions"
+        }
+      ],
+      "required": true
+    },
+    {
+      "id": "fca_object_keying",
+      "prompt": "How should FCA objects (rows) be keyed to ensure uniqueness across single and pooled contexts?",
+      "description": "Issue #11 notes that step descriptions can duplicate within or across sessions, silently collapsing distinct steps into one object in formal contexts.",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "Format as `${turn_ref} [step ${idx}]` (for single session) and `${session_id}:${turn_ref}#${idx}` (for pooled context), keeping human label as an attribute/metadata field.",
+      "recommendedOptionIds": ["turn_and_idx"],
+      "options": [
+        {
+          "id": "turn_and_idx",
+          "label": "(Recommended) Format as `${turn_ref} [step ${idx}]` (for single session) and `${session_id}:${turn_ref}#${idx}` (for pooled context), keeping human label as an attribute/metadata field"
+        },
+        {
+          "id": "composite_with_label",
+          "label": "Format as `${turn_ref} - ${label}` (falling back to adding index if duplicate)"
+        }
+      ],
+      "required": true
+    },
+    {
+      "id": "reanalysis_backfill_tooling",
+      "prompt": "What mechanism should be provided for re-analyzing v3.0.0 sessions under v3.1.0?",
+      "description": "Issue #8 requires identifying and queueing v3.0.0 sessions for re-analysis so decision attribution and step matrix data are refreshed.",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "Document the exact SQL filter query in docs/migrations AND add a convenience CLI command or flag to queue v3.0.0 sessions.",
+      "recommendedOptionIds": ["cli_command_and_docs"],
+      "options": [
+        {
+          "id": "cli_command_and_docs",
+          "label": "(Recommended) Document the exact SQL filter query in docs/migrations AND add a convenience CLI command or flag to queue v3.0.0 sessions"
+        },
+        {
+          "id": "documented_query_only",
+          "label": "Provide only the documented SQL query and API filter without adding a CLI backfill command"
+        }
+      ],
+      "required": true
+    }
+  ]
+}

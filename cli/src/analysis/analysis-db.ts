@@ -5,11 +5,11 @@
 import { randomUUID } from 'crypto';
 import { getDb } from '../db/client.js';
 import type Database from 'better-sqlite3';
-import type { AnalysisResponse, PromptQualityResponse } from './prompt-types.js';
+import type { AnalysisResponse, PromptQualityResponse, SemanticStep } from './prompt-types.js';
 import { normalizePatternCategory } from './pattern-normalize.js';
 import { normalizePromptQualityCategory } from './prompt-quality-normalize.js';
 
-export const ANALYSIS_VERSION = '3.0.0';
+export const ANALYSIS_VERSION = '3.1.0';
 
 // Shape of a saved insight row (matches the SQLite schema)
 export interface InsightRow {
@@ -462,8 +462,53 @@ export function saveFacetsToDb(
   /**
   * Update the generated_title for a session.
   */
-  export function updateSessionTitle(sessionId: string, title: string): void {
+export function updateSessionTitle(sessionId: string, title: string): void {
   const db = getDb();
   db.prepare('UPDATE sessions SET generated_title = ? WHERE id = ? AND deleted_at IS NULL')
-  .run(title.slice(0, 120), sessionId);
+    .run(title.slice(0, 120), sessionId);
+}
+
+/**
+ * Persist semantic step matrix entries to the session_steps table.
+ * Replaces existing steps for this session.
+ */
+export function saveSessionStepsToDb(
+  sessionId: string,
+  steps: SemanticStep[],
+  db: Database.Database = getDb(),
+): void {
+  const deleteExisting = db.prepare('DELETE FROM session_steps WHERE session_id = ?');
+  if (!steps || steps.length === 0) {
+    deleteExisting.run(sessionId);
+    return;
   }
+
+  const insertStep = db.prepare(`
+    INSERT INTO session_steps
+    (session_id, idx, turn_ref, label, driver, target, state, targets, has_course_correction, ran_tests, used_tools, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+  `);
+
+  const runTx = db.transaction(() => {
+    deleteExisting.run(sessionId);
+    for (let i = 0; i < steps.length; i++) {
+      const s = steps[i];
+      insertStep.run(
+        sessionId,
+        i,
+        s.turn_ref || `Turn#${i + 1}`,
+        s.step || `Step ${i + 1}`,
+        s.driver,
+        s.target,
+        s.state,
+        s.targets && s.targets.length > 0 ? JSON.stringify(s.targets) : null,
+        s.has_course_correction ? 1 : 0,
+        s.ran_tests ? 1 : 0,
+        s.used_tools ? 1 : 0,
+      );
+    }
+  });
+
+  runTx();
+}
+

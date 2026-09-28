@@ -30,6 +30,7 @@ import {
   saveInsightsToDb,
   deleteSessionInsights,
   saveFacetsToDb,
+  saveSessionStepsToDb,
   type InsightRow,
   type SessionData,
 } from './analysis-db.js';
@@ -273,6 +274,10 @@ export async function analyzeSession(
     // Save facets if extracted
     if (analysisResponse.facets) {
       saveFacetsToDb(session.id, analysisResponse.facets, ANALYSIS_VERSION);
+    }
+
+    if (analysisResponse.step_matrix && analysisResponse.step_matrix.length > 0) {
+      saveSessionStepsToDb(session.id, analysisResponse.step_matrix);
     }
 
     // Record analysis cost to analysis_usage table (V7).

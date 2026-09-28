@@ -64,12 +64,45 @@ function seedInsight(
   content: string,
   metadata: Record<string, unknown> = {},
   timestamp?: string,
+  createdAt?: string,
 ) {
   const ts = timestamp || new Date().toISOString();
+  const ca = createdAt || ts;
   testDb.prepare(`
-    INSERT INTO insights (id, session_id, project_id, project_name, type, title, content, summary, confidence, source, metadata, timestamp)
-    VALUES (?, ?, ?, 'test', ?, ?, ?, ?, 0.9, 'llm', ?, ?)
-  `).run(randomUUID(), sessionId, projectId, type, title, content, content, JSON.stringify(metadata), ts);
+    INSERT INTO insights (id, session_id, project_id, project_name, type, title, content, summary, confidence, source, metadata, timestamp, created_at)
+    VALUES (?, ?, ?, 'test', ?, ?, ?, ?, 0.9, 'llm', ?, ?, ?)
+  `).run(randomUUID(), sessionId, projectId, type, title, content, content, JSON.stringify(metadata), ts, ca);
+}
+
+function seedSessionStep(
+  sessionId: string,
+  idx: number,
+  turnRef: string,
+  label: string,
+  driver: string,
+  target: string,
+  state: string,
+  targets?: string[],
+  hasCourseCorrection = 0,
+  ranTests = 0,
+  usedTools = 0,
+) {
+  testDb.prepare(`
+    INSERT INTO session_steps (session_id, idx, turn_ref, label, driver, target, state, targets, has_course_correction, ran_tests, used_tools)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    sessionId,
+    idx,
+    turnRef,
+    label,
+    driver,
+    target,
+    state,
+    targets ? JSON.stringify(targets) : null,
+    hasCourseCorrection,
+    ranTests,
+    usedTools,
+  );
 }
 
 function parseSSEEvents(text: string): Array<{ event: string; data: string }> {
@@ -940,7 +973,7 @@ describe('Export routes', () => {
       expect(json.error).toBe('Session not found');
     });
 
-    it('returns FCA binary context as JSON by default', async () => {
+    it('returns FCA binary context as JSON with unique object keys (${turn_ref} [step ${idx}])', async () => {
       const projId = 'proj-' + randomUUID();
       const sessId = 'sess-' + randomUUID();
       seedProjectAndSession(projId, sessId);
@@ -959,6 +992,10 @@ describe('Export routes', () => {
               driver: 'User_Decide',
               target: 'Target_Config',
               state: 'State_Success',
+              targets: ['Target_Config', 'Target_Test'],
+              has_course_correction: false,
+              ran_tests: true,
+              used_tools: true,
             },
             {
               step: 'Write algorithm',
@@ -977,17 +1014,138 @@ describe('Export routes', () => {
       const json = await res.json();
 
       expect(json.session_id).toBe(sessId);
-      expect(json.objects).toEqual(['Config env', 'Write algorithm']);
+      expect(json.objects).toEqual(['User#1 [step 1]', 'Assistant#2 [step 2]']);
       expect(json.attributes).toContain('LLM_Decide');
       expect(json.attributes).toContain('User_Decide');
+      expect(json.attributes).toContain('HasCourseCorrection');
+      expect(json.attributes).toContain('RanTests');
+      expect(json.attributes).toContain('UsedTools');
       expect(json.incidence).toHaveLength(2);
+      expect(json.context[0].object).toBe('User#1 [step 1]');
       expect(json.context[0].attributes.User_Decide).toBe(true);
       expect(json.context[0].attributes.Target_Config).toBe(true);
+      expect(json.context[0].attributes.Target_Test).toBe(true);
+      expect(json.context[0].attributes.RanTests).toBe(true);
+      expect(json.context[0].attributes.UsedTools).toBe(true);
+      expect(json.context[1].object).toBe('Assistant#2 [step 2]');
       expect(json.context[1].attributes.LLM_Decide).toBe(true);
       expect(json.context[1].attributes.Target_SrcCode).toBe(true);
     });
 
-    it('returns FCA cross-table as CSV when format=csv', async () => {
+    it('guarantees unique object keys across duplicate step labels', async () => {
+      const projId = 'proj-' + randomUUID();
+      const sessId = 'sess-' + randomUUID();
+      seedProjectAndSession(projId, sessId);
+
+      seedInsight(
+        sessId,
+        projId,
+        'summary',
+        'Session Summary',
+        'Summary content',
+        {
+          step_matrix: [
+            {
+              step: 'Run tests',
+              turn_ref: 'User#1',
+              driver: 'User_Decide',
+              target: 'Target_Test',
+              state: 'State_Error',
+            },
+            {
+              step: 'Run tests',
+              turn_ref: 'Assistant#3',
+              driver: 'Collab_Decide',
+              target: 'Target_Test',
+              state: 'State_Success',
+            },
+          ],
+        },
+      );
+
+      const app = createApp();
+      const res = await app.request(`/api/export/session/${sessId}/fca`);
+      expect(res.status).toBe(200);
+      const json = await res.json();
+
+      expect(json.objects).toHaveLength(2);
+      expect(json.objects[0]).toBe('User#1 [step 1]');
+      expect(json.objects[1]).toBe('Assistant#3 [step 2]');
+      expect(json.objects[0]).not.toBe(json.objects[1]);
+    });
+
+    it('prefers reading from session_steps table over summary metadata', async () => {
+      const projId = 'proj-' + randomUUID();
+      const sessId = 'sess-' + randomUUID();
+      seedProjectAndSession(projId, sessId);
+
+      // Seed summary metadata with 1 step
+      seedInsight(
+        sessId,
+        projId,
+        'summary',
+        'Old Summary',
+        'Summary content',
+        {
+          step_matrix: [
+            { step: 'From Metadata', turn_ref: 'User#1', driver: 'User_Decide', target: 'Target_Config', state: 'State_Success' },
+          ],
+        },
+      );
+
+      // Seed session_steps with 2 steps
+      seedSessionStep(sessId, 0, 'Turn#1', 'From session_steps 1', 'LLM_Decide', 'Target_SrcCode', 'State_Success');
+      seedSessionStep(sessId, 1, 'Turn#2', 'From session_steps 2', 'User_Decide', 'Target_Test', 'State_Success');
+
+      const app = createApp();
+      const res = await app.request(`/api/export/session/${sessId}/fca`);
+      expect(res.status).toBe(200);
+      const json = await res.json();
+
+      expect(json.objects).toEqual(['Turn#1 [step 1]', 'Turn#2 [step 2]']);
+      expect(json.context[0].step).toBe('From session_steps 1');
+      expect(json.context[1].step).toBe('From session_steps 2');
+    });
+
+    it('picks newest summary insight when multiple exist via ORDER BY created_at DESC', async () => {
+      const projId = 'proj-' + randomUUID();
+      const sessId = 'sess-' + randomUUID();
+      seedProjectAndSession(projId, sessId);
+
+      // Older summary insight
+      seedInsight(
+        sessId,
+        projId,
+        'summary',
+        'Older Summary',
+        'Content',
+        { step_matrix: [{ step: 'Older step', turn_ref: 'User#1', driver: 'User_Decide', target: 'Target_Config', state: 'State_Success' }] },
+        '2026-01-01T00:00:00Z',
+        '2026-01-01T00:00:00Z',
+      );
+
+      // Newer re-analyzed summary insight
+      seedInsight(
+        sessId,
+        projId,
+        'summary',
+        'Newer Summary',
+        'Content',
+        { step_matrix: [{ step: 'Newer step', turn_ref: 'Assistant#2', driver: 'LLM_Decide', target: 'Target_SrcCode', state: 'State_Success' }] },
+        '2026-01-02T00:00:00Z',
+        '2026-01-02T00:00:00Z',
+      );
+
+      const app = createApp();
+      const res = await app.request(`/api/export/session/${sessId}/fca`);
+      expect(res.status).toBe(200);
+      const json = await res.json();
+
+      expect(json.objects).toEqual(['Assistant#2 [step 1]']);
+      expect(json.context[0].step).toBe('Newer step');
+    });
+
+    it('returns FCA cross-table as CSV matching FCA_ATTRIBUTES when format=csv', async () => {
       const projId = 'proj-' + randomUUID();
       const sessId = 'sess-' + randomUUID();
       seedProjectAndSession(projId, sessId);
@@ -1006,6 +1164,9 @@ describe('Export routes', () => {
               driver: 'User_Decide',
               target: 'Target_Config',
               state: 'State_Success',
+              has_course_correction: false,
+              ran_tests: false,
+              used_tools: false,
             },
           ],
         },
@@ -1016,8 +1177,186 @@ describe('Export routes', () => {
       expect(res.status).toBe(200);
       expect(res.headers.get('content-type')).toContain('text/csv');
       const csv = await res.text();
-      expect(csv).toContain('Step,Turn,LLM_Decide,User_Decide');
-      expect(csv).toContain('"Config env","User#1",0,1,0,1,0,0,0,1,0,0');
+      expect(csv).toContain('Object,Step,Turn,LLM_Decide,User_Decide');
+      // 13 attribute columns
+      expect(csv).toContain('"User#1 [step 1]","Config env","User#1",0,1,0,1,0,0,0,1,0,0,0,0,0');
+    });
+  });
+
+  describe('GET /api/export/fca (Pooled Cross-Session)', () => {
+    it('returns empty context when no steps exist', async () => {
+      const app = createApp();
+      const res = await app.request('/api/export/fca');
+      expect(res.status).toBe(200);
+      const json = await res.json();
+
+      expect(json.objects).toEqual([]);
+      expect(json.incidence).toEqual([]);
+      expect(json.context).toEqual([]);
+      expect(json.total_sessions).toBe(0);
+      expect(json.total_steps).toBe(0);
+      expect(json.contingency_counts.total_steps).toBe(0);
+    });
+
+    it('returns pooled formal context (G, M, I) with contingency counts across sessions', async () => {
+      const projId1 = 'proj-' + randomUUID();
+      const sessId1 = 'sess-' + randomUUID();
+      seedProjectAndSession(projId1, sessId1);
+      testDb.prepare("UPDATE sessions SET started_at = '2025-06-15T12:00:00Z' WHERE id = ?").run(sessId1);
+
+      const projId2 = 'proj-' + randomUUID();
+      const sessId2 = 'sess-' + randomUUID();
+      seedProjectAndSession(projId2, sessId2);
+      testDb.prepare("UPDATE sessions SET started_at = '2025-06-15T10:00:00Z' WHERE id = ?").run(sessId2);
+
+      // Session 1 steps
+      seedSessionStep(sessId1, 0, 'User#1', 'Init config', 'User_Decide', 'Target_Config', 'State_Success', ['Target_Config'], 0, 0, 1);
+      seedSessionStep(sessId1, 1, 'Assistant#2', 'Implement feature', 'LLM_Decide', 'Target_SrcCode', 'State_Success', ['Target_SrcCode'], 0, 1, 1);
+
+      // Session 2 steps
+      seedSessionStep(sessId2, 0, 'User#1', 'Run tests', 'User_Decide', 'Target_Test', 'State_Blocked', ['Target_Test'], 1, 1, 0);
+
+      const app = createApp();
+      const res = await app.request('/api/export/fca');
+      expect(res.status).toBe(200);
+      const json = await res.json();
+
+      expect(json.total_sessions).toBe(2);
+      expect(json.total_steps).toBe(3);
+      expect(json.objects).toEqual([
+        `${sessId1}:User#1#1`,
+        `${sessId1}:Assistant#2#2`,
+        `${sessId2}:User#1#1`,
+      ]);
+      expect(json.attributes).toHaveLength(13);
+      expect(json.incidence).toHaveLength(3);
+
+      // Check contingency counts
+      expect(json.contingency_counts.total_steps).toBe(3);
+      expect(json.contingency_counts.by_driver.User_Decide).toBe(2);
+      expect(json.contingency_counts.by_driver.LLM_Decide).toBe(1);
+      expect(json.contingency_counts.by_state.State_Success).toBe(2);
+      expect(json.contingency_counts.by_state.State_Blocked).toBe(1);
+
+      // Driver blocked rates
+      expect(json.contingency_counts.driver_blocked_rates.User_Decide).toEqual({
+        total: 2,
+        blocked: 1,
+        rate: 0.5,
+      });
+      expect(json.contingency_counts.driver_blocked_rates.LLM_Decide).toEqual({
+        total: 1,
+        blocked: 0,
+        rate: 0,
+      });
+    });
+
+    it('filters pooled context by project', async () => {
+      const projId1 = 'proj-alpha';
+      const sessId1 = 'sess-1';
+      seedProjectAndSession(projId1, sessId1);
+
+      const projId2 = 'proj-beta';
+      const sessId2 = 'sess-2';
+      seedProjectAndSession(projId2, sessId2);
+
+      seedSessionStep(sessId1, 0, 'User#1', 'Step A', 'User_Decide', 'Target_Config', 'State_Success');
+      seedSessionStep(sessId2, 0, 'User#1', 'Step B', 'LLM_Decide', 'Target_SrcCode', 'State_Success');
+
+      const app = createApp();
+      const res = await app.request('/api/export/fca?project=proj-alpha');
+      expect(res.status).toBe(200);
+      const json = await res.json();
+
+      expect(json.total_sessions).toBe(1);
+      expect(json.total_steps).toBe(1);
+      expect(json.objects).toEqual(['sess-1:User#1#1']);
+      expect(json.context[0].step).toBe('Step A');
+    });
+
+    it('filters pooled context by date range (since/until)', async () => {
+      const projId = 'proj-' + randomUUID();
+      const sessId1 = 'sess-jan';
+      const sessId2 = 'sess-feb';
+
+      testDb.prepare(`
+        INSERT INTO projects (id, name, path, last_activity, session_count) VALUES (?, 'test', '/test', datetime('now'), 1)
+      `).run(projId);
+
+      testDb.prepare(`
+        INSERT INTO sessions (id, project_id, project_name, project_path, started_at, ended_at, message_count, source_tool, generated_title)
+        VALUES (?, ?, 'test', '/test', '2026-01-15T10:00:00Z', '2026-01-15T11:00:00Z', 5, 'claude-code', 'Jan Session')
+      `).run(sessId1, projId);
+
+      testDb.prepare(`
+        INSERT INTO sessions (id, project_id, project_name, project_path, started_at, ended_at, message_count, source_tool, generated_title)
+        VALUES (?, ?, 'test', '/test', '2026-02-15T10:00:00Z', '2026-02-15T11:00:00Z', 5, 'claude-code', 'Feb Session')
+      `).run(sessId2, projId);
+
+      seedSessionStep(sessId1, 0, 'User#1', 'Jan step', 'User_Decide', 'Target_Config', 'State_Success');
+      seedSessionStep(sessId2, 0, 'User#1', 'Feb step', 'LLM_Decide', 'Target_SrcCode', 'State_Success');
+
+      const app = createApp();
+      const res = await app.request('/api/export/fca?since=2026-02-01');
+      expect(res.status).toBe(200);
+      const json = await res.json();
+
+      expect(json.total_sessions).toBe(1);
+      expect(json.objects).toEqual(['sess-feb:User#1#1']);
+      expect(json.context[0].step).toBe('Feb step');
+    });
+
+    it('filters pooled context by driver and state', async () => {
+      const projId = 'proj-' + randomUUID();
+      const sessId = 'sess-' + randomUUID();
+      seedProjectAndSession(projId, sessId);
+
+      seedSessionStep(sessId, 0, 'User#1', 'Step 1', 'User_Decide', 'Target_Config', 'State_Success');
+      seedSessionStep(sessId, 1, 'Assistant#2', 'Step 2', 'LLM_Decide', 'Target_SrcCode', 'State_Blocked');
+      seedSessionStep(sessId, 2, 'Collab#3', 'Step 3', 'User_Decide', 'Target_Test', 'State_Blocked');
+
+      const app = createApp();
+      const res = await app.request('/api/export/fca?driver=User_Decide&state=State_Blocked');
+      expect(res.status).toBe(200);
+      const json = await res.json();
+
+      expect(json.total_steps).toBe(1);
+      expect(json.objects).toEqual([`${sessId}:Collab#3#3`]);
+      expect(json.context[0].step).toBe('Step 3');
+    });
+
+    it('excludes steps from soft-deleted sessions', async () => {
+      const projId = 'proj-' + randomUUID();
+      const sessId = 'sess-' + randomUUID();
+      seedProjectAndSession(projId, sessId);
+      seedSessionStep(sessId, 0, 'User#1', 'Step 1', 'User_Decide', 'Target_Config', 'State_Success');
+
+      // Soft delete session
+      testDb.prepare("UPDATE sessions SET deleted_at = datetime('now') WHERE id = ?").run(sessId);
+
+      const app = createApp();
+      const res = await app.request('/api/export/fca');
+      expect(res.status).toBe(200);
+      const json = await res.json();
+
+      expect(json.total_steps).toBe(0);
+      expect(json.objects).toEqual([]);
+    });
+
+    it('exports pooled context as CSV when format=csv', async () => {
+      const projId = 'proj-' + randomUUID();
+      const sessId = 'sess-' + randomUUID();
+      seedProjectAndSession(projId, sessId);
+      seedSessionStep(sessId, 0, 'User#1', 'Init config', 'User_Decide', 'Target_Config', 'State_Success');
+
+      const app = createApp();
+      const res = await app.request('/api/export/fca?format=csv');
+      expect(res.status).toBe(200);
+      expect(res.headers.get('content-type')).toContain('text/csv');
+      const csv = await res.text();
+
+      expect(csv).toContain('Object,Session,Step,Turn,LLM_Decide,User_Decide');
+      expect(csv).toContain(`"${sessId}:User#1#1","${sessId}","Init config","User#1",0,1,0,1,0,0,0,1,0,0,0,0,0`);
     });
   });
 });

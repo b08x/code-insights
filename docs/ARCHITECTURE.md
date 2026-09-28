@@ -298,8 +298,9 @@ Both friction points and effective patterns use canonical category taxonomies wi
 | `/api/export/generate/stream` | GET | SSE streaming for export generation |
 | `/api/export/session/:id/rails` | GET | Relational ActiveRecord-ready export (`rails-v1`) with unpacked decision attributes and episode step matrix |
 | `/api/export/session/:id/fca` | GET | Formal Concept Analysis (FCA) incidence matrix $(G, M, I)$ as JSON or CSV (`?format=json\|csv` or `Accept: text/csv`) |
+| `/api/export/fca` | GET | Cross-session pooled FCA binary context $(G, M, I)$ with contingency counts, driver blocked rates, and CSV export (`?project=&since=&until=&driver=&state=&format=csv`) |
 
-**Export Filtering & Formats:** The export system supports datetime range filtering for cross-session synthesis (see [ADR-export-datetime-range-filter.md](./architecture/decisions/ADR-export-datetime-range-filter.md)) as well as single-session ActiveRecord relational and Formal Concept Analysis (FCA) binary context exports. See [docs/modules/export.md](./modules/export.md) for endpoint contracts and schema definitions.
+**Export Filtering & Formats:** The export system supports datetime range filtering for cross-session synthesis (see [ADR-export-datetime-range-filter.md](./architecture/decisions/ADR-export-datetime-range-filter.md)) as well as single-session and cross-session pooled Formal Concept Analysis (FCA) binary context exports. See [docs/modules/export.md](./modules/export.md) for endpoint contracts and schema definitions.
 
 ### Facets
 

@@ -217,6 +217,10 @@ export interface SemanticStep {
   driver: FcaDriver;
   target: FcaTarget;
   state: FcaState;
+  targets?: FcaTarget[];
+  has_course_correction?: boolean;
+  ran_tests?: boolean;
+  used_tools?: boolean;
 }
 
 /**

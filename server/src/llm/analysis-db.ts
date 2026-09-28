@@ -5,6 +5,7 @@ export {
   saveInsightsToDb,
   deleteSessionInsights,
   saveFacetsToDb,
+  saveSessionStepsToDb,
   convertToInsightRows,
   convertPQToInsightRow,
   // Backward-compat alias — server code used the longer name from the original server module.
