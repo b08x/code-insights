@@ -1,5 +1,7 @@
 import { Hono } from 'hono';
 import { getDb } from '@code-insights/cli/db/client';
+import { loadConfig } from '@code-insights/cli/utils/config';
+import { getEffectivePlans, calculatePlansBreakdown } from '@code-insights/cli/utils/plans';
 
 const app = new Hono();
 
@@ -48,9 +50,31 @@ app.get('/dashboard', (c) => {
       SUM(cache_read_tokens) AS cache_read_tokens,
       SUM(estimated_cost_usd) AS estimated_cost_usd
     FROM sessions ${where}
-  `).get(...params);
+  `).get(...params) as Record<string, any>;
 
-  return c.json({ range, stats });
+  // Compute plan breakdown and actual spend for the range
+  const sessionRows = db.prepare(`
+    SELECT source_tool, started_at, estimated_cost_usd
+    FROM sessions ${where}
+  `).all(...params) as Array<{ source_tool: string; started_at: string; estimated_cost_usd: number | null }>;
+
+  const config = loadConfig();
+  const plans = getEffectivePlans(config);
+  const planBreakdown = calculatePlansBreakdown(sessionRows, range, plans);
+  const actualCostUsd = Math.round(planBreakdown.reduce((s, p) => s + p.actualCost, 0) * 100) / 100;
+  const tokenValueUsd = stats?.estimated_cost_usd ?? 0;
+  const totalSavingsUsd = Math.max(0, Math.round((tokenValueUsd - actualCostUsd) * 100) / 100);
+
+  return c.json({
+    range,
+    stats: {
+      ...stats,
+      actual_cost_usd: actualCostUsd,
+      token_value_usd: tokenValueUsd,
+      total_savings_usd: totalSavingsUsd,
+      plans: planBreakdown,
+    },
+  });
 });
 
 // Global cumulative usage stats

@@ -130,6 +130,9 @@ export default function DashboardPage() {
             isExact={true}
             totalTokens={totalTokens > 0 ? totalTokens : undefined}
             totalCost={totalCost > 0 ? totalCost : undefined}
+            actualCost={dashStats?.actual_cost_usd != null ? dashStats.actual_cost_usd : undefined}
+            tokenValue={dashStats?.token_value_usd != null ? dashStats.token_value_usd : undefined}
+            savings={dashStats?.total_savings_usd != null ? dashStats.total_savings_usd : undefined}
             tokenBreakdown={tokenBreakdown}
           />
         </div>

@@ -4,6 +4,7 @@ import inquirer from 'inquirer';
 import { loadConfig, saveConfig, isConfigured } from '../utils/config.js';
 import { trackEvent } from '../utils/telemetry.js';
 import { PROVIDERS, getDefaultModel } from '../constants/llm-providers.js';
+import { getEffectivePlans, DEFAULT_PLANS } from '../utils/plans.js';
 import type { ClaudeInsightConfig, LLMProviderConfig, LLMProvider } from '../types.js';
 
 // Map provider -> env var name for display
@@ -84,6 +85,18 @@ function showConfigAction(): void {
     console.log(chalk.gray(`    Same-proj:  ${r.sameProjectOnly !== false ? 'yes' : 'no'}`));
   }
 
+  // Pricing Plans (Subscriptions & Pay-As-You-Go)
+  const plans = getEffectivePlans(config);
+  console.log(chalk.white('\n  Pricing Plans:'));
+  for (const p of Object.values(plans)) {
+    const feeStr = p.type === 'subscription'
+      ? chalk.green(`$${(p.monthlyFee ?? 0).toFixed(2)}/mo`)
+      : p.type === 'free'
+      ? chalk.gray('free')
+      : chalk.yellow('pay-as-you-go');
+    console.log(chalk.gray(`    ${p.name.padEnd(42)} ${feeStr.padEnd(20)} [${p.tools.join(', ')}]`));
+  }
+
   // Telemetry — default is enabled; env vars can override at runtime
   console.log(chalk.white('\n  Telemetry:'));
   const telemetryEnabled = config.telemetry !== false;
@@ -128,6 +141,72 @@ configCommand
       console.error(chalk.red(`\nUnknown config key "${key}". Available: telemetry.\n`));
       process.exit(1);
     }
+  });
+
+// ── config plans ──────────────────────────────────────────────────────────────
+
+configCommand
+  .command('plans')
+  .description('View or configure pricing plans (subscriptions vs pay-as-you-go)')
+  .option('--set <setting>', 'Set a plan property (e.g. --set claude.monthlyFee=21.00 or --set gemini.monthlyFee=19.99)')
+  .option('--reset', 'Reset all plans to defaults')
+  .action((options: { set?: string; reset?: boolean }) => {
+    const existing = loadConfig() ?? {
+      sync: { claudeDir: '~/.claude/projects', excludeProjects: [] },
+    };
+    if (options.reset) {
+      delete existing.plans;
+      saveConfig(existing);
+      console.log(chalk.green('\nPricing plans reset to defaults.\n'));
+      return;
+    }
+    if (options.set) {
+      const match = options.set.match(/^([^.]+)\.([^=]+)=(.+)$/);
+      if (!match) {
+        console.error(chalk.red('\nInvalid format. Expected: <planId>.<property>=<value> (e.g. claude.monthlyFee=21.00)\n'));
+        process.exit(1);
+      }
+      const [, planId, prop, val] = match;
+      if (!existing.plans) {
+        existing.plans = { ...getEffectivePlans(existing) };
+      }
+      if (!existing.plans[planId]) {
+        const defPlan = DEFAULT_PLANS[planId];
+        if (defPlan) {
+          existing.plans[planId] = { ...defPlan };
+        } else {
+          existing.plans[planId] = {
+            id: planId,
+            name: planId,
+            type: 'subscription',
+            tools: [planId],
+          };
+        }
+      }
+      if (prop === 'monthlyFee') {
+        existing.plans[planId].monthlyFee = parseFloat(val);
+      } else if (prop === 'type') {
+        existing.plans[planId].type = val as any;
+      } else if (prop === 'name') {
+        existing.plans[planId].name = val;
+      }
+      saveConfig(existing);
+      console.log(chalk.green(`\nUpdated ${planId}.${prop} = ${val}\n`));
+      return;
+    }
+
+    const plans = getEffectivePlans(existing);
+    console.log(chalk.cyan('\n  Active Pricing Plans\n'));
+    for (const p of Object.values(plans)) {
+      const typeBadge = p.type === 'subscription'
+        ? chalk.green(`[Subscription: $${(p.monthlyFee ?? 0).toFixed(2)}/mo]`)
+        : p.type === 'free'
+        ? chalk.gray('[Free / Local]')
+        : chalk.yellow('[Pay-As-You-Go]');
+      console.log(`  ${chalk.bold(p.name)} ${typeBadge}`);
+      console.log(chalk.gray(`    Plan ID: ${p.id} | Tools: ${p.tools.join(', ')}`));
+    }
+    console.log(chalk.dim('\n  To update a monthly fee: code-insights config plans --set <planId>.monthlyFee=<amount>\n'));
   });
 
 // ── config llm ────────────────────────────────────────────────────────────────

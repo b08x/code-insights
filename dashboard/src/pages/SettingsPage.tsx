@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
-import { useLlmConfig, useSaveLlmConfig } from '@/hooks/useConfig';
+import { useLlmConfig, useSaveLlmConfig, usePlans, useSavePlans } from '@/hooks/useConfig';
 import { useUserProfile, normalizeGithubUsername } from '@/hooks/useUserProfile';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -13,13 +13,26 @@ import {
   Bot,
   Database,
   Loader2,
+  DollarSign,
 } from 'lucide-react';
 import { LlmProviderCard } from '@/components/settings/LlmProviderCard';
 
 export default function SettingsPage() {
   const { data: llmConfig, isLoading: configLoading } = useLlmConfig();
   const saveMutation = useSaveLlmConfig();
-  const { profile, saveProfile } = useUserProfile();
+  const { data: plans } = usePlans();
+  const savePlansMutation = useSavePlans();
+  const [planFees, setPlanFees] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    if (plans) {
+      const fees: Record<string, number> = {};
+      for (const [id, p] of Object.entries(plans)) {
+        fees[id] = p.monthlyFee;
+      }
+      setPlanFees(fees);
+    }
+  }, [plans]);
 
   // Profile card state
   const [profileName, setProfileName] = useState(profile?.name ?? '');
@@ -226,6 +239,86 @@ export default function SettingsPage() {
           });
         }}
       />
+
+      {/* Plans & Subscriptions Card */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <DollarSign className="h-5 w-5" />
+              <CardTitle className="text-base">Plans & Subscriptions</CardTitle>
+            </div>
+            {savePlansMutation.isPending && (
+              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+            )}
+          </div>
+          <CardDescription>
+            Configure flat-rate monthly subscriptions and pay-as-you-go settings for accurate spend tracking.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="divide-y divide-border">
+            {plans && Object.entries(plans).map(([id, plan]) => (
+              <div key={id} className="py-3 first:pt-0 last:pb-0 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-sm text-foreground">{plan.name}</span>
+                    <span className={`px-1.5 py-0.5 rounded text-[10px] ${plan.type === 'subscription' ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}>
+                      {plan.type === 'subscription' ? 'Subscription' : 'Pay-as-you-go'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {plan.description || `Tools: ${plan.tools.join(', ')}`}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  {plan.type === 'subscription' ? (
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs text-muted-foreground">$</span>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        className="w-24 h-8 text-xs font-mono"
+                        value={planFees[id] ?? plan.monthlyFee}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value);
+                          setPlanFees((prev) => ({ ...prev, [id]: isNaN(val) ? 0 : val }));
+                        }}
+                      />
+                      <span className="text-xs text-muted-foreground">/mo</span>
+                    </div>
+                  ) : (
+                    <span className="text-xs text-muted-foreground px-2">Per-token usage</span>
+                  )}
+                  {plan.type === 'subscription' && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 text-xs"
+                      disabled={savePlansMutation.isPending || (planFees[id] === undefined || planFees[id] === plan.monthlyFee)}
+                      onClick={async () => {
+                        const newFee = planFees[id] ?? plan.monthlyFee;
+                        const updated = {
+                          ...plans,
+                          [id]: {
+                            ...plan,
+                            monthlyFee: newFee,
+                          },
+                        };
+                        await savePlansMutation.mutateAsync(updated);
+                        toast.success(`Updated ${plan.name} to $${newFee.toFixed(2)}/mo`);
+                      }}
+                    >
+                      Save
+                    </Button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* CLI Setup */}
       <Card>

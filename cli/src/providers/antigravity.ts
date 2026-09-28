@@ -6,6 +6,7 @@ import type { SessionProvider } from './types.js';
 import type { ParsedSession, ParsedMessage, ToolCall, ToolResult } from '../types.js';
 import { getGeminiHomeDir } from '../utils/config.js';
 import { generateTitle, detectSessionCharacter } from '../parser/titles.js';
+import { getModelPricing } from '../utils/pricing.js';
 
 function findProjectRoot(filePath: string): string | null {
   let currentDir = fs.statSync(filePath, { throwIfNoEntry: false })?.isDirectory() 
@@ -219,6 +220,29 @@ export class AntigravityProvider implements SessionProvider {
 
       if (messages.length === 0) return null;
 
+      // Estimate token usage from message and tool content (~4 chars per token)
+      let inputChars = 0;
+      let outputChars = 0;
+      for (const m of messages) {
+        if (m.type === 'user') {
+          inputChars += m.content.length;
+        } else if (m.type === 'assistant') {
+          outputChars += m.content.length;
+          if (m.thinking) outputChars += m.thinking.length;
+          for (const tr of m.toolResults) {
+            inputChars += tr.output ? tr.output.length : 0;
+          }
+        }
+      }
+      const totalInputTokens = Math.round(inputChars / 4);
+      const totalOutputTokens = Math.round(outputChars / 4);
+      const primaryModel = 'gemini-2.0-flash';
+      const pricing = getModelPricing(primaryModel);
+      const estimatedCostUsd = Math.round(
+        (((totalInputTokens / 1_000_000) * pricing.input) +
+         ((totalOutputTokens / 1_000_000) * pricing.output)) * 10000
+      ) / 10000;
+
       const session: ParsedSession = {
         id: sessionId,
         projectPath,
@@ -240,13 +264,13 @@ export class AntigravityProvider implements SessionProvider {
         claudeVersion: null,
         sourceTool: 'antigravity',
         usage: {
-          totalInputTokens: 0,
-          totalOutputTokens: 0,
+          totalInputTokens,
+          totalOutputTokens,
           cacheCreationTokens: 0,
           cacheReadTokens: 0,
-          estimatedCostUsd: 0,
-          modelsUsed: [],
-          primaryModel: 'unknown',
+          estimatedCostUsd,
+          modelsUsed: [primaryModel],
+          primaryModel,
           usageSource: 'session',
         },
         messages,
@@ -379,12 +403,12 @@ export class AntigravityProvider implements SessionProvider {
         sourceTool: 'antigravity',
         usage: {
           totalInputTokens: 0,
-          totalOutputTokens: 0,
+          totalOutputTokens: Math.round(messages.reduce((sum, m) => sum + m.content.length, 0) / 4),
           cacheCreationTokens: 0,
           cacheReadTokens: 0,
-          estimatedCostUsd: 0,
-          modelsUsed: [],
-          primaryModel: 'unknown',
+          estimatedCostUsd: Math.round(((Math.round(messages.reduce((sum, m) => sum + m.content.length, 0) / 4) / 1_000_000) * 0.4) * 10000) / 10000,
+          modelsUsed: ['gemini-2.0-flash'],
+          primaryModel: 'gemini-2.0-flash',
           usageSource: 'session',
         },
         messages,

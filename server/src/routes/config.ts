@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { loadConfig, saveConfig } from '@code-insights/cli/utils/config';
-import type { ClaudeInsightConfig, LLMProviderConfig } from '@code-insights/cli/types';
+import type { ClaudeInsightConfig, LLMProviderConfig, PricingPlan } from '@code-insights/cli/types';
+import { getEffectivePlans } from '@code-insights/cli/utils/plans';
 import { loadLLMConfig, testLLMConfig } from '../llm/client.js';
 import { discoverOllamaModels } from '../llm/providers/ollama.js';
 import { discoverModels } from '../llm/discover.js';
@@ -294,6 +295,55 @@ app.post('/llm/models', async (c) => {
   } catch (error) {
     return c.json({ error: error instanceof Error ? error.message : 'Failed to fetch models' }, 500);
   }
+});
+
+// GET /api/config/plans — return active pricing plans
+app.get('/plans', (c) => {
+  const config = loadConfig();
+  const plans = getEffectivePlans(config);
+  return c.json({ plans });
+});
+
+// PUT /api/config/plans — update plan configuration
+app.put('/plans', async (c) => {
+  const body = await c.req.json<{
+    plans?: Record<string, Partial<PricingPlan>>;
+    reset?: boolean;
+  }>();
+
+  const config: ClaudeInsightConfig = loadConfig() ?? {
+    sync: { claudeDir: '', excludeProjects: [] },
+  };
+
+  if (body.reset) {
+    delete config.plans;
+    saveConfig(config);
+    return c.json({ plans: getEffectivePlans(null) });
+  }
+
+  if (body.plans) {
+    const current = getEffectivePlans(config);
+    for (const [key, planUpdate] of Object.entries(body.plans)) {
+      if (current[key]) {
+        current[key] = {
+          ...current[key],
+          ...planUpdate,
+        };
+      } else {
+        current[key] = {
+          id: key,
+          name: planUpdate.name || key,
+          type: planUpdate.type || 'subscription',
+          monthlyFee: planUpdate.monthlyFee,
+          tools: planUpdate.tools || [key],
+        };
+      }
+    }
+    config.plans = current;
+    saveConfig(config);
+  }
+
+  return c.json({ plans: getEffectivePlans(config) });
 });
 
 export default app;

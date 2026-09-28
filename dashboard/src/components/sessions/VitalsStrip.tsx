@@ -77,13 +77,19 @@ export function VitalsStrip({ session }: VitalsStripProps) {
           sublabel={hasTokens ? tokenSublabel : undefined}
         />
         <StatCell
-          label="Cost"
+          label={session.is_subscription ? 'Cost (Plan)' : 'Cost'}
           value={
-            session.estimated_cost_usd != null
+            session.is_subscription
+              ? '$0.00'
+              : session.estimated_cost_usd != null
               ? `$${session.estimated_cost_usd.toFixed(2)}`
               : '--'
           }
-          sublabel={modelsUsed.length > 0 ? modelsUsed.map(formatModelName).join(', ') : undefined}
+          sublabel={
+            session.is_subscription
+              ? `${session.plan_name || 'Plan'}${session.estimated_cost_usd != null ? ` ($${session.estimated_cost_usd.toFixed(2)} value)` : ''}`
+              : modelsUsed.length > 0 ? modelsUsed.map(formatModelName).join(', ') : undefined
+          }
         />
       </div>
     </div>

@@ -4,8 +4,17 @@ import type { StatsFlags } from './shared.js';
 
 // Wrapper that parses flags before calling the action
 function wrapAction(actionFn: (flags: StatsFlags) => Promise<void>) {
-  return async (options: Record<string, unknown>) => {
-    const flags = parseFlags(options);
+  return async (options: Record<string, unknown>, command?: Command) => {
+    const merged: Record<string, unknown> = { ...options };
+    if (command && (command as any).parent) {
+      const parent = (command as any).parent;
+      for (const [key, val] of Object.entries(parent.opts())) {
+        if (parent.getOptionValueSource?.(key) === 'cli') {
+          merged[key] = val;
+        }
+      }
+    }
+    const flags = parseFlags(merged);
     await actionFn(flags);
   };
 }
@@ -41,9 +50,18 @@ async function patternsAction(flags: StatsFlags): Promise<void> {
   return action(flags);
 }
 
+async function compareAction(flags: StatsFlags): Promise<void> {
+  const { compareAction: action } = await import('./actions/compare.js');
+  return action(flags);
+}
+
 const costCommand = applySharedFlags(
   new Command('cost').description('Cost breakdown by project, model, and time period')
 ).action(wrapAction(costAction));
+
+const compareCommand = applySharedFlags(
+  new Command('compare').description('Compare subscription plan spend vs pay-as-you-go API services')
+).action(wrapAction(compareAction));
 
 const projectsCommand = applySharedFlags(
   new Command('projects').description('Per-project detail — sessions, time, cost, models')
@@ -65,6 +83,7 @@ export const statsCommand = applySharedFlags(
   new Command('stats')
     .description('View usage statistics and analytics')
     .addCommand(costCommand)
+    .addCommand(compareCommand)
     .addCommand(projectsCommand)
     .addCommand(todayCommand)
     .addCommand(modelsCommand)

@@ -21,6 +21,7 @@ import {
 } from 'recharts';
 import type { DailyStats } from '@/lib/types';
 import { useThemeColors } from '@/lib/hooks/useThemeColors';
+import { useDashboardStats } from '@/hooks/useAnalytics';
 
 type AnalyticsRange = '7d' | '30d' | '90d' | 'all';
 const rangeOptions: { value: AnalyticsRange; label: string }[] = [
@@ -32,6 +33,7 @@ const rangeOptions: { value: AnalyticsRange; label: string }[] = [
 
 export default function AnalyticsPage() {
   const [range, setRange] = useState<AnalyticsRange>('7d');
+  const { data: dashStats } = useDashboardStats(range);
   const { data: sessions = [], isLoading: sessionsLoading, isError: sessionsError, refetch: refetchSessions } = useSessions({ limit: 500 });
   const { data: insights = [], isLoading: insightsLoading, isError: insightsError, refetch: refetchInsights } = useInsights();
   const { data: projects = [], isLoading: projectsLoading, isError: projectsError, refetch: refetchProjects } = useProjects();
@@ -260,17 +262,24 @@ export default function AnalyticsPage() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium">
-              {totalCost > 0 ? 'Estimated Cost' : 'Total Tokens'}
+              {dashStats?.actual_cost_usd != null ? 'Actual Spend' : totalCost > 0 ? 'Estimated Cost' : 'Total Tokens'}
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold">
-              {totalCost > 0
-                ? `$${totalCost.toFixed(2)}`
-                : totalTokens > 0
-                  ? formatTokenCount(totalTokens)
-                  : '—'}
+              {dashStats?.actual_cost_usd != null
+                ? `$${dashStats.actual_cost_usd.toFixed(2)}`
+                : totalCost > 0
+                  ? `$${totalCost.toFixed(2)}`
+                  : totalTokens > 0
+                    ? formatTokenCount(totalTokens)
+                    : '—'}
             </div>
+            {dashStats?.total_savings_usd != null && dashStats.total_savings_usd > 0 && (
+              <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1 font-medium">
+                Saved ${dashStats.total_savings_usd.toFixed(2)} vs token rates
+              </p>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -353,6 +362,62 @@ export default function AnalyticsPage() {
                     </span>
                   </div>
                 ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Plans & Subscriptions Breakdown */}
+      {dashStats?.plans && dashStats.plans.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base font-semibold">Plan vs Pay-As-You-Go API Comparison</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs text-left">
+                <thead className="border-b border-border text-muted-foreground font-medium">
+                  <tr>
+                    <th className="py-2 pr-4">Plan</th>
+                    <th className="py-2 pr-4">Type</th>
+                    <th className="py-2 pr-4">Plan Rate</th>
+                    <th className="py-2 pr-4">Your Spend</th>
+                    <th className="py-2 pr-4">Pay-As-You-Go API</th>
+                    <th className="py-2 pr-4">Net Savings</th>
+                    <th className="py-2 pr-4">ROI</th>
+                    <th className="py-2">Sessions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {dashStats.plans.map((p) => {
+                    const roi = p.actualCost > 0 && p.tokenValue > p.actualCost
+                      ? `${(p.tokenValue / p.actualCost).toFixed(1)}x`
+                      : '1.0x';
+                    return (
+                      <tr key={p.id}>
+                        <td className="py-2 pr-4 font-medium text-foreground">{p.name}</td>
+                        <td className="py-2 pr-4">
+                          <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] ${p.type === 'subscription' ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}>
+                            {p.type === 'subscription' ? 'Subscription' : 'Pay-as-you-go'}
+                          </span>
+                        </td>
+                        <td className="py-2 pr-4">
+                          {p.type === 'subscription' ? `$${p.monthlyFee.toFixed(2)}/mo` : 'Usage'}
+                        </td>
+                        <td className="py-2 pr-4 font-semibold text-primary">${p.actualCost.toFixed(2)}</td>
+                        <td className="py-2 pr-4 font-medium">${p.tokenValue.toFixed(2)}</td>
+                        <td className="py-2 pr-4 text-emerald-600 dark:text-emerald-400 font-semibold">
+                          {p.savings > 0 ? `+$${p.savings.toFixed(2)}` : '$0.00'}
+                        </td>
+                        <td className="py-2 pr-4 font-medium text-emerald-600 dark:text-emerald-400">
+                          {roi}
+                        </td>
+                        <td className="py-2">{p.sessionCount}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           </CardContent>
         </Card>

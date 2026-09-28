@@ -14,9 +14,12 @@ const SOURCE_LABELS: Record<string, string> = {
   'copilot-cli': 'Copilot CLI',
   copilot: 'Copilot',
   'gemini-cli': 'Gemini CLI',
+  antigravity: 'Antigravity',
   'hermes-agent': 'Hermes Agent',
   opencode: 'OpenCode',
   crush: 'Crush',
+  'mistral-vibe': 'Mistral Vibe',
+  vibe: 'Mistral Vibe',
 };
 
 const SCORE_TEXT_COLORS: Record<string, string> = {
@@ -133,7 +136,21 @@ export function CompactSessionRow({
           {session.estimated_cost_usd != null && (
             <>
               <span className="text-muted-foreground/30">&middot;</span>
-              <span>${session.estimated_cost_usd.toFixed(2)}</span>
+              {session.is_subscription ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="inline-flex items-center gap-1 font-medium text-emerald-600 dark:text-emerald-400">
+                      <span>Plan</span>
+                      <span className="text-[10px] text-muted-foreground">(${session.estimated_cost_usd.toFixed(2)})</span>
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="text-xs">
+                    Covered by {session.plan_name || 'Subscription Plan'} (${session.estimated_cost_usd.toFixed(2)} API token value)
+                  </TooltipContent>
+                </Tooltip>
+              ) : (
+                <span>${session.estimated_cost_usd.toFixed(2)}</span>
+              )}
             </>
           )}
           {insightTotal > 0 && (

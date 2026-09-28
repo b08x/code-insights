@@ -27,7 +27,8 @@ import { barChart } from '../render/charts.js';
 import { sectionHeader, metricGrid, getBarWidth } from '../render/layout.js';
 import { showWelcomeIfFirstRun } from '../../../utils/welcome.js';
 import { showTip } from '../../../utils/tips.js';
-import { isConfigured } from '../../../utils/config.js';
+import { isConfigured, loadConfig } from '../../../utils/config.js';
+import { getEffectivePlans } from '../../../utils/plans.js';
 
 export async function overviewAction(flags: StatsFlags): Promise<void> {
   const startTime = Date.now();
@@ -89,7 +90,9 @@ export async function overviewAction(flags: StatsFlags): Promise<void> {
       return;
     }
 
-    const stats = computeOverview(sessions, flags.period);
+    const config = loadConfig();
+    const plans = getEffectivePlans(config);
+    const stats = computeOverview(sessions, flags.period, plans);
     const periodLabel = formatPeriodLabel(flags.period);
 
     // Header
@@ -102,10 +105,14 @@ export async function overviewAction(flags: StatsFlags): Promise<void> {
     const isProjectScoped = !!flags.project;
     const modelCount = new Set(sessions.map(s => s.primaryModel).filter(Boolean)).size;
 
+    const hasSavings = (stats.totalSavings ?? 0) > 0;
+    const costLabel = hasSavings ? 'Spend' : 'Cost';
+    const costValue = hasSavings && stats.actualCost !== undefined ? formatMoney(stats.actualCost) : formatMoney(stats.totalCost);
+
     console.log();
     console.log(metricGrid([
       { label: 'Sessions', value: formatCount(stats.sessionCount) },
-      { label: 'Cost', value: formatMoney(stats.totalCost) },
+      { label: costLabel, value: costValue },
       { label: 'Time', value: formatDuration(stats.totalTimeMinutes) },
       { label: 'Messages', value: formatCount(stats.messageCount) },
       { label: 'Tokens', value: formatTokens(stats.totalTokens) },
@@ -151,14 +158,26 @@ export async function overviewAction(flags: StatsFlags): Promise<void> {
 
     // Sources section (only if 2+ source tools)
     if (stats.sourceTools.length >= 2) {
-      console.log(sectionHeader('SOURCES'));
+      console.log(sectionHeader('SOURCES (PLAN SPEND vs PAY-AS-YOU-GO API)'));
       const barWidth = getBarWidth();
       const lines = barChart(
-        stats.sourceTools.map(s => ({
-          label: s.name,
-          value: s.count,
-          suffix: `${colors.label(`${s.count} sessions`)}   ${colors.money(s.cost)}`,
-        })),
+        stats.sourceTools.map(s => {
+          let costInfo = colors.money(s.actualCost ?? s.cost);
+          if (s.isSubscription) {
+            costInfo += ` ${colors.success('[Plan]')}`;
+            if (s.apiCost !== undefined && s.apiCost > 0) {
+              const savedStr = (s.savings ?? 0) > 0 ? `, saved ${formatMoney(s.savings!)}` : '';
+              costInfo += `  ${colors.hint(`(API: ${formatMoney(s.apiCost)}${savedStr})`)}`;
+            }
+          } else {
+            costInfo += ` ${colors.label('[Pay-as-you-go]')}`;
+          }
+          return {
+            label: s.name,
+            value: s.count,
+            suffix: `${colors.label(`${s.count} sessions`)}   ${costInfo}`,
+          };
+        }),
         barWidth,
       );
       for (const line of lines) {

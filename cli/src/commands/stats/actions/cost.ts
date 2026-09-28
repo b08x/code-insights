@@ -19,6 +19,8 @@ import { sparkline, sparklineLabels } from '../render/charts.js';
 import { barChart } from '../render/charts.js';
 import { sectionHeader, metricGrid, getBarWidth } from '../render/layout.js';
 import { showTip } from '../../../utils/tips.js';
+import { loadConfig } from '../../../utils/config.js';
+import { getEffectivePlans } from '../../../utils/plans.js';
 
 export async function costAction(flags: StatsFlags): Promise<void> {
   const startTime = Date.now();
@@ -58,7 +60,9 @@ export async function costAction(flags: StatsFlags): Promise<void> {
       return;
     }
 
-    const cost = computeCostBreakdown(sessions, flags.period);
+    const config = loadConfig();
+    const plans = getEffectivePlans(config);
+    const cost = computeCostBreakdown(sessions, flags.period, plans);
     const periodLabel = formatPeriodLabel(flags.period);
 
     // No cost data at all
@@ -84,12 +88,42 @@ export async function costAction(flags: StatsFlags): Promise<void> {
 
     // Metric grid
     console.log();
-    console.log(metricGrid([
-      { label: 'Total', value: formatMoney(cost.totalCost) },
-      { label: 'Avg/day', value: formatMoney(cost.avgPerDay) },
-      { label: 'Avg/session', value: formatMoney(cost.avgPerSession) },
-      { label: 'Sessions', value: `${cost.sessionCount} (${cost.sessionsWithCostCount} with cost data)` },
-    ]));
+    const hasSubscriptions = cost.plans.some(p => p.type === 'subscription' && p.sessionCount > 0);
+    if (hasSubscriptions) {
+      console.log(metricGrid([
+        { label: 'Actual Spend', value: formatMoney(cost.actualCost) },
+        { label: 'API Value', value: formatMoney(cost.totalCost) },
+        { label: 'Plan Savings', value: `${formatMoney(cost.totalSavings)} (${formatPercent(cost.planSavingsPercent)})` },
+        { label: 'Sessions', value: `${cost.sessionCount} (${cost.sessionsWithCostCount} with cost data)` },
+      ]));
+    } else {
+      console.log(metricGrid([
+        { label: 'Total', value: formatMoney(cost.totalCost) },
+        { label: 'Avg/day', value: formatMoney(cost.avgPerDay) },
+        { label: 'Avg/session', value: formatMoney(cost.avgPerSession) },
+        { label: 'Sessions', value: `${cost.sessionCount} (${cost.sessionsWithCostCount} with cost data)` },
+      ]));
+    }
+
+    // Plan vs Pay-As-You-Go API comparison
+    const activePlans = cost.plans.filter(p => p.sessionCount > 0);
+    if (activePlans.length > 0) {
+      console.log(sectionHeader('PLAN VS PAY-AS-YOU-GO COMPARISON'));
+      for (const p of activePlans) {
+        const typeBadge = p.type === 'subscription'
+          ? colors.success(`[Plan: $${(p.monthlyFee ?? 0).toFixed(2)}/mo]`)
+          : p.type === 'free'
+          ? colors.label('[Free / Local]')
+          : colors.warning('[Pay-As-You-Go]');
+        const spendStr = `${colors.label('Your Spend:')} ${colors.money(p.periodCost)}`;
+        const valStr = `${colors.label('Pay-As-You-Go API:')} ${colors.money(p.tokenValue)}`;
+        const planRoi = p.periodCost > 0 ? (p.tokenValue / p.periodCost).toFixed(1) + 'x ROI' : '';
+        const saveStr = p.savings > 0 ? ` ${colors.success(`(Saved ${formatMoney(p.savings)}${planRoi ? `, ${planRoi}` : ''})`)}` : '';
+        const sessStr = colors.label(`(${p.sessionCount} sessions)`);
+        console.log(`  ${colors.value(p.planName)} ${typeBadge}`);
+        console.log(`    ${spendStr}    ${valStr}${saveStr}    ${sessStr}`);
+      }
+    }
 
     // Daily trend sparkline
     const spark = sparkline(cost.dailyTrend.map(d => d.value));

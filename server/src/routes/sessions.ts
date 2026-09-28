@@ -1,5 +1,7 @@
 import { Hono } from 'hono';
 import { getDb } from '@code-insights/cli/db/client';
+import { loadConfig } from '@code-insights/cli/utils/config';
+import { getEffectivePlans, findPlanForTool } from '@code-insights/cli/utils/plans';
 import { parseIntParam } from '../utils.js';
 
 /** Escape SQLite LIKE wildcard characters so user input is treated as literal text. */
@@ -65,9 +67,25 @@ app.get('/', (c) => {
     ${where}
     ORDER BY started_at DESC
     LIMIT ? OFFSET ?
-  `).all(...params, parseIntParam(limit, 50), parseIntParam(offset, 0));
+  `).all(...params, parseIntParam(limit, 50), parseIntParam(offset, 0)) as any[];
 
-  return c.json({ sessions });
+  const config = loadConfig();
+  const plans = getEffectivePlans(config);
+
+  const decoratedSessions = sessions.map(s => {
+    const plan = findPlanForTool(s.source_tool || 'claude-code', plans);
+    return {
+      ...s,
+      plan_id: plan.id,
+      plan_name: plan.name,
+      plan_type: plan.type,
+      is_subscription: plan.type === 'subscription',
+      token_value_usd: s.estimated_cost_usd,
+      actual_cost_usd: plan.type === 'subscription' ? 0 : (s.estimated_cost_usd ?? 0),
+    };
+  });
+
+  return c.json({ sessions: decoratedSessions });
 });
 
 app.post('/batch-update', async (c) => {
@@ -169,6 +187,10 @@ app.get('/:id', (c) => {
   
   if (!session) return c.json({ error: 'Not found' }, 404);
 
+  const config = loadConfig();
+  const plans = getEffectivePlans(config);
+  const plan = findPlanForTool(session.source_tool || 'claude-code', plans);
+
   const facets = db.prepare(`
     SELECT * FROM session_facets WHERE session_id = ?
   `).get(c.req.param('id'));
@@ -176,6 +198,12 @@ app.get('/:id', (c) => {
   return c.json({ 
     session: {
       ...session,
+      plan_id: plan.id,
+      plan_name: plan.name,
+      plan_type: plan.type,
+      is_subscription: plan.type === 'subscription',
+      token_value_usd: session.estimated_cost_usd,
+      actual_cost_usd: plan.type === 'subscription' ? 0 : (session.estimated_cost_usd ?? 0),
       facets: facets || null
     } 
   });

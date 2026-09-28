@@ -23,31 +23,56 @@ export interface UsageEntry {
 // Cache read tokens are priced at 10% of input price (Anthropic standard)
 // Cache creation tokens are priced at 25% more than input price
 const MODEL_PRICING: Record<string, ModelPricing> = {
-  // Claude 4.x family
-  'claude-opus-4-6':           { input: 5,   output: 25 },
-  'claude-opus-4-5':           { input: 5,   output: 25 },
-  'claude-opus-4-1':           { input: 15,  output: 75 },
-  'claude-opus-4':             { input: 15,  output: 75 },
-  'claude-sonnet-4-6':         { input: 3,   output: 15 },
-  'claude-sonnet-4-5':         { input: 3,   output: 15 },
-  'claude-sonnet-4':           { input: 3,   output: 15 },
-  'claude-haiku-4-5':          { input: 1,   output: 5 },
+  // Claude 4.x / 5.x family
+  'claude-opus-5':             { input: 5,    output: 25 },
+  'claude-opus-4-6':           { input: 5,    output: 25 },
+  'claude-opus-4-5':           { input: 5,    output: 25 },
+  'claude-opus-4-1':           { input: 15,   output: 75 },
+  'claude-opus-4':             { input: 15,   output: 75 },
+  'claude-opus':               { input: 15,   output: 75 },
+  'claude-sonnet-5':           { input: 3,    output: 15 },
+  'claude-sonnet-4-6':         { input: 3,    output: 15 },
+  'claude-sonnet-4-5':         { input: 3,    output: 15 },
+  'claude-sonnet-4':           { input: 3,    output: 15 },
+  'claude-sonnet':             { input: 3,    output: 15 },
+  'claude-haiku-4-5':          { input: 1,    output: 5 },
+  'claude-haiku':              { input: 0.8,  output: 4 },
   // Claude 3.5 family
   'claude-3-5-sonnet-20241022': { input: 3,   output: 15 },
   'claude-3-5-haiku-20241022':  { input: 0.8, output: 4 },
   'claude-haiku-3-5':           { input: 0.8, output: 4 },
   // Claude 3 family
-  'claude-3-opus-20240229':    { input: 15,  output: 75 },
-  'claude-3-sonnet-20240229':  { input: 3,   output: 15 },
+  'claude-3-opus-20240229':    { input: 15,   output: 75 },
+  'claude-3-sonnet-20240229':  { input: 3,    output: 15 },
   'claude-3-haiku-20240307':   { input: 0.25, output: 1.25 },
 
   // Gemini family
-  'gemini-2.0-pro':            { input: 3.5,  output: 10.5 },
-  'gemini-2.0-flash':          { input: 0.1,  output: 0.4 },
-  'gemini-1.5-pro':            { input: 3.5,  output: 10.5 },
+  'gemini-3.8-flash':          { input: 0.1,   output: 0.4 },
+  'gemini-3.1-pro':            { input: 3.5,   output: 10.5 },
+  'gemini-3.1-flash':          { input: 0.1,   output: 0.4 },
+  'gemini-2.5-flash':          { input: 0.1,   output: 0.4 },
+  'gemini-2.0-pro':            { input: 3.5,   output: 10.5 },
+  'gemini-2.0-flash':          { input: 0.1,   output: 0.4 },
+  'gemini-1.5-pro':            { input: 1.25,  output: 5.0 },
   'gemini-1.5-flash':          { input: 0.075, output: 0.3 },
-  'gemini-3.1-pro':            { input: 3.5,  output: 10.5 },
-  'gemini-3.1-flash':          { input: 0.1,  output: 0.4 },
+  'gemini-flash':              { input: 0.1,   output: 0.4 },
+  'gemini-pro':                { input: 1.25,  output: 5.0 },
+  'gemini':                    { input: 0.1,   output: 0.4 },
+
+  // Mistral family
+  'mistral-large':             { input: 2.0,  output: 6.0 },
+  'mistral-small':             { input: 0.2,  output: 0.6 },
+  'codestral':                 { input: 0.3,  output: 0.9 },
+  'mistral-medium':            { input: 0.4,  output: 1.2 },
+  'mistral-vibe':              { input: 0.2,  output: 0.6 },
+  'mistral':                   { input: 0.2,  output: 0.6 },
+
+  // Free / local models ($0.00)
+  'mimo':                      { input: 0,    output: 0 },
+  'free':                      { input: 0,    output: 0 },
+  'ollama':                    { input: 0,    output: 0 },
+  'llama':                     { input: 0,    output: 0 },
+  'qwen':                      { input: 0,    output: 0 },
 };
 
 // Default fallback pricing (sonnet-level)

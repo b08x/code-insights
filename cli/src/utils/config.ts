@@ -67,6 +67,9 @@ export function saveConfig(config: ClaudeInsightConfig): void {
       clean.dashboard.analysis = { ...config.dashboard.analysis };
     }
   }
+  if (config.plans !== undefined) {
+    clean.plans = config.plans;
+  }
   if (config.telemetry !== undefined) {
     clean.telemetry = config.telemetry;
   }

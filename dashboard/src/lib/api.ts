@@ -2,7 +2,7 @@
 // Base URL is relative in production (SPA served by the same server).
 // In Vite dev mode, the proxy forwards /api -> localhost:7890.
 
-import type { Project, Session, Message, Insight, DashboardStats, LLMConfig, ExportTemplate, SemanticStep } from '@/lib/types';
+import type { Project, Session, Message, Insight, DashboardStats, LLMConfig, ExportTemplate, SemanticStep, PricingPlan } from '@/lib/types';
 
 const BASE = '/api';
 
@@ -205,6 +205,17 @@ export function saveLlmConfig(body: {
   return request<{ ok: boolean }>('/config/llm', {
     method: 'PUT',
     body: JSON.stringify(body),
+  });
+}
+
+export function fetchPlans() {
+  return request<{ plans: Record<string, PricingPlan> }>('/config/plans');
+}
+
+export function savePlans(plans: Record<string, PricingPlan>) {
+  return request<{ success: boolean; plans: Record<string, PricingPlan> }>('/config/plans', {
+    method: 'PUT',
+    body: JSON.stringify({ plans }),
   });
 }
 

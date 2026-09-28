@@ -25,6 +25,9 @@ interface StatsHeroProps {
   isExact: boolean;
   totalTokens?: number;
   totalCost?: number;
+  actualCost?: number;
+  tokenValue?: number;
+  savings?: number;
   topModel?: string | null;
   tokenBreakdown?: {
     inputTokens: number;
@@ -50,10 +53,13 @@ export function StatsHero({
   isExact,
   totalTokens,
   totalCost,
+  actualCost,
+  tokenValue,
+  savings,
   topModel,
   tokenBreakdown,
 }: StatsHeroProps) {
-  const showUsage = (totalTokens ?? 0) > 0 || (totalCost ?? 0) > 0;
+  const showUsage = (totalTokens ?? 0) > 0 || (totalCost ?? 0) > 0 || (actualCost ?? 0) > 0;
 
   const coreCell = (
     key: string,
@@ -125,11 +131,37 @@ export function StatsHero({
               <div className="flex-1 min-w-[100px] px-3 py-2 border-r border-border last:border-r-0">
                 <div className="flex items-center gap-1.5 text-muted-foreground mb-0.5">
                   <DollarSign className="h-3 w-3" />
-                  <span className="text-[11px] font-medium uppercase tracking-wide">Cost</span>
+                  <span className="text-[11px] font-medium uppercase tracking-wide">
+                    {actualCost != null ? 'Spend' : 'Cost'}
+                  </span>
                 </div>
-                <div className="text-base font-bold text-primary">
-                  ${(totalCost ?? 0).toFixed(2)}
-                </div>
+                {actualCost != null ? (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="cursor-default">
+                        <div className="text-base font-bold text-primary">
+                          ${actualCost.toFixed(2)}
+                        </div>
+                        {savings != null && savings > 0 && (
+                          <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
+                            Saved ${savings.toFixed(2)}
+                          </div>
+                        )}
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" className="text-xs space-y-0.5">
+                      <p>Actual spend: ${actualCost.toFixed(2)} (Subscriptions + Usage)</p>
+                      <p>API token value: ${(tokenValue ?? totalCost ?? 0).toFixed(2)}</p>
+                      <p className="text-emerald-400 font-semibold">
+                        Plan savings: ${(savings ?? ((tokenValue ?? totalCost ?? 0) - actualCost)).toFixed(2)}
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                ) : (
+                  <div className="text-base font-bold text-primary">
+                    ${(totalCost ?? 0).toFixed(2)}
+                  </div>
+                )}
               </div>
 
               {topModel && (

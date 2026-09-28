@@ -16,6 +16,7 @@
     "./utils/browser": "./dist/utils/browser.js",
     "./constants/llm-providers": "./dist/constants/llm-providers.js",
     "./utils/pricing": "./dist/utils/pricing.js",
+    "./utils/plans": "./dist/utils/plans.js",
     "./utils/telemetry": "./dist/utils/telemetry.js",
     "./analysis/prompts": "./dist/analysis/prompts.js",
     "./analysis/prompt-types": "./dist/analysis/prompt-types.js",

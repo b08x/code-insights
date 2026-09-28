@@ -77,10 +77,34 @@ code-insights dashboard       # Start visual dashboard at http://localhost:7890
 | `sync` | Discover & import sessions | `--source [claude\|cursor\|copilot]` |
 | `insights [id]` | Run AI analysis on session | `--force`, `--claude`, `--native`, `--format [rich|json|quiet]` |
 | `reflect` | Compile cross-session synthesis | `--week [YYYY-W##]` |
-| `stats` | Fast terminal analytics | `today`, `cost`, `projects` |
+| `stats` | Fast terminal analytics & comparison | `overview`, `cost`, `compare`, `today`, `projects` |
+| `config` | Configure providers & subscription plans | `plans`, `plans --set <id>.monthlyFee=<amt>` |
 | `optimize` | Tune insight prompts via `@ax-llm/ax` | `run`, `status`, `list`, `apply`, `compare` |
 | `embeddings` | Manage SQLite vector database | `backfill`, `status`, `recompute` |
 | `search / vsearch / query` | Hybrid semantic search over messages | `--top-k` |
+
+---
+
+## Subscription Plans & Cost Comparison
+
+Developers often use flat-rate monthly subscriptions (e.g. Claude Pro, Google AI Premium / Antigravity, Mistral Pro) rather than paying raw API token bills. Code Insights natively tracks this duality:
+- **Actual Spend**: Flat monthly subscription fees allocated across your selected time window.
+- **Pay-As-You-Go API Equivalent**: What the raw token usage would cost if billed via public API endpoints.
+- **Net Savings & ROI**: Quantifies the real financial savings and value multiplier of your subscriptions.
+
+```bash
+# Compare subscription plan fees against pay-as-you-go API value
+code-insights stats compare --period 30d
+
+# View cost breakdown with subscription ROI metrics
+code-insights stats cost --period 30d
+
+# Inspect or adjust subscription plan monthly fees
+code-insights config plans
+code-insights config plans --set claude-pro.monthlyFee=21.00
+code-insights config plans --set google-ai-premium.monthlyFee=19.99
+code-insights config plans --set mistral-pro.monthlyFee=14.99
+```
 
 ---
 

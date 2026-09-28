@@ -28,7 +28,46 @@ export class LocalDataSource implements StatsDataSource {
 
   async prepare(flags: StatsFlags): Promise<PrepareResult> {
     // Initialize the DB (runs migrations if first use)
-    getDb();
+    const db = getDb();
+
+    // Clean up any temporary schema_version > 14 if it was recorded
+    try {
+      db.prepare('DELETE FROM schema_version WHERE version > 14').run();
+    } catch {
+      // Ignore
+    }
+
+    // Backfill token estimates and cost for Antigravity sessions from stored message contents
+    try {
+      db.exec(`
+        UPDATE sessions
+        SET
+          total_input_tokens = (
+            SELECT COALESCE(SUM(LENGTH(content)) / 4, 0)
+            FROM messages
+            WHERE messages.session_id = sessions.id AND messages.type = 'user'
+          ),
+          total_output_tokens = (
+            SELECT COALESCE(SUM(LENGTH(content)) / 4, 0)
+            FROM messages
+            WHERE messages.session_id = sessions.id AND messages.type = 'assistant'
+          ),
+          primary_model = 'gemini-2.0-flash'
+        WHERE source_tool = 'antigravity'
+          AND (total_input_tokens IS NULL OR total_input_tokens = 0);
+
+        UPDATE sessions
+        SET
+          estimated_cost_usd = ROUND(
+            (COALESCE(total_input_tokens, 0) * 0.0000001) + (COALESCE(total_output_tokens, 0) * 0.0000004),
+            4
+          )
+        WHERE source_tool = 'antigravity'
+          AND (estimated_cost_usd IS NULL OR estimated_cost_usd = 0);
+      `);
+    } catch {
+      // Ignore
+    }
 
     if (flags.noSync) {
       const count = getSessionCount();

@@ -66,6 +66,12 @@ export interface Session {
   compact_count: number;
   auto_compact_count: number;
   slash_commands: string | null; // JSON-encoded string[] — decode with parseJsonField<string[]>(x, [])
+  plan_id?: string;
+  plan_name?: string;
+  plan_type?: PlanType;
+  is_subscription?: boolean;
+  token_value_usd?: number | null;
+  actual_cost_usd?: number | null;
   facets?: {
     session_id: string;
     outcome_satisfaction: string;
@@ -78,6 +84,29 @@ export interface Session {
     extracted_at: string;
     analysis_version: string;
   } | null;
+}
+
+export type PlanType = 'subscription' | 'pay_as_you_go';
+
+export interface PricingPlan {
+  id: string;
+  name: string;
+  type: PlanType;
+  monthlyFee: number;
+  currency: string;
+  tools: string[];
+  description?: string;
+}
+
+export interface PlanCostSummary {
+  id: string;
+  name: string;
+  type: PlanType;
+  monthlyFee: number;
+  actualCost: number;
+  tokenValue: number;
+  savings: number;
+  sessionCount: number;
 }
 
 export type InsightType = 'summary' | 'decision' | 'learning' | 'technique' | 'prompt_quality';
@@ -171,6 +200,10 @@ export interface DashboardStats {
   cache_creation_tokens: number | null;
   cache_read_tokens: number | null;
   estimated_cost_usd: number | null;
+  actual_cost_usd?: number | null;
+  token_value_usd?: number | null;
+  total_savings_usd?: number | null;
+  plans?: PlanCostSummary[];
 }
 
 export type DecisionDriver = 'user' | 'agent' | 'collaborative';

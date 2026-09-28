@@ -376,11 +376,35 @@ export interface ProviderInfo {
   apiKeyLink?: string;
 }
 
+export type Period = '7d' | '30d' | '90d' | 'all';
+export type PlanType = 'subscription' | 'pay_as_you_go' | 'free';
+
+export interface PricingPlan {
+  id: string;               // e.g. 'gemini', 'claude', 'mistral', 'openrouter', 'default'
+  name: string;             // Display name (e.g. 'Google AI Premium (Antigravity)', 'Claude Pro', 'Mistral Pro')
+  type: PlanType;           // 'subscription' | 'pay_as_you_go' | 'free'
+  monthlyFee?: number;      // USD/month if type === 'subscription'
+  tools: string[];          // Source tools mapped to this plan, e.g. ['antigravity', 'gemini-cli']
+}
+
+export interface PlanBreakdownItem {
+  id: string;
+  name: string;
+  type: PlanType;
+  monthlyFee?: number;
+  actualCost: number;       // Prorated subscription fee or pay-as-you-go actual cost
+  tokenValue: number;       // Raw token pricing equivalent (what it would cost via API)
+  savings: number;          // tokenValue - actualCost
+  sessionCount: number;
+  tools: string[];
+}
+
 export interface ClaudeInsightConfig {
   sync: {
     claudeDir: string;
     excludeProjects: string[];
   };
+  plans?: Record<string, PricingPlan>;
   dashboard?: {
     port?: number;
     llm?: LLMProviderConfig; // used for background analysis

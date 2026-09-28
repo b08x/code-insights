@@ -18,8 +18,11 @@ import type {
   TodaySession,
   ModelStatsEntry,
   GroupedMetric,
+  PlanCostSummary,
 } from './types.js';
 import { getModelPricing } from '../../../utils/pricing.js';
+import { calculatePlansBreakdown, findPlanForTool } from '../../../utils/plans.js';
+import type { PricingPlan } from '../../../types.js';
 import {
   sum,
   diffMinutes,
@@ -105,12 +108,16 @@ function daysInPeriod(period: Period, sessions: SessionRow[]): number {
 export function computeOverview(
   sessions: SessionRow[],
   period: Period,
+  plans?: Record<string, PricingPlan>,
 ): StatsOverview {
   const sessionsWithCost = sessions.filter(
     (s) => s.estimatedCostUsd != null,
   );
 
   const totalCost = sum(sessionsWithCost, (s) => s.estimatedCostUsd!);
+  const planBreakdown = calculatePlansBreakdown(sessions, period, plans);
+  const actualCost = Math.round(planBreakdown.reduce((s, p) => s + p.actualCost, 0) * 100) / 100;
+  const totalSavings = Math.max(0, Math.round((totalCost - actualCost) * 100) / 100);
 
   const totalTokens = sum(sessionsWithCost, (s) =>
     (s.totalInputTokens ?? 0) +
@@ -133,12 +140,39 @@ export function computeOverview(
       (s) => s.sourceTool!,
     );
     for (const [name, group] of groups) {
+      const toolPlan = findPlanForTool(name, plans);
+      const isSubscription = toolPlan.type === 'subscription';
+      const apiCost = Math.round(sum(group, (s) => s.estimatedCostUsd ?? 0) * 100) / 100;
+
+      let actualCost = apiCost;
+      if (isSubscription) {
+        const monthlyFee = toolPlan.monthlyFee ?? 0;
+        if (period === '7d') {
+          actualCost = Math.round((monthlyFee * (7 / 30.4375)) * 100) / 100;
+        } else if (period === '30d') {
+          actualCost = monthlyFee;
+        } else if (period === '90d') {
+          actualCost = Math.round((monthlyFee * 3) * 100) / 100;
+        } else {
+          const activeMonths = new Set(
+            group.map((s) => s.startedAt.toISOString().slice(0, 7)),
+          ).size;
+          actualCost = Math.round((Math.max(1, activeMonths) * monthlyFee) * 100) / 100;
+        }
+      }
+
+      const savings = isSubscription ? Math.max(0, Math.round((apiCost - actualCost) * 100) / 100) : 0;
+
       sourceTools.push({
         name,
         count: group.length,
-        cost: sum(group, (s) => s.estimatedCostUsd ?? 0),
-        percent:
-          sessions.length > 0 ? (group.length / sessions.length) * 100 : 0,
+        cost: isSubscription ? actualCost : apiCost,
+        percent: sessions.length > 0 ? (group.length / sessions.length) * 100 : 0,
+        actualCost,
+        apiCost,
+        savings,
+        planName: toolPlan.name,
+        isSubscription,
       });
     }
     sourceTools.sort((a, b) => b.count - a.count);
@@ -153,6 +187,9 @@ export function computeOverview(
     sessionCount: sessions.length,
     messageCount: sum(sessions, (s) => s.messageCount),
     totalCost,
+    totalTokenValue: totalCost,
+    actualCost,
+    totalSavings,
     sessionsWithCostCount: sessionsWithCost.length,
     totalTimeMinutes: sum(sessions, (s) => diffMinutes(s.startedAt, s.endedAt)),
     totalTokens,
@@ -172,6 +209,7 @@ export function computeOverview(
 export function computeCostBreakdown(
   sessions: SessionRow[],
   period: Period,
+  plans?: Record<string, PricingPlan>,
 ): CostBreakdown {
   const costSessions = sessions.filter(
     (s) => s.estimatedCostUsd != null,
@@ -181,6 +219,23 @@ export function computeCostBreakdown(
   const avgPerDay = days > 0 ? totalCost / days : 0;
   const avgPerSession =
     costSessions.length > 0 ? totalCost / costSessions.length : 0;
+
+  // Plan-aware breakdown and actual spend calculation
+  const planBreakdown = calculatePlansBreakdown(sessions, period, plans);
+  const actualCost = Math.round(planBreakdown.reduce((s, p) => s + p.actualCost, 0) * 100) / 100;
+  const totalSavings = Math.max(0, Math.round((totalCost - actualCost) * 100) / 100);
+  const planSavingsPercent = totalCost > 0 ? Math.round((totalSavings / totalCost) * 1000) / 10 : 0;
+
+  const planSummaries: PlanCostSummary[] = planBreakdown.map((p) => ({
+    planId: p.id,
+    planName: p.name,
+    type: p.type,
+    monthlyFee: p.monthlyFee,
+    periodCost: p.actualCost,
+    sessionCount: p.sessionCount,
+    tokenValue: p.tokenValue,
+    savings: p.savings,
+  }));
 
   // Daily cost trend
   const dailyTrend = groupByDay(sessions, period, 'cost');
@@ -262,6 +317,11 @@ export function computeCostBreakdown(
 
   return {
     totalCost,
+    actualCost,
+    totalTokenValue: totalCost,
+    totalSavings,
+    planSavingsPercent,
+    plans: planSummaries,
     avgPerDay,
     avgPerSession,
     sessionCount: sessions.length,

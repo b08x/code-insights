@@ -122,6 +122,11 @@ export interface GroupedMetric {
   count: number;
   cost: number;
   percent: number;
+  actualCost?: number;
+  apiCost?: number;
+  savings?: number;
+  planName?: string;
+  isSubscription?: boolean;
 }
 
 /** Stats for a single calendar day */
@@ -135,6 +140,9 @@ export interface DayStats {
 export interface StatsOverview {
   sessionCount: number;
   totalCost: number;
+  actualCost?: number;
+  totalTokenValue?: number;
+  totalSavings?: number;
   totalTimeMinutes: number;
   messageCount: number;
   totalTokens: number;
@@ -150,9 +158,26 @@ export interface StatsOverview {
   sourceTools: GroupedMetric[];
 }
 
+export interface PlanCostSummary {
+  planId: string;
+  planName: string;
+  type: 'subscription' | 'pay_as_you_go' | 'free';
+  monthlyFee?: number;
+  periodCost: number;
+  sessionCount: number;
+  tokenValue: number;
+  savings: number;
+}
+
 /** Detailed cost breakdown */
 export interface CostBreakdown {
   totalCost: number;
+  actualCost: number;
+  totalTokenValue: number;
+  totalSavings: number;
+  planSavingsPercent: number;
+  plans: PlanCostSummary[];
+
   avgPerDay: number;
   avgPerSession: number;
   sessionCount: number;
