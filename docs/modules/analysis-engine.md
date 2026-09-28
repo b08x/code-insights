@@ -200,7 +200,7 @@ The parsed `step_matrix` is stored in the `summary` insight's `metadata` field, 
 The analytics engine models the duality between flat-rate subscriptions and pay-as-you-go API consumption:
 - **Plan Registry**: Configurable subscription tiers (`Google AI Premium / Antigravity` at $19.99/mo, `Claude Pro` at $21.00/mo, `Mistral Pro` at $14.99/mo) and unmetered/pay-as-you-go fallbacks.
 - **Spend Allocation**: Allocates flat subscription fees proportionally across queried analysis periods (e.g. 30 days = 100% monthly fee) while capturing pay-as-you-go charges directly.
-- **API Value & Net Savings**: Correlates actual session tokens against public model pricing tables to calculate Pay-As-You-Go API value, net savings (`API Value - Actual Spend`), and ROI multipliers (`API Value / Actual Spend`).
+- **API Value & Compute Leverage**: Correlates actual session tokens against public model pricing tables to calculate Pay-As-You-Go API value, absorbed value (`API Value - Actual Spend`), and compute leverage multipliers (`API Value / Actual Spend`), quantifying unmetered exploration and tooling runway.
 - **Antigravity Estimation**: Uses token estimation from transcript and message contents based on Gemini 2.0 Flash pricing to establish baseline API value.
 
 ## Quality Metrics

@@ -277,7 +277,9 @@ export default function AnalyticsPage() {
             </div>
             {dashStats?.total_savings_usd != null && dashStats.total_savings_usd > 0 && (
               <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1 font-medium">
-                Saved ${dashStats.total_savings_usd.toFixed(2)} vs token rates
+                {dashStats.actual_cost_usd && dashStats.actual_cost_usd > 0
+                  ? `${((dashStats.total_cost_usd ?? (dashStats.actual_cost_usd + dashStats.total_savings_usd)) / dashStats.actual_cost_usd).toFixed(1)}x compute leverage ($${dashStats.total_savings_usd.toFixed(2)} absorbed)`
+                  : `+$${dashStats.total_savings_usd.toFixed(2)} absorbed compute`}
               </p>
             )}
           </CardContent>
@@ -383,8 +385,8 @@ export default function AnalyticsPage() {
                     <th className="py-2 pr-4">Plan Rate</th>
                     <th className="py-2 pr-4">Your Spend</th>
                     <th className="py-2 pr-4">Pay-As-You-Go API</th>
-                    <th className="py-2 pr-4">Net Savings</th>
-                    <th className="py-2 pr-4">ROI</th>
+                    <th className="py-2 pr-4">Absorbed Value</th>
+                    <th className="py-2 pr-4">Leverage</th>
                     <th className="py-2">Sessions</th>
                   </tr>
                 </thead>

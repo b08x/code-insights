@@ -64,8 +64,8 @@ export async function compareAction(flags: StatsFlags): Promise<void> {
     console.log(metricGrid([
       { label: 'Your Spend', value: formatMoney(actualSpend) },
       { label: 'Pay-As-You-Go API', value: formatMoney(apiValue) },
-      { label: 'Net Savings', value: `${formatMoney(netSavings)} (${formatPercent(savingsPercent)})` },
-      { label: 'ROI Multiplier', value: `${roiMultiplier.toFixed(1)}x value` },
+      { label: 'Absorbed Value', value: `${formatMoney(netSavings)} (${formatPercent(savingsPercent)})` },
+      { label: 'Compute Leverage', value: `${roiMultiplier.toFixed(1)}x exploratory volume` },
     ]));
 
     // Plans comparison table
@@ -84,10 +84,10 @@ export async function compareAction(flags: StatsFlags): Promise<void> {
       const planRoi = p.actualCost > 0 ? (p.tokenValue / p.actualCost).toFixed(1) + 'x' : '1.0x';
       const spendFormatted = formatMoney(p.actualCost);
       const apiFormatted = formatMoney(p.tokenValue);
-      const saveFormatted = p.savings > 0 ? colors.success(`+$${p.savings.toFixed(2)} (${planRoi} ROI)`) : colors.label('$0.00');
+      const saveFormatted = p.savings > 0 ? colors.success(`+$${p.savings.toFixed(2)} (${planRoi} leverage)`) : colors.label('$0.00');
 
       console.log(`  ${colors.value(p.name)} ${badge}`);
-      console.log(`    ${colors.label('Your Spend:')} ${spendFormatted}    ${colors.label('Pay-As-You-Go API:')} ${apiFormatted}    ${colors.label('Savings:')} ${saveFormatted}    ${colors.label(`(${p.sessionCount} sessions)`)}`);
+      console.log(`    ${colors.label('Your Spend:')} ${spendFormatted}    ${colors.label('Pay-As-You-Go API:')} ${apiFormatted}    ${colors.label('Absorbed Value:')} ${saveFormatted}    ${colors.label(`(${p.sessionCount} sessions)`)}`);
       console.log(`    ${colors.hint(`Tools: ${p.tools.join(', ')}`)}`);
       console.log();
     }
@@ -100,7 +100,7 @@ export async function compareAction(flags: StatsFlags): Promise<void> {
         const subBadge = st.isSubscription ? colors.success('[Plan]') : colors.label('[Pay-as-you-go]');
         const spend = formatMoney(st.actualCost ?? st.cost);
         const apiVal = formatMoney(st.apiCost ?? st.cost);
-        const saved = st.savings && st.savings > 0 ? colors.success(`(Saved ${formatMoney(st.savings)})`) : '';
+        const saved = st.savings && st.savings > 0 ? colors.success(`(Absorbed ${formatMoney(st.savings)})`) : '';
         console.log(`  ${colors.value(st.name.padEnd(16))} ${subBadge}  ${colors.label(`${st.count} sessions`)}`);
         console.log(`    Spend: ${spend}    API Equivalent: ${apiVal}  ${saved}`);
       }

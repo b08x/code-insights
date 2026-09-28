@@ -61,6 +61,14 @@ Decision insight cards render structured attribution and architectural branching
 - **Initiating Intent**: Indigo target icon displaying the user requirement or overarching goal behind the decision.
 - **Branch Point**: Amber split icon highlighting the critical alternative design path branched away from.
 
+### Analytics & Economics View (`AnalyticsPage.tsx` & `StatsHero.tsx`)
+
+Visualizes session activity, token consumption, and compute economics across multiple AI providers and tools:
+- **`StatsHero`**: Global vitals header displaying aggregate Sessions, Messages, Tool Calls, Coding Time, Projects, Token counts, and Spend. When flat subscription plans are configured, renders **Compute Leverage** (e.g. `16.2x leverage`) with tooltip breakdowns of Actual Spend, API token equivalent, and Absorbed Compute.
+- **`AnalyticsPage`**: Features interactive activity charts, insight distribution by type, top projects, model usage distribution, and the **Plan vs Pay-As-You-Go API Comparison** table.
+  - Compares subscription rates ($19.99/mo Google AI Premium, $21.00/mo Claude Pro, $14.99/mo Mistral Pro) and pay-as-you-go against API token equivalents.
+  - Highlights **Absorbed Value** and **Compute Leverage**, framing the economics as unlocked exploratory compute for backend tooling, experimentation, and education.
+
 ### Patterns Page (`PatternsPage.tsx`)
 
 Cross-session synthesis for uncovering larger trends.

@@ -90,13 +90,13 @@ code-insights dashboard       # Start visual dashboard at http://localhost:7890
 Developers often use flat-rate monthly subscriptions (e.g. Claude Pro, Google AI Premium / Antigravity, Mistral Pro) rather than paying raw API token bills. Code Insights natively tracks this duality:
 - **Actual Spend**: Flat monthly subscription fees allocated across your selected time window.
 - **Pay-As-You-Go API Equivalent**: What the raw token usage would cost if billed via public API endpoints.
-- **Net Savings & ROI**: Quantifies the real financial savings and value multiplier of your subscriptions.
+- **Compute Leverage & Absorbed Value**: Quantifies the unmetered exploratory compute and leverage enabled by your subscriptions (freeing you to prototype, educate, and vibe code without per-token anxiety).
 
 ```bash
-# Compare subscription plan fees against pay-as-you-go API value
+# Compare subscription plan fees against pay-as-you-go API value and compute leverage
 code-insights stats compare --period 30d
 
-# View cost breakdown with subscription ROI metrics
+# View cost breakdown with compute leverage and absorbed value metrics
 code-insights stats cost --period 30d
 
 # Inspect or adjust subscription plan monthly fees

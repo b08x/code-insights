@@ -93,7 +93,7 @@ export async function costAction(flags: StatsFlags): Promise<void> {
       console.log(metricGrid([
         { label: 'Actual Spend', value: formatMoney(cost.actualCost) },
         { label: 'API Value', value: formatMoney(cost.totalCost) },
-        { label: 'Plan Savings', value: `${formatMoney(cost.totalSavings)} (${formatPercent(cost.planSavingsPercent)})` },
+        { label: 'Absorbed Value', value: `${formatMoney(cost.totalSavings)} (${formatPercent(cost.planSavingsPercent)})` },
         { label: 'Sessions', value: `${cost.sessionCount} (${cost.sessionsWithCostCount} with cost data)` },
       ]));
     } else {
@@ -117,8 +117,8 @@ export async function costAction(flags: StatsFlags): Promise<void> {
           : colors.warning('[Pay-As-You-Go]');
         const spendStr = `${colors.label('Your Spend:')} ${colors.money(p.periodCost)}`;
         const valStr = `${colors.label('Pay-As-You-Go API:')} ${colors.money(p.tokenValue)}`;
-        const planRoi = p.periodCost > 0 ? (p.tokenValue / p.periodCost).toFixed(1) + 'x ROI' : '';
-        const saveStr = p.savings > 0 ? ` ${colors.success(`(Saved ${formatMoney(p.savings)}${planRoi ? `, ${planRoi}` : ''})`)}` : '';
+        const planRoi = p.periodCost > 0 ? (p.tokenValue / p.periodCost).toFixed(1) + 'x leverage' : '';
+        const saveStr = p.savings > 0 ? ` ${colors.success(`(+${formatMoney(p.savings)} absorbed${planRoi ? `, ${planRoi}` : ''})`)}` : '';
         const sessStr = colors.label(`(${p.sessionCount} sessions)`);
         console.log(`  ${colors.value(p.planName)} ${typeBadge}`);
         console.log(`    ${spendStr}    ${valStr}${saveStr}    ${sessStr}`);

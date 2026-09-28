@@ -144,7 +144,9 @@ export function StatsHero({
                         </div>
                         {savings != null && savings > 0 && (
                           <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
-                            Saved ${savings.toFixed(2)}
+                            {actualCost > 0
+                              ? `${((tokenValue ?? (actualCost + savings)) / actualCost).toFixed(1)}x leverage`
+                              : `+$${savings.toFixed(2)} absorbed`}
                           </div>
                         )}
                       </div>
@@ -153,7 +155,7 @@ export function StatsHero({
                       <p>Actual spend: ${actualCost.toFixed(2)} (Subscriptions + Usage)</p>
                       <p>API token value: ${(tokenValue ?? totalCost ?? 0).toFixed(2)}</p>
                       <p className="text-emerald-400 font-semibold">
-                        Plan savings: ${(savings ?? ((tokenValue ?? totalCost ?? 0) - actualCost)).toFixed(2)}
+                        Compute leverage: {actualCost > 0 ? `${((tokenValue ?? (actualCost + (savings ?? 0))) / actualCost).toFixed(1)}x` : '—'} (${(savings ?? ((tokenValue ?? totalCost ?? 0) - actualCost)).toFixed(2)} absorbed compute)
                       </p>
                     </TooltipContent>
                   </Tooltip>

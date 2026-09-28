@@ -166,8 +166,10 @@ export async function overviewAction(flags: StatsFlags): Promise<void> {
           if (s.isSubscription) {
             costInfo += ` ${colors.success('[Plan]')}`;
             if (s.apiCost !== undefined && s.apiCost > 0) {
-              const savedStr = (s.savings ?? 0) > 0 ? `, saved ${formatMoney(s.savings!)}` : '';
-              costInfo += `  ${colors.hint(`(API: ${formatMoney(s.apiCost)}${savedStr})`)}`;
+              const leverageStr = (s.savings ?? 0) > 0 && (s.actualCost ?? 0) > 0
+                ? `, ${(s.apiCost / s.actualCost!).toFixed(1)}x leverage`
+                : '';
+              costInfo += `  ${colors.hint(`(API: ${formatMoney(s.apiCost)}${leverageStr})`)}`;
             }
           } else {
             costInfo += ` ${colors.label('[Pay-as-you-go]')}`;
