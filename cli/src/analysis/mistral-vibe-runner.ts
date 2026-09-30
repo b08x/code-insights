@@ -1,9 +1,14 @@
 import { execFileSync } from 'child_process';
-import { type AnalysisRunner, type RunAnalysisParams, type RunAnalysisResult } from './runner-types.js';
+import { type AnalysisRunner, type RunAnalysisParams, type RunAnalysisResult, type RunnerConfig } from './runner-types.js';
 import chalk from 'chalk';
 
 export class MistralVibeRunner implements AnalysisRunner {
   readonly name = 'mistral-vibe-cli';
+  readonly model: string;
+
+  constructor(private readonly config: RunnerConfig = {}) {
+    this.model = config.model ?? 'mistral-vibe';
+  }
 
   /**
    * Validate that the `vibe` CLI is available in PATH.
@@ -47,6 +52,8 @@ export class MistralVibeRunner implements AnalysisRunner {
           timeout: 300_000,    // 5-minute hard limit
           maxBuffer: 30 * 1024 * 1024,
           stdio: ['pipe', 'pipe', 'pipe'], // Capture stdout and stderr
+          // vibe reads any config field from VIBE_*; only override when a model is configured.
+          ...(this.config.model ? { env: { ...process.env, VIBE_ACTIVE_MODEL: this.config.model } } : {}),
         });
 
         // parse the programmatic JSON output (array of message objects)
@@ -89,7 +96,7 @@ export class MistralVibeRunner implements AnalysisRunner {
           durationMs: Date.now() - start,
           inputTokens: 0,
           outputTokens: 0,
-          model: 'mistral-vibe',
+          model: this.model,
           provider: 'mistral-vibe-cli',
         };
 

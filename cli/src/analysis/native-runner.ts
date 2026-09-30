@@ -12,7 +12,7 @@ import { execFileSync } from 'child_process';
 import { writeFileSync, unlinkSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import type { AnalysisRunner, RunAnalysisParams, RunAnalysisResult } from './runner-types.js';
+import type { AnalysisRunner, RunAnalysisParams, RunAnalysisResult, RunnerConfig } from './runner-types.js';
 
 // `claude -p --output-format json` returns a JSON array of typed event objects.
 // We care only about the final result event.
@@ -86,6 +86,12 @@ function extractResultFromEnvelope(rawOutput: string): string {
 
 export class ClaudeNativeRunner implements AnalysisRunner {
   readonly name = 'claude-code-native';
+  readonly model: string;
+
+  constructor(private readonly config: RunnerConfig = {}) {
+    // 'claude-native' is the legacy label when the CLI picks its own default model.
+    this.model = config.model ?? 'claude-native';
+  }
 
   /**
    * Validate that the `claude` CLI is available in PATH.
@@ -131,6 +137,8 @@ export class ClaudeNativeRunner implements AnalysisRunner {
       if (schemaFile) {
         args.push('--json-schema', schemaFile);
       }
+      if (this.config.model) args.push('--model', this.config.model);
+      if (this.config.variant) args.push('--effort', this.config.variant);
 
       let rawOutput: string;
       try {
@@ -150,7 +158,7 @@ export class ClaudeNativeRunner implements AnalysisRunner {
               durationMs: Date.now() - start,
               inputTokens: 0,
               outputTokens: 0,
-              model: 'claude-native',
+              model: this.model,
               provider: 'claude-code-native',
             };
           } catch (innerErr: any) {
@@ -173,7 +181,7 @@ export class ClaudeNativeRunner implements AnalysisRunner {
         durationMs: Date.now() - start,
         inputTokens: 0,
         outputTokens: 0,
-        model: 'claude-native',
+        model: this.model,
         provider: 'claude-code-native',
       };
     } finally {

@@ -59,12 +59,12 @@ export async function queueStatusCommand(opts: { quiet?: boolean } = {}): Promis
 
 // ── queue process ─────────────────────────────────────────────────────────────
 
-export async function queueProcessCommand(opts: { quiet?: boolean; codex?: boolean; claude?: boolean; antigravity?: boolean; vibe?: boolean } = {}): Promise<void> {
-  const { quiet = false, codex = false, claude = false, antigravity = false, vibe = false } = opts;
+export async function queueProcessCommand(opts: { quiet?: boolean; codex?: boolean; claude?: boolean; antigravity?: boolean; vibe?: boolean; opencode?: boolean } = {}): Promise<void> {
+  const { quiet = false, codex = false, claude = false, antigravity = false, vibe = false, opencode = false } = opts;
   const log = quiet ? () => {} : console.log.bind(console);
 
   try {
-    const count = await processQueue({ quiet, useCodex: codex, useClaude: claude, useAntigravity: antigravity, useVibe: vibe });
+    const count = await processQueue({ quiet, useCodex: codex, useClaude: claude, useAntigravity: antigravity, useVibe: vibe, useOpencode: opencode });
     if (count === 0) {
       log(chalk.dim('[Code Insights] No pending items in queue'));
     } else {
@@ -135,7 +135,8 @@ export function buildQueueCommand(): Command {
     .option('--claude', 'Use claude -p for processing')
     .option('--antigravity', 'Use antigravity -p for processing')
     .option('--vibe', 'Use vibe for processing')
-    .action((opts) => queueProcessCommand({ quiet: opts.quiet, codex: opts.codex, claude: opts.claude, antigravity: opts.antigravity, vibe: opts.vibe }));
+    .option('--opencode', 'Use opencode run for processing')
+    .action((opts) => queueProcessCommand({ quiet: opts.quiet, codex: opts.codex, claude: opts.claude, antigravity: opts.antigravity, vibe: opts.vibe, opencode: opts.opencode }));
 
   queueCmd
     .command('retry [session_id]')

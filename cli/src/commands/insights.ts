@@ -2,7 +2,7 @@
  * insights command — analyze a session using configured LLM or a native CLI runner.
  *
  * Modes:
- *   --native / --codex / --claude / --antigravity / --vibe   Native CLI runners (user's subscription)
+ *   --native / --codex / --claude / --antigravity / --vibe / --opencode   Native CLI runners (user's subscription)
  *   (default)  Use configured LLM provider (OpenAI, Anthropic, Gemini, Ollama, ...)
  *
  * All analysis logic lives in analysis/pipeline.ts (analyzeSessionPipeline). This command only
@@ -26,6 +26,7 @@ import { ClaudeNativeRunner } from '../analysis/native-runner.js';
 import { CodexNativeRunner } from '../analysis/codex-runner.js';
 import { AntigravityNativeRunner } from '../analysis/antigravity-runner.js';
 import { MistralVibeRunner } from '../analysis/mistral-vibe-runner.js';
+import { OpenCodeRunner } from '../analysis/opencode-runner.js';
 import { ProviderRunner } from '../analysis/provider-runner.js';
 import { analyzeSessionPipeline, pipelineFailureToError } from '../analysis/pipeline.js';
 import { FallbackNativeRunner } from '../analysis/native-fallback.js';
@@ -60,6 +61,7 @@ export interface InsightsCommandOptions {
   claude?: boolean;
   antigravity?: boolean;
   vibe?: boolean;
+  opencode?: boolean;
   hookMode?: boolean;
   force?: boolean;
   quiet?: boolean;
@@ -79,6 +81,9 @@ export async function runInsightsCommand(options: InsightsCommandOptions): Promi
   let runner: AnalysisRunner;
   if (options._runner) {
     runner = options._runner;
+  } else if (options.opencode) {
+    OpenCodeRunner.validate();
+    runner = new OpenCodeRunner();
   } else if (options.vibe) {
     MistralVibeRunner.validate();
     runner = new MistralVibeRunner();
@@ -175,6 +180,7 @@ export async function insightsCommand(
     claude?: boolean;
     antigravity?: boolean;
     vibe?: boolean;
+  opencode?: boolean;
     hook?: boolean;
     source?: string;
     force?: boolean;
@@ -224,6 +230,7 @@ export async function insightsCommand(
       claude: opts.claude ?? false,
       antigravity: opts.antigravity ?? false,
       vibe: opts.vibe ?? false,
+      opencode: opts.opencode ?? false,
       hookMode: opts.hook ?? false,
       force: opts.force ?? false,
       quiet,
@@ -252,6 +259,7 @@ export async function insightsCheckCommand(opts: {
   claude?: boolean;
   antigravity?: boolean;
   vibe?: boolean;
+  opencode?: boolean;
 }): Promise<void> {
   const days = opts.days ?? 7;
   const quiet = opts.quiet ?? false;
@@ -287,7 +295,7 @@ export async function insightsCheckCommand(opts: {
     // --analyze: process all found sessions with progress output
     if (analyze || count <= 2) {
       let runner: AnalysisRunner | undefined;
-      type RunnerType = 'claude' | 'codex' | 'antigravity' | 'vibe' | 'provider';
+      type RunnerType = 'claude' | 'codex' | 'antigravity' | 'vibe' | 'opencode' | 'provider';
 
       const initializeRunner = (type: RunnerType): AnalysisRunner | undefined => {
         try {
@@ -303,6 +311,9 @@ export async function insightsCheckCommand(opts: {
           } else if (type === 'vibe') {
             MistralVibeRunner.validate();
             return new MistralVibeRunner();
+          } else if (type === 'opencode') {
+            OpenCodeRunner.validate();
+            return new OpenCodeRunner();
           } else {
             try {
               return ProviderRunner.fromConfig();
@@ -328,6 +339,8 @@ export async function insightsCheckCommand(opts: {
           currentRunnerType = 'claude';
         } else if (opts.vibe) {
           currentRunnerType = 'vibe';
+        } else if (opts.opencode) {
+          currentRunnerType = 'opencode';
         } else if (opts.native) {
           currentRunnerType = 'codex';
         } else {
@@ -417,6 +430,7 @@ export async function insightsCheckCommand(opts: {
         else if (opts.codex) runnerType = 'codex';
         else if (opts.claude) runnerType = 'claude';
         else if (opts.vibe) runnerType = 'vibe';
+        else if (opts.opencode) runnerType = 'opencode';
         else if (opts.native) runnerType = 'codex';
         else runnerType = 'provider';
 

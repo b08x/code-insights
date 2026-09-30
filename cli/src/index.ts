@@ -177,6 +177,7 @@ const insightsCmd = program
   .option('--claude', 'Use claude -p (your Claude subscription, no API key required)')
   .option('--antigravity', 'Use antigravity -p (Google Antigravity CLI, no API key required)')
   .option('--vibe', 'Use vibe CLI (Mistral Vibe, no API key required)')
+  .option('--opencode', 'Use opencode run (OpenCode CLI, default model unless configured)')
   .option('--hook', 'Read session context from stdin (for Claude Code SessionEnd hook)')
   .option('-s, --source <tool>', 'Source tool identifier (default: claude-code)')
   .option('--force', 'Re-analyze even if already analyzed at this session length')
@@ -197,6 +198,7 @@ insightsCmd
   .option('--claude', 'Use claude -p for batch analysis')
   .option('--antigravity', 'Use antigravity -p for batch analysis')
   .option('--vibe', 'Use vibe CLI for batch analysis')
+  .option('--opencode', 'Use opencode run for batch analysis')
   .action(async (opts, cmd) => {
     const parentOpts = cmd.parent?.opts() || {};
     await insightsCheckCommand({
@@ -208,6 +210,7 @@ insightsCmd
       claude: opts.claude ?? parentOpts.claude,
       antigravity: opts.antigravity ?? parentOpts.antigravity,
       vibe: opts.vibe ?? parentOpts.vibe,
+      opencode: opts.opencode ?? parentOpts.opencode,
     });
   });
 

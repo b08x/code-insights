@@ -18,6 +18,7 @@ import { ClaudeNativeRunner } from './native-runner.js';
 import { CodexNativeRunner } from './codex-runner.js';
 import { AntigravityNativeRunner } from './antigravity-runner.js';
 import { MistralVibeRunner } from './mistral-vibe-runner.js';
+import { OpenCodeRunner } from './opencode-runner.js';
 import type { AnalysisRunner } from './runner-types.js';
 
 export interface ProcessQueueOptions {
@@ -32,6 +33,8 @@ export interface ProcessQueueOptions {
   useAntigravity?: boolean;
   /** Explicitly use vibe if 'native' runner is requested */
   useVibe?: boolean;
+  /** Explicitly use opencode if 'native' runner is requested */
+  useOpencode?: boolean;
 }
 
 /**
@@ -55,11 +58,24 @@ export async function processQueue(options: ProcessQueueOptions = {}): Promise<n
   let codexRunner: CodexNativeRunner | undefined;
   let antigravityRunner: AntigravityNativeRunner | undefined;
   let vibeRunner: MistralVibeRunner | undefined;
+  let opencodeRunner: OpenCodeRunner | undefined;
   
-  let currentNativeType: 'claude' | 'codex' | 'antigravity' | 'vibe' = 
-    options.useVibe ? 'vibe' : (options.useAntigravity ? 'antigravity' : (options.useCodex ? 'codex' : 'claude'));
+  let currentNativeType: 'claude' | 'codex' | 'antigravity' | 'vibe' | 'opencode' = 
+    options.useOpencode ? 'opencode' : options.useVibe ? 'vibe' : (options.useAntigravity ? 'antigravity' : (options.useCodex ? 'codex' : 'claude'));
 
   const getNativeRunner = (): AnalysisRunner | undefined => {
+    // OpenCode is opt-in only: not part of the fallback chain (see native-fallback.ts), so a
+    // missing CLI is a hard failure rather than a silent switch to a different model.
+    if (currentNativeType === 'opencode') {
+      if (!opencodeRunner) {
+        try {
+          OpenCodeRunner.validate();
+          opencodeRunner = new OpenCodeRunner();
+        } catch { return undefined; }
+      }
+      return opencodeRunner;
+    }
+
     if (currentNativeType === 'vibe') {
       if (!vibeRunner) {
         try {

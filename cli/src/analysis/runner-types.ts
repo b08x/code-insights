@@ -8,6 +8,13 @@
 
 import type { ContentBlock } from '../llm/types.js';
 
+/** Optional model/variant selection for CLI runners; unset fields keep the CLI's own defaults. */
+export interface RunnerConfig {
+  model?: string;
+  /** Provider-specific reasoning effort (e.g. 'high'); only runners whose CLI supports it use it. */
+  variant?: string;
+}
+
 export interface AnalysisRunner {
   readonly name: string;
   runAnalysis(params: RunAnalysisParams): Promise<RunAnalysisResult>;
