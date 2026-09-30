@@ -1,0 +1,38 @@
+{
+  "efficiency_score": 62,
+  "assessment": "Early prompts were vague; later prompts were precise.",
+  "message_overhead": "medium",
+  "takeaways": [
+    {
+      "before": "make the thing work",
+      "after": "Fix the failing auth tests in auth.test.ts without touching fixtures",
+      "category": "vague-request"
+    }
+  ],
+  "findings": [
+    {
+      "category": "vague-request",
+      "type": "deficit",
+      "description": "Opening prompt had no object.",
+      "message_ref": "User#0",
+      "impact": "high",
+      "confidence": 90,
+      "suggested_improvement": "Name the target."
+    },
+    {
+      "category": "precise-request",
+      "type": "strength",
+      "description": "Regression-test request was specific.",
+      "message_ref": "User#4",
+      "impact": "medium",
+      "confidence": 85
+    }
+  ],
+  "dimension_scores": {
+    "context_provision": 50,
+    "request_specificity": 45,
+    "scope_management": 70,
+    "information_timing": 40,
+    "correction_quality": 75
+  }
+}

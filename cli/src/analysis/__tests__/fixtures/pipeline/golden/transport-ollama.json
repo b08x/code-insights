@@ -1,0 +1,116 @@
+{
+  "server": {
+    "success": [
+      true,
+      true
+    ],
+    "requests": [
+      {
+        "url": "http://localhost:11434/api/chat",
+        "method": "POST",
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "hasSignal": false,
+        "body": {
+          "model": "ollama-fixture-model",
+          "messages": [
+            {
+              "role": "system",
+              "content": "<string length=498 sha256=112c62e52a94e0bc>"
+            },
+            {
+              "role": "user",
+              "content": "<string length=13572 sha256=a9f36aaf41efeea2>"
+            }
+          ],
+          "stream": false,
+          "options": {
+            "temperature": 0.7
+          }
+        }
+      },
+      {
+        "url": "http://localhost:11434/api/chat",
+        "method": "POST",
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "hasSignal": true,
+        "body": {
+          "model": "ollama-fixture-model",
+          "messages": [
+            {
+              "role": "system",
+              "content": "<string length=498 sha256=112c62e52a94e0bc>"
+            },
+            {
+              "role": "user",
+              "content": "<string length=8999 sha256=5ba39edf03d0c585>"
+            }
+          ],
+          "stream": false,
+          "options": {
+            "temperature": 0.7
+          }
+        }
+      }
+    ]
+  },
+  "cliProviderRunner": {
+    "runnerName": "ollama",
+    "reportedModel": "ollama-fixture-model",
+    "requests": [
+      {
+        "url": "http://localhost:11434/api/chat",
+        "method": "POST",
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "hasSignal": false,
+        "body": {
+          "model": "ollama-fixture-model",
+          "messages": [
+            {
+              "role": "system",
+              "content": "<string length=498 sha256=112c62e52a94e0bc>"
+            },
+            {
+              "role": "user",
+              "content": "<string length=13573 sha256=fae1c12c6998a057>"
+            }
+          ],
+          "stream": false,
+          "options": {
+            "temperature": 0.7
+          }
+        }
+      },
+      {
+        "url": "http://localhost:11434/api/chat",
+        "method": "POST",
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "hasSignal": false,
+        "body": {
+          "model": "ollama-fixture-model",
+          "messages": [
+            {
+              "role": "system",
+              "content": "<string length=498 sha256=112c62e52a94e0bc>"
+            },
+            {
+              "role": "user",
+              "content": "<string length=9000 sha256=3105618215e2e813>"
+            }
+          ],
+          "stream": false,
+          "options": {
+            "temperature": 0.7
+          }
+        }
+      }
+    ]
+  }
+}

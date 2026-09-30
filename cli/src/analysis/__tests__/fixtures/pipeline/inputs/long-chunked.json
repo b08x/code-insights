@@ -1,0 +1,23 @@
+{
+  "name": "long-chunked",
+  "description": "Generated 400-message session (~89k estimated tokens): above the 80k chunk threshold but below the 102.4k retrieval trigger (server chunks + facet pass; CLI sends one prompt).",
+  "session": {
+    "id": "sess-long-chunked",
+    "project_id": "proj-fixture",
+    "project_name": "fixture-project",
+    "project_path": "/work/fixture-project",
+    "summary": "Multi-day migration to the new queue",
+    "ended_at": "2026-01-10T11:00:00Z",
+    "message_count": 400,
+    "compact_count": null,
+    "auto_compact_count": null,
+    "slash_commands": null
+  },
+  "generate": {
+    "count": 400,
+    "contentChars": 700,
+    "toolResultChars": 300,
+    "startAt": "2026-01-11T09:00:00Z",
+    "gapSeconds": 90
+  }
+}

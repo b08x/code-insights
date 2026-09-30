@@ -1,0 +1,84 @@
+{
+  "name": "short-related",
+  "description": "Short session with compaction signals, a stored summary and slash commands; test seeds related insights for the server retrieval path.",
+  "session": {
+    "id": "sess-short-related",
+    "project_id": "proj-fixture",
+    "project_name": "fixture-project",
+    "project_path": "/work/fixture-project",
+    "summary": "Fix plus-sign email validation",
+    "ended_at": "2026-01-10T11:00:00Z",
+    "message_count": 6,
+    "compact_count": 1,
+    "auto_compact_count": 2,
+    "slash_commands": "[\"/review\",\"/test\"]"
+  },
+  "messages": [
+    {
+      "id": "rm1",
+      "type": "user",
+      "content": "The login form throws a 500 when the email has a plus sign. Can you find out why?",
+      "thinking": null,
+      "tool_calls": null,
+      "tool_results": null,
+      "usage": null,
+      "timestamp": "2026-01-10T10:00:00Z",
+      "parent_id": null
+    },
+    {
+      "id": "rm2",
+      "type": "assistant",
+      "content": "I will look at the validation code first.",
+      "thinking": null,
+      "tool_calls": "[{\"name\":\"Read\"}]",
+      "tool_results": "[{\"output\":\"function validateEmail(e){ return /^[a-z0-9.]+@[a-z.]+$/.test(e) }\"}]",
+      "usage": null,
+      "timestamp": "2026-01-10T10:00:20Z",
+      "parent_id": null
+    },
+    {
+      "id": "rm3",
+      "type": "assistant",
+      "content": "The regex rejects \"+\" and the caller does not catch the thrown error. I will relax the regex and add a test.",
+      "thinking": "Regex is too strict; RFC allows plus addressing.",
+      "tool_calls": "[{\"name\":\"Edit\"},{\"name\":\"Bash\"}]",
+      "tool_results": "[{\"output\":\"1 file changed\"},{\"output\":\"PASS validate.test.ts (3 tests)\"}]",
+      "usage": null,
+      "timestamp": "2026-01-10T10:01:00Z",
+      "parent_id": null
+    },
+    {
+      "id": "rm4",
+      "type": "user",
+      "content": "Good. Also make sure uppercase letters work.",
+      "thinking": null,
+      "tool_calls": null,
+      "tool_results": null,
+      "usage": null,
+      "timestamp": "2026-01-10T10:02:00Z",
+      "parent_id": null
+    },
+    {
+      "id": "rm5",
+      "type": "assistant",
+      "content": "Added the i flag and a test case for uppercase. All tests pass.",
+      "thinking": null,
+      "tool_calls": "[{\"name\":\"Edit\"},{\"name\":\"Bash\"}]",
+      "tool_results": "[{\"output\":\"ok\"},{\"output\":\"PASS validate.test.ts (4 tests)\"}]",
+      "usage": null,
+      "timestamp": "2026-01-10T10:02:45Z",
+      "parent_id": null
+    },
+    {
+      "id": "rm6",
+      "type": "user",
+      "content": "Thanks, that is what I needed.",
+      "thinking": null,
+      "tool_calls": null,
+      "tool_results": null,
+      "usage": null,
+      "timestamp": "2026-01-10T10:03:10Z",
+      "parent_id": null
+    }
+  ]
+}
