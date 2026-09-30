@@ -15,6 +15,7 @@ export interface MigrationResult {
   v16Applied: boolean;
   v17Applied: boolean;
   v18Applied: boolean;
+  v19Applied: boolean;
 }
 
 /**
@@ -35,6 +36,7 @@ export interface MigrationResult {
  * Version 12: Create FTS5 virtual table messages_fts and triggers for full-text search
  * Version 17: Add chat_conversations / chat_messages for the persistent agent chat
  * Version 18: Add student_identity + prompt_version_id provenance columns to insights and session_facets
+ * Version 19: Add session_labels (gold labels for prompt optimization; split is write-once)
  */
 export function runMigrations(db: Database.Database): MigrationResult {
   // Create schema_version table first if it doesn't exist.
@@ -146,7 +148,13 @@ export function runMigrations(db: Database.Database): MigrationResult {
     v18Applied = true;
   }
 
-  return { v6Applied, v7Applied, v8Applied, v9Applied, v10Applied, v11Applied, v12Applied, v13Applied, v14Applied, v15Applied, v16Applied, v17Applied, v18Applied };
+  let v19Applied = false;
+  if (currentVersion < 19) {
+    applyV19(db);
+    v19Applied = true;
+  }
+
+  return { v6Applied, v7Applied, v8Applied, v9Applied, v10Applied, v11Applied, v12Applied, v13Applied, v14Applied, v15Applied, v16Applied, v17Applied, v18Applied, v19Applied };
 }
 
 function getCurrentVersion(db: Database.Database): number {
@@ -505,4 +513,36 @@ function applyV18(db: Database.Database): void {
     }
   }
   db.prepare('INSERT OR IGNORE INTO schema_version (version) VALUES (?)').run(18);
+}
+
+function applyV19(db: Database.Database): void {
+  // Gold labels for prompt optimization. Deliberately no FK to sessions: labels are hand-made
+  // ground truth and must not block (or be silently cascaded by) session purges.
+  // `split` (train/validation/test) is assigned once at first label time. The trigger enforces
+  // it at the storage layer; the write path (db/labels.ts) also never includes split in its
+  // ON CONFLICT update. The one thing the trigger cannot stop is DELETE + re-INSERT.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS session_labels (
+      session_id               TEXT PRIMARY KEY,
+      target                   TEXT NOT NULL DEFAULT 'session-analysis',
+      outcome                  TEXT NOT NULL,
+      friction_categories_json TEXT NOT NULL DEFAULT '[]',
+      pattern_categories_json  TEXT NOT NULL DEFAULT '[]',
+      key_points_json          TEXT NOT NULL DEFAULT '[]',
+      forbidden_claims_json    TEXT NOT NULL DEFAULT '[]',
+      note                     TEXT,
+      split                    TEXT NOT NULL CHECK (split IN ('train', 'validation', 'test')),
+      created_at               TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at               TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_session_labels_split ON session_labels(split);
+
+    CREATE TRIGGER IF NOT EXISTS session_labels_split_immutable
+    BEFORE UPDATE OF split ON session_labels
+    WHEN NEW.split IS NOT OLD.split
+    BEGIN
+      SELECT RAISE(ABORT, 'session_labels.split is immutable');
+    END;
+  `);
+  db.prepare('INSERT OR IGNORE INTO schema_version (version) VALUES (?)').run(19);
 }
