@@ -1,4 +1,4 @@
-import { discoverOllamaModels } from './providers/ollama.js';
+import { discoverOllamaModels } from '@code-insights/cli/llm/providers/ollama';
 import type { LLMProvider } from '@code-insights/cli/types';
 
 export interface DiscoveredModel {

@@ -1,0 +1,268 @@
+{
+  "entry": "cli/src/commands/insights.ts runInsightsCommand (one call = session pass + prompt-quality pass)",
+  "llmCalls": [
+    {
+      "stage": "session",
+      "systemPrompt": "You are a senior staff engineer analyzing an AI coding session. You will receive the conversation transcript followed by specific extraction instructions.\n\nJSON SAFETY RULES:\n1. Respond with valid JSON only, wrapped in <json>...</json> tags.\n2. Escape all double quotes within string values using \\\".\n3. Do not include newlines inside string values; use \\n if necessary.\n4. Ensure all property names are enclosed in double quotes.\n5. Check for trailing commas in arrays and objects and remove them.",
+      "userPrompt": "--- CONVERSATION ---\n### User#0:\nThe login form throws a 500 when the email has a plus sign. Can you find out why?\n\n### Assistant#0 | +20s:\nI will look at the validation code first.\n[Tools used: Read]\n[Tool results: function validateEmail(e){ return /^[a-z0-9.]+@[a-z.]+$/.test(e) }]\n\n### Assistant#1 | +40s:\nThe regex rejects \"+\" and the caller does not catch the thrown error. I will relax the regex and add a test.\n[Thinking: Regex is too strict; RFC allows plus addressing.]\n[Tools used: Edit, Bash]\n[Tool results: 1 file changed | PASS validate.test.ts (3 tests)]\n\n### User#1 | +60s:\nGood. Also make sure uppercase letters work.\n\n### Assistant#2 | +45s:\nAdded the i flag and a test case for uppercase. All tests pass.\n[Tools used: Edit, Bash]\n[Tool results: ok | PASS validate.test.ts (4 tests)]\n\n### User#2 | +25s:\nThanks, that is what I needed.\n--- END CONVERSATION ---\n\n\n<task>\nAnalyze the provided AI coding session transcript. Extract:\n1. Session execution facets: outcome satisfaction (high | medium | low | abandoned), workflow pattern, course corrections, iteration count, friction points using canonical categories (wrong-approach, knowledge-gap, stale-assumptions, incomplete-requirements, context-loss, scope-creep, repeated-mistakes, rage-loop, documentation-gap, tooling-limitation), and effective workflow patterns using canonical categories (structured-planning, incremental-implementation, verification-workflow, systematic-debugging, self-correction, context-gathering, domain-expertise, effective-tooling).\n2. Architectural decisions: technical choices with trade-offs, alternatives considered, and turn-based attribution (user | agent | collaborative).\n3. Transferable learnings: operational discoveries with observable symptoms, root causes, and applicable conditions.\n4. Semantic step matrix: sequential milestones (4-10 steps) mapping workflow progression, driver attribution, target scope, and outcome state.\nOutput strictly valid JSON matching the schema.\n</task>\n\n<context>\n  <project_name>fixture-project</project_name>\n  <system_metadata></system_metadata>\n</context>\n\n<rules>\n  1. Enforce strict JSON output schema.\n  2. Output Validation Rules (Acceptance Criteria):\n     - For decisions, validate that each entry: (a) contains concrete technical choice and alternatives, (b) grounds decided_by attribution in turn citations (User#N for user, Assistant#N for agent, both for collaborative), (c) includes 1-3 literal quote citations, (d) meets minimum confidence >= 70. Reject decisions failing these criteria.\n     - For learnings, validate that each entry: (a) identifies observable symptom, root cause, and transferable takeaway, (b) includes literal quote citations, (c) meets minimum confidence >= 70. Reject generic advice.\n     - For friction points, validate that each entry: (a) uses a canonical category (wrong-approach, knowledge-gap, stale-assumptions, incomplete-requirements, context-loss, scope-creep, repeated-mistakes, rage-loop, documentation-gap, tooling-limitation), (b) sets attribution to user-actionable, ai-capability, or environmental strictly per the decision tree, (c) describes the specific GAP with concrete technical details (file paths, APIs, error messages), not the actor, (d) includes _reasoning scratchpad.\n     - For effective patterns, validate that each entry: (a) uses a canonical category (structured-planning, incremental-implementation, verification-workflow, systematic-debugging, self-correction, context-gathering, domain-expertise, effective-tooling), (b) sets driver to user-driven, ai-driven, or collaborative per the driver decision tree, (c) satisfies exclusion rules (exclude routine file reads, trivial syntax fixes, standard commands), (d) includes _reasoning scratchpad.\n     - For step matrix, validate that it: (a) contains 4-10 discrete chronological milestones, (b) assigns driver (LLM_Decide | User_Decide | Collab_Decide), primary target (Target_Config | Target_SrcCode | Target_Test | Target_Docs), and state (State_Success | State_Error | State_Blocked), (c) annotates co-occurring attributes where applicable: targets (array if multiple targets apply), has_course_correction (boolean), ran_tests (boolean), used_tools (boolean).\n  3. Summary narrative constraint: Describe HOW the user and AI collaborated, the workflow strategy utilized, and the friction-resolving path. Do NOT mechanically list modified files or commit hashes.\n  4. Extract insights containing ONLY concrete references (file paths, endpoints, variables, errors). Filter out generic findings automatically.\n  5. Fill every field in the schema. Return empty arrays for categories yielding no valid findings. Use null for unavailable data where permitted.\n</rules>\n\n<definitions>\n  <facet name=\"outcome_satisfaction\">high | medium | low | abandoned</facet>\n  <facet name=\"workflow_pattern\">plan-then-implement | iterative-refinement | debug-fix-verify | explore-then-build | direct-execution | null</facet>\n  <decision_attribution name=\"decided_by\">user (user explicitly directed/commanded) | agent (AI proposed and autonomously acted) | collaborative (joint exploration/co-designed)</decision_attribution>\n</definitions>\n\n<classification_guidance name=\"friction_points\">\n<rules>\n  1. Capture WHAT went wrong (category + description).\n  2. Capture WHO contributed (attribution).\n  3. Explain WHY you classified it that way (_reasoning).\n</rules>\n\n<categories>\n- \"wrong-approach\": Suboptimal tool, architecture, or pattern chosen when a better one existed.\n- \"knowledge-gap\": Incorrect API/library usage due to factual error.\n- \"stale-assumptions\": Actions based on false state (stale files, changed config).\n- \"incomplete-requirements\": Missing critical constraints or acceptance criteria.\n- \"context-loss\": Prior established session constraints forgotton or dropped.\n- \"scope-creep\": Execution expanded beyond stated boundaries.\n- \"repeated-mistakes\": Same error occurred multiple times post-correction.\n- \"rage-loop\": Tight temporal message cluster where token count is maxed/static and semantic progress is zero.\n- \"documentation-gap\": Unfindable or inaccessible documentation.\n- \"tooling-limitation\": Permanent tool gap (no workaround exists).\n</categories>\n\n<disambiguation_rules>\n- rage-loop vs repeated-mistakes: Rage-loop requires static maxed context (high token count) and rapid-fire turns. Repeated-mistakes focus on content, not context pressure.\n- tooling-limitation vs wrong-approach: Limitation = NO workaround. Wrong-approach = Suboptimal choice.\n- tooling-limitation vs knowledge-gap: Limitation = Capability missing. Knowledge-gap = Capability applied wrong.\n- tooling-limitation vs stale-assumptions: Limitation = Permanent gap. Stale-assumptions = Tool behavior changed.\n- wrong-approach vs knowledge-gap: Wrong-approach = Strategic choice. Knowledge-gap = Factual error.\n- incomplete-requirements vs context-loss: Incomplete = Never provided. Context-loss = Provided but forgotten.\n</disambiguation_rules>\n\n<attribution_decision_tree>\nEvaluate in strict order:\n1. \"environmental\" = Cause external to user-AI interaction (infra outage, missing docs, context window limits).\n2. \"user-actionable\" = Vague prompt, missing context, no constraints, ambiguous correction, entering a rage loop without /compact.\n3. \"ai-capability\" = User input clear, AI still failed (e.g. hallucinating tool success).\nResolve ambiguity to \"user-actionable\" to maintain analytical focus.\n</attribution_decision_tree>\n\n<description_rules>\n- Output one neutral sentence describing the GAP, not the actor.\n- Inject specific details (file names, APIs, errors, turn ranges for loops).\n- Sequence as \"Missing X caused Y\" or \"Static context window caused rage loop across turns User#N-User#M\".\n- Transfer actor attribution entirely to the attribution field.\n</description_rules>\n</classification_guidance>\n<classification_guidance name=\"effective_patterns\">\n<exclusion_rules>\nDo NOT classify these as patterns:\n- Routine file reads at session start (Read/Glob/Grep on <5 files before editing)\n- Following explicit user instructions (e.g., user said \"run tests\")\n- Basic tool usage (single file edits, standard CLI commands)\n- Trivial self-corrections (typo fixes, minor syntax errors caught immediately)\n</exclusion_rules>\n\n<categories>\n- \"structured-planning\": Task decomposed and boundaries defined BEFORE writing code.\n- \"incremental-implementation\": Work progressed in verifiable steps with validation between them.\n- \"verification-workflow\": Proactive correctness checks BEFORE considering work complete.\n- \"systematic-debugging\": Methodical investigation using structured techniques.\n- \"self-correction\": Pivoted from wrong path WITHOUT user correction.\n- \"context-gathering\": Thorough investigation spanning multiple directories BEFORE any writes.\n- \"domain-expertise\": Correct specific tool knowledge applied without searching.\n- \"effective-tooling\": Leveraged advanced tool capabilities for outsized utility.\n</categories>\n\n<disambiguation_rules>\n- structured-planning vs incremental-implementation: Planning = DECIDING what to do. Incremental = HOW you execute.\n- context-gathering vs domain-expertise: Gathering = ACTIVE INVESTIGATION. Expertise = APPLYING EXISTING KNOWLEDGE.\n- verification-workflow vs systematic-debugging: Verification = PROACTIVE correctness check. Debugging = REACTIVE investigation.\n- self-correction vs user-directed: Self-correction = AI unprompted correction.\n</disambiguation_rules>\n\n<driver_decision_tree>\nEvaluate in strict order:\n1. \"user-driven\" = User infrastructure enabled this or user explicitly requested it.\n2. \"ai-driven\" = AI exhibited behavior without user prompting or infrastructure.\n3. \"collaborative\" = Both made distinct, identifiable contributions.\n</driver_decision_tree>\n</classification_guidance>\n\n<output_schema>\n{\n  \"facets\": {\n    \"outcome_satisfaction\": \"high | medium | low | abandoned\",\n    \"workflow_pattern\": \"string | null\",\n    \"had_course_correction\": false,\n    \"course_correction_reason\": \"string | null\",\n    \"iteration_count\": 0,\n    \"friction_points\": [\n      {\n        \"_reasoning\": \"Reasoning for category + attribution classification\",\n        \"category\": \"kebab-case-category\",\n        \"attribution\": \"user-actionable | ai-capability | environmental\",\n        \"description\": \"One neutral sentence about the gap, with specific details\",\n        \"severity\": \"high | medium | low\",\n        \"resolution\": \"resolved | workaround | unresolved\"\n      }\n    ],\n    \"effective_patterns\": [\n      {\n        \"_reasoning\": \"Reasoning for category + driver classification\",\n        \"category\": \"kebab-case-category\",\n        \"description\": \"Specific technique, 1-2 sentences\",\n        \"confidence\": 85,\n        \"driver\": \"user-driven | ai-driven | collaborative\"\n      }\n    ]\n  },\n  \"summary\": {\n    \"title\": \"Methodological objective (e.g., 'Iterative test-driven refactor of state management')\",\n    \"content\": \"2-4 sentence narrative of the collaboration dynamics. Do NOT list file changes or commits. Describe HOW the user and AI interacted, the workflow strategy utilized, and the friction-resolving path.\",\n    \"outcome\": \"success | partial | abandoned | blocked\",\n    \"bullets\": [\n      \"Workflow execution milestones (e.g., 'Enforced test-boundary isolation', 'Relied on AI-driven conceptual design', 'Diagnosed race condition via log analysis')\"\n    ]\n  },\n  \"decisions\": [\n    {\n      \"_reasoning\": \"Brief rationale grounding attribution in turn evidence (e.g., 'User#3 specified SQLite')\",\n      \"title\": \"Technical choice (max 80 chars)\",\n      \"decided_by\": \"user | agent | collaborative\",\n      \"intent\": \"Initiating intent or problem triggering the decision\",\n      \"branch_point\": \"Alternative path or design branched away from\",\n      \"situation\": \"Problem context\",\n      \"choice\": \"Chosen implementation\",\n      \"reasoning\": \"Decision factors\",\n      \"alternatives\": [{\"option\": \"Name\", \"rejected_because\": \"Reason\"}],\n      \"trade_offs\": \"Accepted downsides\",\n      \"revisit_when\": \"Reconsideration conditions\",\n      \"confidence\": 85,\n      \"evidence\": [\"User#1: Quote\", \"Assistant#2: Quote\"]\n    }\n  ],\n  \"learnings\": [\n    {\n      \"title\": \"Discovery or gotcha (max 80 chars)\",\n      \"symptom\": \"Observable behavior\",\n      \"root_cause\": \"Underlying reason\",\n      \"takeaway\": \"Transferable lesson\",\n      \"applies_when\": \"Relevant conditions\",\n      \"confidence\": 80,\n      \"evidence\": [\"User#1: Quote\", \"Assistant#2: Quote\"]\n    }\n  ],\n  \"step_matrix\": [\n    {\n      \"step\": \"Concise episode name (e.g., 'Configure build pipeline')\",\n      \"turn_ref\": \"User#1 or Assistant#2\",\n      \"driver\": \"LLM_Decide | User_Decide | Collab_Decide\",\n      \"target\": \"Target_Config | Target_SrcCode | Target_Test | Target_Docs\",\n      \"state\": \"State_Success | State_Error | State_Blocked\",\n      \"targets\": [\"Target_Config\", \"Target_Test\"],\n      \"has_course_correction\": false,\n      \"ran_tests\": true,\n      \"used_tools\": true\n    }\n  ]\n}\n</output_schema>\n\n<category_enforcement>\nFriction MUST use: wrong-approach, knowledge-gap, stale-assumptions, incomplete-requirements, context-loss, scope-creep, repeated-mistakes, rage-loop, documentation-gap, tooling-limitation\nPatterns MUST use: structured-planning, incremental-implementation, verification-workflow, systematic-debugging, self-correction, context-gathering, domain-expertise, effective-tooling\nCreate a custom kebab-case category ONLY if the behavior strictly diverges from canonical bounds.\n</category_enforcement>\n\nRespond with valid JSON only, wrapped in <json>...</json> tags.",
+      "jsonSchemaTopLevelKeys": [
+        "$schema",
+        "additionalProperties",
+        "description",
+        "properties",
+        "required",
+        "title",
+        "type"
+      ]
+    },
+    {
+      "stage": "prompt_quality",
+      "systemPrompt": "You are a senior staff engineer analyzing an AI coding session. You will receive the conversation transcript followed by specific extraction instructions.\n\nJSON SAFETY RULES:\n1. Respond with valid JSON only, wrapped in <json>...</json> tags.\n2. Escape all double quotes within string values using \\\".\n3. Do not include newlines inside string values; use \\n if necessary.\n4. Ensure all property names are enclosed in double quotes.\n5. Check for trailing commas in arrays and objects and remove them.",
+      "userPrompt": "--- CONVERSATION ---\n### User#0:\nThe login form throws a 500 when the email has a plus sign. Can you find out why?\n\n### Assistant#0 | +20s:\nI will look at the validation code first.\n[Tools used: Read]\n[Tool results: function validateEmail(e){ return /^[a-z0-9.]+@[a-z.]+$/.test(e) }]\n\n### Assistant#1 | +40s:\nThe regex rejects \"+\" and the caller does not catch the thrown error. I will relax the regex and add a test.\n[Thinking: Regex is too strict; RFC allows plus addressing.]\n[Tools used: Edit, Bash]\n[Tool results: 1 file changed | PASS validate.test.ts (3 tests)]\n\n### User#1 | +60s:\nGood. Also make sure uppercase letters work.\n\n### Assistant#2 | +45s:\nAdded the i flag and a test case for uppercase. All tests pass.\n[Tools used: Edit, Bash]\n[Tool results: ok | PASS validate.test.ts (4 tests)]\n\n### User#2 | +25s:\nThanks, that is what I needed.\n--- END CONVERSATION ---\n\n\n<task>\nAnalyze the user's input messages in the provided conversation transcript. Extract:\n1. Structural inefficiencies (prompting deficits) using categories: vague-request, missing-context, late-constraint, unclear-correction, scope-drift, missing-acceptance-criteria, assumption-not-surfaced.\n2. Effective prompt patterns (prompting strengths) using categories: precise-request, effective-context, productive-correction.\nAssess ONLY the user's input messages (labeled User#N). For each finding, include: category, type, description, message_ref, impact, confidence, suggested_improvement, and SFL breakdown (ideational, interpersonal, textual). For each takeaway, generate a concrete before/after pair with a tri-stratal SFL breakdown. Output as valid JSON strictly adhering to the schema.\n</task>\n\n<context>\n  <project_name>fixture-project</project_name>\n  <session_shape>\n    <human_messages>3</human_messages>\n    <assistant_messages>3</assistant_messages>\n    <tool_exchanges>0</tool_exchanges>\n  </session_shape>\n  <system_metadata></system_metadata>\n</context>\n\n<rules>\n  1. Distinguish strictly between user input quality and model capability.\n  2. Evaluate the user's prompt quality independently of model outcome.\n  3. Assistant hallucination despite a high-quality prompt is an AI capability deficit. Do NOT penalize the user.\n  4. Use the assistant's responses ONLY as evidence of interpretation, not user intent.\n  5. Output neutral, factual assessments. Avoid prescriptive or lecturing tones.\n  6. Output Validation Rules (Acceptance Criteria):\n     - For each finding, validate that it: (a) references a specific user message (e.g., 'User#3'), (b) uses one of the predefined canonical categories, (c) includes all required fields (category, type, description, message_ref, impact, confidence, suggested_improvement, sfl_breakdown). Reject findings that violate these criteria.\n     - For each takeaway, validate that it: (a) references a specific user message, (b) provides a concrete standalone rewrite ('better_prompt' for improve, 'what_worked' for reinforce), (c) includes an explicit tri-stratal sfl_breakdown analyzing Ideational (Field), Interpersonal (Tenor), and Textual (Mode) structural enhancements. Reject takeaways lacking concrete rewrites or structural rationale.\n  7. If the session had context compactions, classify repetition immediately following compaction as environmental restatement, NOT a prompting deficit.\n  8. When generating a 'better_prompt', actively apply Systemic Functional Linguistics (SFL):\n     - Ideational (Field): Define concrete task boundaries, explicit entities, file paths, endpoints, and input parameters.\n     - Interpersonal (Tenor): Remove conversational filler and polite hedging; enforce explicit operational constraints and clear imperatives.\n     - Textual (Mode): Isolate dynamic variables, enforce structured formatting (XML tags or markdown delimiters), and specify boolean acceptance criteria.\n  9. Anchor dimension scores to explicit SFL criteria [0-100] (0 = catastrophic deficit, 50 = baseline functioning, 100 = flawless systemic execution). Score each dimension strictly based on observed user input behavior, independently of model outcome.\n</rules>\n\n<classification_guidance>\nEach finding encapsulates precisely one execution pattern (deficit or strength). \n\nDEFICIT CATEGORIES:\n- \"vague-request\": Prerequisite: The AI lacked required file paths, references, or behavioral boundaries to proceed logically. \n- \"missing-context\": Prerequisite: Essential architectural facts or codebase dependencies were omitted.\n- \"late-constraint\": Prerequisite: The user provided a requirement AFTER the AI completed partial implementation based on previous constraints.\n- \"unclear-correction\": Prerequisite: The user rejected the AI output without providing a corrective vector or structural reason.\n- \"scope-drift\": Prerequisite: The session's primary objective altered boundaries mid-execution.\n- \"missing-acceptance-criteria\": Prerequisite: The end-state boolean condition for success was left undefined, causing cyclical validation checks.\n- \"assumption-not-surfaced\": Prerequisite: The user harbored an implicit local constraint unsupported by provided text.\n\nSTRENGTH CATEGORIES:\n- \"precise-request\": Prerequisite: Initial input contained complete explicit boundaries, file paths, and output targets.\n- \"effective-context\": Prerequisite: User actively supplied systemic context, prior codebase choices, or environment preconditions.\n- \"productive-correction\": Prerequisite: User halted the AI and injected exact missing parameters allowing immediate recovery.\n\nDIMENSION SCORING [0-100] (0 = catastrophic deficit, 50 = baseline functioning, 100 = flawless systemic execution):\n- context_provision: 0 = Zero architecture provided. 50 = Basic paths provided. 100 = All entities, dependencies, and environment states explicitly loaded.\n- request_specificity: 0 = \"Fix the bug\" (Vague). 50 = \"Fix the bug in X\" (Partial). 100 = \"Fix the bug in X by applying Y constraint\" (Explicit).\n- scope_management: 0 = Fractured into multiple unrelated tasks mid-session. 50 = Minor scope drift corrected quickly. 100 = Singular, immutable execution boundary maintained.\n- information_timing: 0 = All constraints provided AFTER the AI failed (late-bound). 100 = All constraints provided BEFORE execution (early-bound).\n- correction_quality: 0 = \"That didn't work\" (Unclear). 50 = \"That failed with error X.\" 100 = \"That failed with error X. Rewrite using constraint Y.\" (Score 100 if no corrections were required).\n</classification_guidance>\n\n<output_schema>\n{\n  \"efficiency_score\": 75,\n  \"message_overhead\": 3,\n  \"assessment\": \"2-3 sentence neutral summary of prompting strategy and efficiency.\",\n  \"takeaways\": [\n    {\n      \"type\": \"improve | reinforce\",\n      \"category\": \"category-name\",\n      \"label\": \"Short Actionable Heading\",\n      \"message_ref\": \"User#N\",\n      \"original\": \"The user's original message (abbreviated)\",\n      \"better_prompt\": \"A concrete standalone prompt rewrite handling the missing constraints (for improve)\",\n      \"sfl_breakdown\": {\n        \"ideational\": \"How the rewrite defines concrete task boundaries, explicit entities, and context inputs (Field)\",\n        \"interpersonal\": \"How the rewrite removes conversational filler/politeness and enforces rigid operational constraints (Tenor)\",\n        \"textual\": \"How the rewrite isolates dynamic variables and enforces data packaging/formatting (Mode)\"\n      },\n      \"why\": \"One exact reason the original caused friction (for improve)\",\n      \"what_worked\": \"Specific prompting technique that drove high-efficiency execution (for reinforce)\",\n      \"why_effective\": \"Why this approach prevented misunderstandings or reduced iterations (for reinforce)\"\n    }\n  ],\n  \"findings\": [\n    {\n      \"category\": \"category-name\",\n      \"type\": \"deficit | strength\",\n      \"description\": \"One neutral sentence using specific terms\",\n      \"message_ref\": \"User#N\",\n      \"impact\": \"high | medium | low\",\n      \"confidence\": 90,\n      \"suggested_improvement\": \"Concrete text replacement or structure rule\",\n      \"sfl_breakdown\": {\n        \"ideational\": \"How this pattern affected explicit entities, task boundaries, or context inputs (Field)\",\n        \"interpersonal\": \"How the user's conversational style, constraints, or tone impacted AI behavior (Tenor)\",\n        \"textual\": \"How the information was packaged, sequenced, or formatted (Mode)\"\n      }\n    }\n  ],\n  \"dimension_scores\": {\n    \"context_provision\": 70,\n    \"request_specificity\": 65,\n    \"scope_management\": 80,\n    \"information_timing\": 55,\n    \"correction_quality\": 75\n  }\n}\n</output_schema>\n\n<category_enforcement>\nDeficits MUST use: vague-request, missing-context, late-constraint, unclear-correction, scope-drift, missing-acceptance-criteria, assumption-not-surfaced\nStrengths MUST use: precise-request, effective-context, productive-correction\nCreate a custom kebab-case category ONLY if the schema strictly diverges from canonical bounds.\n</category_enforcement>\n\nRespond with valid JSON only, wrapped in <json>...</json> tags.",
+      "jsonSchemaTopLevelKeys": [
+        "$schema",
+        "additionalProperties",
+        "description",
+        "properties",
+        "required",
+        "title",
+        "type"
+      ]
+    }
+  ],
+  "retrievalCalls": [],
+  "relatedInsightCalls": [],
+  "architectureLookups": [
+    {
+      "cmd": "codebase-memory-mcp",
+      "args": [
+        "cli",
+        "get_architecture"
+      ],
+      "input": "{\"project\":\"fixture-project\"}"
+    }
+  ],
+  "thrown": null,
+  "returnedPayload": {
+    "session": {
+      "summary": {
+        "title": "Fix plus-sign email validation",
+        "content": "The login form rejected valid emails containing a plus sign.",
+        "bullets": [
+          "Relaxed regex",
+          "Added tests"
+        ],
+        "outcome": "success"
+      },
+      "decisions": [
+        {
+          "title": "Relax email regex",
+          "situation": "Plus addressing rejected",
+          "choice": "Allow + and case-insensitive match",
+          "reasoning": "RFC allows plus addressing",
+          "confidence": 85,
+          "decided_by": "collaborative"
+        }
+      ],
+      "learnings": [
+        {
+          "title": "Validate at the boundary",
+          "takeaway": "Catch validation errors at the call site",
+          "confidence": 80
+        }
+      ],
+      "facets": {
+        "outcome_satisfaction": "high",
+        "workflow_pattern": "plan-then-implement",
+        "had_course_correction": false,
+        "course_correction_reason": null,
+        "iteration_count": 2,
+        "friction_points": [
+          {
+            "category": "wrong-approach",
+            "attribution": "ai-capability",
+            "description": "First regex was too strict.",
+            "severity": "low",
+            "resolution": "resolved"
+          },
+          {
+            "category": "totally-made-up-category",
+            "attribution": "user-actionable",
+            "description": "Non-canonical category to exercise normalization.",
+            "severity": "medium",
+            "resolution": "workaround"
+          }
+        ],
+        "effective_patterns": [
+          {
+            "category": "verification-workflow",
+            "description": "Ran tests after each edit.",
+            "confidence": 85,
+            "driver": "collaborative"
+          }
+        ]
+      }
+    },
+    "promptQuality": {
+      "efficiency_score": 62,
+      "assessment": "Early prompts were vague; later prompts were precise.",
+      "message_overhead": "medium",
+      "takeaways": [
+        {
+          "before": "make the thing work",
+          "after": "Fix the failing auth tests in auth.test.ts without touching fixtures",
+          "category": "vague-request"
+        }
+      ],
+      "findings": [
+        {
+          "category": "vague-request",
+          "type": "deficit",
+          "description": "Opening prompt had no object.",
+          "message_ref": "User#0",
+          "impact": "high",
+          "confidence": 90,
+          "suggested_improvement": "Name the target."
+        },
+        {
+          "category": "precise-request",
+          "type": "strength",
+          "description": "Regression-test request was specific.",
+          "message_ref": "User#4",
+          "impact": "medium",
+          "confidence": 85
+        }
+      ],
+      "dimension_scores": {
+        "context_provision": 50,
+        "request_specificity": 45,
+        "scope_management": 70,
+        "information_timing": 40,
+        "correction_quality": 75
+      }
+    },
+    "meta": {
+      "model": "stub-model",
+      "durationMs": 0,
+      "inputTokens": 2000,
+      "outputTokens": 400,
+      "messageCount": 6,
+      "projectName": "fixture-project"
+    }
+  },
+  "db": {
+    "insights": [
+      {
+        "session_id": "sess-short",
+        "project_id": "proj-fixture",
+        "project_name": "fixture-project",
+        "type": "decision",
+        "title": "Relax email regex",
+        "content": "Plus addressing rejected → Allow + and case-insensitive match",
+        "summary": "Allow + and case-insensitive match",
+        "bullets": "[]",
+        "confidence": 0.85,
+        "source": "llm",
+        "metadata": "{\"situation\":\"Plus addressing rejected\",\"choice\":\"Allow + and case-insensitive match\",\"reasoning\":\"RFC allows plus addressing\",\"decided_by\":\"collaborative\"}",
+        "scope": "session",
+        "analysis_version": "3.1.0",
+        "linked_insight_ids": null,
+        "embedding_status": "pending"
+      },
+      {
+        "session_id": "sess-short",
+        "project_id": "proj-fixture",
+        "project_name": "fixture-project",
+        "type": "learning",
+        "title": "Validate at the boundary",
+        "content": "Catch validation errors at the call site",
+        "summary": "Catch validation errors at the call site",
+        "bullets": "[]",
+        "confidence": 0.8,
+        "source": "llm",
+        "metadata": "{\"takeaway\":\"Catch validation errors at the call site\"}",
+        "scope": "session",
+        "analysis_version": "3.1.0",
+        "linked_insight_ids": null,
+        "embedding_status": "pending"
+      },
+      {
+        "session_id": "sess-short",
+        "project_id": "proj-fixture",
+        "project_name": "fixture-project",
+        "type": "prompt_quality",
+        "title": "Prompt Efficiency: 62/100",
+        "content": "Early prompts were vague; later prompts were precise.",
+        "summary": "Early prompts were vague; later prompts were precise.",
+        "bullets": "[]",
+        "confidence": 0.85,
+        "source": "llm",
+        "metadata": "{\"efficiency_score\":62,\"message_overhead\":\"medium\",\"takeaways\":[{\"before\":\"make the thing work\",\"after\":\"Fix the failing auth tests in auth.test.ts without touching fixtures\",\"category\":\"vague-request\"}],\"findings\":[{\"category\":\"vague-request\",\"type\":\"deficit\",\"description\":\"Opening prompt had no object.\",\"message_ref\":\"User#0\",\"impact\":\"high\",\"confidence\":90,\"suggested_improvement\":\"Name the target.\"},{\"category\":\"precise-request\",\"type\":\"strength\",\"description\":\"Regression-test request was specific.\",\"message_ref\":\"User#4\",\"impact\":\"medium\",\"confidence\":85}],\"dimension_scores\":{\"context_provision\":50,\"request_specificity\":45,\"scope_management\":70,\"information_timing\":40,\"correction_quality\":75}}",
+        "scope": "session",
+        "analysis_version": "3.1.0",
+        "linked_insight_ids": null,
+        "embedding_status": "pending"
+      },
+      {
+        "session_id": "sess-short",
+        "project_id": "proj-fixture",
+        "project_name": "fixture-project",
+        "type": "summary",
+        "title": "Fix plus-sign email validation",
+        "content": "The login form rejected valid emails containing a plus sign.",
+        "summary": "The login form rejected valid emails containing a plus sign.",
+        "bullets": "[\"Relaxed regex\",\"Added tests\"]",
+        "confidence": 0.9,
+        "source": "llm",
+        "metadata": "{\"outcome\":\"success\"}",
+        "scope": "session",
+        "analysis_version": "3.1.0",
+        "linked_insight_ids": null,
+        "embedding_status": "pending"
+      }
+    ],
+    "session_facets": [
+      {
+        "session_id": "sess-short",
+        "outcome_satisfaction": "high",
+        "workflow_pattern": "plan-then-implement",
+        "had_course_correction": 0,
+        "course_correction_reason": null,
+        "iteration_count": 2,
+        "friction_points": "[{\"category\":\"wrong-approach\",\"attribution\":\"ai-capability\",\"description\":\"First regex was too strict.\",\"severity\":\"low\",\"resolution\":\"resolved\"},{\"category\":\"totally-made-up-category\",\"attribution\":\"user-actionable\",\"description\":\"Non-canonical category to exercise normalization.\",\"severity\":\"medium\",\"resolution\":\"workaround\"}]",
+        "effective_patterns": "[{\"category\":\"verification-workflow\",\"description\":\"Ran tests after each edit.\",\"confidence\":85,\"driver\":\"collaborative\"}]",
+        "analysis_version": "3.1.0"
+      }
+    ],
+    "session_steps": [],
+    "analysis_usage": [
+      {
+        "session_id": "sess-short",
+        "analysis_type": "prompt_quality",
+        "provider": "stub-provider",
+        "model": "stub-model",
+        "input_tokens": 1000,
+        "output_tokens": 200,
+        "cache_creation_tokens": 50,
+        "cache_read_tokens": 10,
+        "estimated_cost_usd": 0,
+        "chunk_count": 1,
+        "session_message_count": 6
+      },
+      {
+        "session_id": "sess-short",
+        "analysis_type": "session",
+        "provider": "stub-provider",
+        "model": "stub-model",
+        "input_tokens": 1000,
+        "output_tokens": 200,
+        "cache_creation_tokens": 50,
+        "cache_read_tokens": 10,
+        "estimated_cost_usd": 0,
+        "chunk_count": 1,
+        "session_message_count": 6
+      }
+    ],
+    "generated_title": "Fix plus-sign email validation"
+  }
+}

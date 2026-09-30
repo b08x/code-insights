@@ -1,0 +1,23 @@
+{
+  "name": "long-retrieval",
+  "description": "Generated 540-message session (~120k estimated tokens): above the retrieval trigger (shouldUseRetrieval default 0.8*128k = 102.4k) and above the 80k chunk threshold. Server chunks AND prepends the retrieval block to every chunk; CLI sends one prompt.",
+  "session": {
+    "id": "sess-long-retrieval",
+    "project_id": "proj-fixture",
+    "project_name": "fixture-project",
+    "project_path": "/work/fixture-project",
+    "summary": "Long refactor of the billing module",
+    "ended_at": "2026-01-10T11:00:00Z",
+    "message_count": 540,
+    "compact_count": null,
+    "auto_compact_count": null,
+    "slash_commands": null
+  },
+  "generate": {
+    "count": 540,
+    "contentChars": 700,
+    "toolResultChars": 300,
+    "startAt": "2026-01-11T09:00:00Z",
+    "gapSeconds": 90
+  }
+}

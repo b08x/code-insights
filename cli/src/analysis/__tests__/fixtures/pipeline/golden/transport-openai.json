@@ -1,0 +1,112 @@
+{
+  "server": {
+    "success": [
+      true,
+      true
+    ],
+    "requests": [
+      {
+        "url": "https://api.openai.com/v1/chat/completions",
+        "method": "POST",
+        "headers": {
+          "Authorization": "Bearer test-key",
+          "Content-Type": "application/json"
+        },
+        "hasSignal": false,
+        "body": {
+          "model": "openai-fixture-model",
+          "messages": [
+            {
+              "role": "system",
+              "content": "<string length=498 sha256=112c62e52a94e0bc>"
+            },
+            {
+              "role": "user",
+              "content": "<string length=13573 sha256=fae1c12c6998a057>"
+            }
+          ],
+          "temperature": 0.7,
+          "max_tokens": 8192
+        }
+      },
+      {
+        "url": "https://api.openai.com/v1/chat/completions",
+        "method": "POST",
+        "headers": {
+          "Authorization": "Bearer test-key",
+          "Content-Type": "application/json"
+        },
+        "hasSignal": true,
+        "body": {
+          "model": "openai-fixture-model",
+          "messages": [
+            {
+              "role": "system",
+              "content": "<string length=498 sha256=112c62e52a94e0bc>"
+            },
+            {
+              "role": "user",
+              "content": "<string length=9000 sha256=deaf9961831d8594>"
+            }
+          ],
+          "temperature": 0.7,
+          "max_tokens": 8192
+        }
+      }
+    ]
+  },
+  "cliProviderRunner": {
+    "runnerName": "openai",
+    "reportedModel": "openai-fixture-model",
+    "requests": [
+      {
+        "url": "https://api.openai.com/v1/chat/completions",
+        "method": "POST",
+        "headers": {
+          "Authorization": "Bearer test-key",
+          "Content-Type": "application/json"
+        },
+        "hasSignal": false,
+        "body": {
+          "model": "openai-fixture-model",
+          "messages": [
+            {
+              "role": "system",
+              "content": "<string length=498 sha256=112c62e52a94e0bc>"
+            },
+            {
+              "role": "user",
+              "content": "<string length=13573 sha256=fae1c12c6998a057>"
+            }
+          ],
+          "temperature": 0.7,
+          "max_tokens": 8192
+        }
+      },
+      {
+        "url": "https://api.openai.com/v1/chat/completions",
+        "method": "POST",
+        "headers": {
+          "Authorization": "Bearer test-key",
+          "Content-Type": "application/json"
+        },
+        "hasSignal": true,
+        "body": {
+          "model": "openai-fixture-model",
+          "messages": [
+            {
+              "role": "system",
+              "content": "<string length=498 sha256=112c62e52a94e0bc>"
+            },
+            {
+              "role": "user",
+              "content": "<string length=9000 sha256=deaf9961831d8594>"
+            }
+          ],
+          "temperature": 0.7,
+          "max_tokens": 8192
+        }
+      }
+    ]
+  }
+}

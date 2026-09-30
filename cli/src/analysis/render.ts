@@ -81,7 +81,8 @@ function divider(): string {
 
 export interface RenderContext {
   sessionAnalysis: AnalysisResponse;
-  pqAnalysis: PromptQualityResponse;
+  /** Absent when the prompt-quality pass was skipped (fewer than 2 human messages). */
+  pqAnalysis?: PromptQualityResponse;
   model?: string;
   durationMs?: number;
   inputTokens?: number;
@@ -120,28 +121,30 @@ export function renderAnalysisReport(ctx: RenderContext): string {
 
   // ── Prompt Quality Score ─────────────────────────────────────────────────
 
-  lines.push(sectionHeader(EMOJI.pq, 'Prompt Quality'));
-  const pqColor = scoreColor(pqAnalysis.efficiency_score);
-  lines.push(indent(`${pqColor(pqAnalysis.efficiency_score + '/100')}  ${scoreBar(pqAnalysis.efficiency_score)}`));
+  if (pqAnalysis) {
+    lines.push(sectionHeader(EMOJI.pq, 'Prompt Quality'));
+    const pqColor = scoreColor(pqAnalysis.efficiency_score);
+    lines.push(indent(`${pqColor(pqAnalysis.efficiency_score + '/100')}  ${scoreBar(pqAnalysis.efficiency_score)}`));
 
-  if (pqAnalysis.assessment) {
-    lines.push(indent(chalk.dim(pqAnalysis.assessment)));
-  }
+    if (pqAnalysis.assessment) {
+      lines.push(indent(chalk.dim(pqAnalysis.assessment)));
+    }
 
-  // Dimension scores
-  if (pqAnalysis.dimension_scores) {
-    lines.push('');
-    const dims = pqAnalysis.dimension_scores;
-    const dimEntries: [string, number][] = [
-      ['Context', dims.context_provision],
-      ['Specificity', dims.request_specificity],
-      ['Scope', dims.scope_management],
-      ['Timing', dims.information_timing],
-      ['Correction', dims.correction_quality],
-    ];
-    for (const [label, score] of dimEntries) {
-      const c = scoreColor(score);
-      lines.push(indent(`  ${chalk.dim(label.padEnd(12))} ${c(String(score).padStart(3))}  ${scoreBar(score, 15)}`));
+    // Dimension scores
+    if (pqAnalysis.dimension_scores) {
+      lines.push('');
+      const dims = pqAnalysis.dimension_scores;
+      const dimEntries: [string, number][] = [
+        ['Context', dims.context_provision],
+        ['Specificity', dims.request_specificity],
+        ['Scope', dims.scope_management],
+        ['Timing', dims.information_timing],
+        ['Correction', dims.correction_quality],
+      ];
+      for (const [label, score] of dimEntries) {
+        const c = scoreColor(score);
+        lines.push(indent(`  ${chalk.dim(label.padEnd(12))} ${c(String(score).padStart(3))}  ${scoreBar(score, 15)}`));
+      }
     }
   }
 
@@ -228,7 +231,7 @@ export function renderAnalysisReport(ctx: RenderContext): string {
 
   // ── PQ Findings ──────────────────────────────────────────────────────────
 
-  if (pqAnalysis.findings?.length) {
+  if (pqAnalysis?.findings?.length) {
     const deficits = pqAnalysis.findings.filter(f => f.type === 'deficit');
     const strengths = pqAnalysis.findings.filter(f => f.type === 'strength');
 
@@ -259,7 +262,7 @@ export function renderAnalysisReport(ctx: RenderContext): string {
 
   // ── PQ Takeaways ─────────────────────────────────────────────────────────
 
-  if (pqAnalysis.takeaways?.length) {
+  if (pqAnalysis?.takeaways?.length) {
     lines.push(sectionHeader('\u{1F3AF}', 'Prompt Takeaways'));
     for (const t of pqAnalysis.takeaways) {
       const icon = t.type === 'improve' ? '\u{1F4DD}' : '\u2705';

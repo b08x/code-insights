@@ -1,0 +1,183 @@
+{
+  "name": "prompt-quality",
+  "description": "Vague prompts, tool-result and system-artifact user rows, compaction metadata and a static-context rage loop (CLI feeds loopSignal, server does not).",
+  "session": {
+    "id": "sess-pq",
+    "project_id": "proj-fixture",
+    "project_name": "fixture-project",
+    "project_path": "/work/fixture-project",
+    "summary": null,
+    "ended_at": "2026-01-10T11:00:00Z",
+    "message_count": 15,
+    "compact_count": 1,
+    "auto_compact_count": 0,
+    "slash_commands": "[\"/compact\"]"
+  },
+  "messages": [
+    {
+      "id": "m1",
+      "type": "user",
+      "content": "make the thing work",
+      "thinking": null,
+      "tool_calls": null,
+      "tool_results": null,
+      "usage": null,
+      "timestamp": "2026-01-12T14:00:00.000Z",
+      "parent_id": null
+    },
+    {
+      "id": "m2",
+      "type": "assistant",
+      "content": "Which thing do you mean? I see several failing tests.",
+      "thinking": null,
+      "tool_calls": null,
+      "tool_results": null,
+      "usage": "{\"inputTokens\":60000}",
+      "timestamp": "2026-01-12T14:00:30.000Z",
+      "parent_id": null
+    },
+    {
+      "id": "m3",
+      "type": "user",
+      "content": "the tests",
+      "thinking": null,
+      "tool_calls": null,
+      "tool_results": null,
+      "usage": null,
+      "timestamp": "2026-01-12T14:05:00.000Z",
+      "parent_id": null
+    },
+    {
+      "id": "m4",
+      "type": "assistant",
+      "content": "Running the suite.",
+      "thinking": null,
+      "tool_calls": "[{\"name\":\"Bash\"}]",
+      "tool_results": null,
+      "usage": "{\"inputTokens\":90000}",
+      "timestamp": "2026-01-12T14:05:30.000Z",
+      "parent_id": null
+    },
+    {
+      "id": "m5",
+      "type": "user",
+      "content": "[{\"type\":\"tool_result\",\"content\":\"3 failed\"}]",
+      "thinking": null,
+      "tool_calls": null,
+      "tool_results": null,
+      "usage": "{\"inputTokens\":90100}",
+      "timestamp": "2026-01-12T14:05:35.000Z",
+      "parent_id": null
+    },
+    {
+      "id": "m6",
+      "type": "assistant",
+      "content": "Attempting fix A.",
+      "thinking": null,
+      "tool_calls": null,
+      "tool_results": null,
+      "usage": "{\"inputTokens\":90200}",
+      "timestamp": "2026-01-12T14:05:40.000Z",
+      "parent_id": null
+    },
+    {
+      "id": "m7",
+      "type": "user",
+      "content": "[{\"type\":\"tool_result\",\"content\":\"3 failed\"}]",
+      "thinking": null,
+      "tool_calls": null,
+      "tool_results": null,
+      "usage": "{\"inputTokens\":90050}",
+      "timestamp": "2026-01-12T14:05:45.000Z",
+      "parent_id": null
+    },
+    {
+      "id": "m8",
+      "type": "assistant",
+      "content": "Attempting fix B.",
+      "thinking": null,
+      "tool_calls": null,
+      "tool_results": null,
+      "usage": "{\"inputTokens\":90150}",
+      "timestamp": "2026-01-12T14:05:50.000Z",
+      "parent_id": null
+    },
+    {
+      "id": "m9",
+      "type": "user",
+      "content": "[{\"type\":\"tool_result\",\"content\":\"3 failed\"}]",
+      "thinking": null,
+      "tool_calls": null,
+      "tool_results": null,
+      "usage": "{\"inputTokens\":90100}",
+      "timestamp": "2026-01-12T14:05:55.000Z",
+      "parent_id": null
+    },
+    {
+      "id": "m10",
+      "type": "user",
+      "content": "/compact",
+      "thinking": null,
+      "tool_calls": null,
+      "tool_results": null,
+      "usage": null,
+      "timestamp": "2026-01-12T14:06:40.000Z",
+      "parent_id": null
+    },
+    {
+      "id": "m11",
+      "type": "user",
+      "content": "This session is being continued from a previous conversation that ran out of context.",
+      "thinking": null,
+      "tool_calls": null,
+      "tool_results": null,
+      "usage": null,
+      "timestamp": "2026-01-12T14:07:00.000Z",
+      "parent_id": null
+    },
+    {
+      "id": "m12",
+      "type": "user",
+      "content": "No, I meant only the auth tests. Also do not touch the fixtures, I said that earlier.",
+      "thinking": null,
+      "tool_calls": null,
+      "tool_results": null,
+      "usage": null,
+      "timestamp": "2026-01-12T14:10:00.000Z",
+      "parent_id": null
+    },
+    {
+      "id": "m13",
+      "type": "assistant",
+      "content": "Understood, restricting to auth tests.",
+      "thinking": null,
+      "tool_calls": "[{\"name\":\"Edit\"}]",
+      "tool_results": null,
+      "usage": null,
+      "timestamp": "2026-01-12T14:10:40.000Z",
+      "parent_id": null
+    },
+    {
+      "id": "m14",
+      "type": "user",
+      "content": "Great, add a regression test for the token refresh case with an expired token.",
+      "thinking": null,
+      "tool_calls": null,
+      "tool_results": null,
+      "usage": null,
+      "timestamp": "2026-01-12T14:11:40.000Z",
+      "parent_id": null
+    },
+    {
+      "id": "m15",
+      "type": "assistant",
+      "content": "Added.",
+      "thinking": null,
+      "tool_calls": "[{\"name\":\"Edit\"}]",
+      "tool_results": null,
+      "usage": null,
+      "timestamp": "2026-01-12T14:12:40.000Z",
+      "parent_id": null
+    }
+  ]
+}

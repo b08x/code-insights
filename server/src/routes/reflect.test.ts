@@ -23,7 +23,7 @@ vi.mock('@code-insights/cli/utils/telemetry', () => ({
 const mockIsLLMConfigured = vi.fn(() => false);
 const mockChat = vi.fn();
 
-vi.mock('../llm/client.js', () => ({
+vi.mock('@code-insights/cli/llm/client', () => ({
   isLLMConfigured: () => mockIsLLMConfigured(),
   createLLMClient: () => ({ chat: mockChat, provider: 'test', model: 'test-model', estimateTokens: (t: string) => Math.ceil(t.length / 4) }),
   loadLLMConfig: () => null,

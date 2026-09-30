@@ -2,10 +2,10 @@ import { Hono } from 'hono';
 import { getDb } from '@code-insights/cli/db/client';
 import { trackEvent } from '@code-insights/cli/utils/telemetry';
 import { parseIntParam } from '../utils.js';
-import { loadLLMConfig } from '../llm/client.js';
+import { loadLLMConfig } from '@code-insights/cli/llm/client';
 import { analyzeSession, analyzePromptQuality, findRecurringInsights } from '../llm/analysis.js';
-import { getSessionAnalysisUsage } from '../llm/analysis-usage-db.js';
-import { calculateAnalysisCost } from '../llm/analysis-pricing.js';
+import { getSessionAnalysisUsage } from '@code-insights/cli/analysis/analysis-usage-db';
+import { calculateAnalysisCost } from '@code-insights/cli/analysis/analysis-pricing';
 import {
   loadSessionForAnalysis,
   loadSessionMessages,
@@ -60,18 +60,10 @@ app.get('/usage', async (c) => {
   });
 });
 
-/** Auto-apply an LLM-generated summary title as the session's generated_title. */
-function applyGeneratedTitle(sessionId: string, insights: Array<{ type: string; title?: string }>) {
-  const summaryInsight = insights.find(i => i.type === 'summary');
-  if (!summaryInsight?.title) return;
-  const db = getDb();
-  db.prepare('UPDATE sessions SET generated_title = ? WHERE id = ? AND deleted_at IS NULL')
-    .run(summaryInsight.title.slice(0, 120), sessionId);
-}
-
 // POST /api/analysis/session
 // Body: { sessionId: string }
-// Fetches session + messages from SQLite, runs LLM analysis, saves insights, returns results.
+// Fetches session + messages from SQLite, runs the shared analysis pipeline (session pass), saves
+// insights and the generated title, returns results.
 app.post('/session', requireLLM(), async (c) => {
   const body = await c.req.json<{ sessionId?: string }>();
   if (!body.sessionId || typeof body.sessionId !== 'string') {
@@ -92,7 +84,6 @@ app.post('/session', requireLLM(), async (c) => {
   trackAnalysisResult('session', result, startTime, {
     onSuccess: () => {
       trackEvent('insight_generated', { type: 'session', count: result.insights.length });
-      applyGeneratedTitle(body.sessionId!, result.insights);
     },
   });
   return c.json(result, result.success ? 200 : 422);
@@ -128,7 +119,6 @@ app.get('/session/stream', requireLLM(), async (c) => {
           : 'Analyzing...',
     onSuccess: (result) => {
       trackEvent('insight_generated', { type: 'session', count: result.insights.length });
-      applyGeneratedTitle(sessionId, result.insights);
     },
   });
 });

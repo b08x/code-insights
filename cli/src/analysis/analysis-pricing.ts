@@ -1,3 +1,4 @@
+// Moved from server/src/llm/analysis-pricing.ts so the shared pipeline (cli) can price calls.
 // Unified cost calculator for LLM analysis calls made by Code Insights.
 // Computes the USD cost of a single analysis call from token usage + provider/model metadata.
 //
@@ -8,8 +9,8 @@
 //      — used for Anthropic (detailed per-model pricing + cache multipliers)
 //   3. Ollama or unknown provider → $0.00 (local, free)
 
-import { PROVIDERS } from '@code-insights/cli/constants/llm-providers';
-import { getModelPricing } from '@code-insights/cli/utils/pricing';
+import { PROVIDERS } from '../constants/llm-providers.js';
+import { getModelPricing } from '../utils/pricing.js';
 
 /**
  * Date when pricing data was last verified against provider pricing pages.

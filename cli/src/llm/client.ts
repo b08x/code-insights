@@ -1,9 +1,10 @@
-// LLM client factory — server-side.
+// LLM client factory — the single provider transport shared by the server (dashboard/API)
+// and the CLI (ProviderRunner). Lives in the CLI package because the server depends on the CLI.
 // Config is loaded from ~/.code-insights/config.json via the CLI config system.
 // API keys are resolved from environment variables first, then session-only stored keys.
 // No localStorage or browser APIs used here.
 
-import { loadConfig } from '@code-insights/cli/utils/config';
+import { loadConfig } from '../utils/config.js';
 import type { LLMClient } from './types.js';
 import type { LLMProviderConfig, LLMProvider } from './types.js';
 import { createOpenAIClient } from './providers/openai.js';
@@ -17,7 +18,7 @@ import { setRateLimiter, getRateLimiter, resetRateLimiter } from './rate_limiter
 /**
  * Mapping from provider ID to its standard API key environment variable.
  */
-const PROVIDER_API_KEY_ENV: Record<string, string> = {
+export const PROVIDER_API_KEY_ENV: Record<string, string> = {
   openai:     'OPENAI_API_KEY',
   anthropic:  'ANTHROPIC_API_KEY',
   gemini:     'GEMINI_API_KEY',
@@ -34,7 +35,7 @@ const PROVIDER_API_KEY_ENV: Record<string, string> = {
  *     never written to disk by saveConfig
  *  3. undefined — ollama does not use API keys
  */
-function resolveApiKey(provider: LLMProvider, storedKey?: string): string | undefined {
+export function resolveApiKey(provider: LLMProvider, storedKey?: string): string | undefined {
   if (provider === 'ollama') return undefined;
   const envVar = PROVIDER_API_KEY_ENV[provider];
   if (envVar && process.env[envVar]) {
@@ -92,12 +93,20 @@ export function createLLMClient(): LLMClient {
  */
 export function createClientFromConfig(config: LLMProviderConfig): LLMClient {
   const apiKey = resolveApiKey(config.provider, config.apiKey);
-  
+
   // Initialize rate limiter from config if not already set
   if (config.rateLimit?.rpm) {
     setRateLimiter(config.rateLimit.rpm);
   }
-  
+
+  return createProviderClient(config, apiKey);
+}
+
+/**
+ * Create a provider client from an already-resolved API key. No rate-limiter or
+ * config side effects, so callers that resolve keys themselves (ProviderRunner) can reuse it.
+ */
+export function createProviderClient(config: LLMProviderConfig, apiKey: string | undefined): LLMClient {
   switch (config.provider) {
     case 'openai':
       return createOpenAIClient(apiKey ?? '', config.model);
@@ -112,7 +121,7 @@ export function createClientFromConfig(config: LLMProviderConfig): LLMClient {
     case 'mistral':
       return createMistralClient(apiKey ?? '', config.model);
     default:
-      throw new Error(`Unknown LLM provider: ${config.provider}`);
+      throw new Error(`Unknown LLM provider: ${(config as LLMProviderConfig).provider}`);
   }
 }
 

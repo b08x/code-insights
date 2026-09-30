@@ -14,10 +14,18 @@ vi.mock('@code-insights/cli/db/client', () => ({
   closeDb: () => {},
 }));
 
+// The pipeline asks codebase-memory-mcp for project architecture; never run the real binary in tests.
+vi.mock('child_process', () => ({
+  execFile: (_cmd: string, _args: string[], _opts: unknown, cb: (err: Error | null) => void) => {
+    queueMicrotask(() => cb(new Error('not installed')));
+    return { stdin: { on: () => {}, end: () => {} } };
+  },
+}));
+
 const mockChat = vi.fn();
 const mockIsConfigured = vi.fn(() => true);
 
-vi.mock('./client.js', () => ({
+vi.mock('@code-insights/cli/llm/client', () => ({
   isLLMConfigured: (...args: unknown[]) => mockIsConfigured(...args),
   createLLMClient: () => ({
     provider: 'test',
@@ -221,6 +229,10 @@ describe('analyzeSession', () => {
     // Verify insights written to DB
     const dbInsights = testDb.prepare('SELECT * FROM insights WHERE session_id = ?').all('sess-test');
     expect(dbInsights.length).toBe(3);
+
+    // The pipeline (not the route) applies the generated title.
+    expect(testDb.prepare('SELECT generated_title FROM sessions WHERE id = ?').get('sess-test'))
+      .toEqual({ generated_title: 'Test Summary' });
 
     // Verify facets written to DB
     const facetRow = testDb.prepare('SELECT * FROM session_facets WHERE session_id = ?').get('sess-test') as Record<string, unknown> | undefined;

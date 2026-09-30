@@ -31,7 +31,7 @@ export interface SessionMetadata {
  * A structured content block for LLM messages.
  * Used to enable prompt caching (Anthropic ephemeral cache) and structured multi-part messages.
  * The `cache_control` field instructs Anthropic to cache everything up to and including this block.
- * Mirrors server/src/llm/types.ts ContentBlock — keep in sync.
+ * Mirrors cli/src/llm/types.ts ContentBlock — keep in sync.
  */
 export interface ContentBlock {
   type: 'text';

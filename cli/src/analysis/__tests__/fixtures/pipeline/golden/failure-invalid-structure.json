@@ -1,0 +1,101 @@
+{
+  "server": {
+    "results": {
+      "analyzeSession": {
+        "success": false,
+        "error": "Failed to parse LLM response. Please try again.",
+        "error_type": "invalid_structure",
+        "response_length": 371,
+        "response_preview": "```json\n{\"outcome_satisfaction\":\"medium\",\"workflow_pattern\":\"iterative-refinement\",\"had_course_correction\":true,\"course_correction_reason\":\"queue semantics\",\"iteration_count\":5,\"friction_points\":[{\"category\":\"context-loss\",\"attribution\":\"ai-capability\",\"description\":\"Lost earlier constraints.\",\"severity\":\"medium\",\"resolution\":\"resolved\"},],\"effective_patterns\":[],}\n```",
+        "insightCount": 0,
+        "insightTypes": [],
+        "usage": {
+          "inputTokens": 1000,
+          "outputTokens": 200,
+          "cacheCreationTokens": 50,
+          "cacheReadTokens": 10
+        },
+        "progress": [
+          {
+            "phase": "analyzing",
+            "currentChunk": 1,
+            "totalChunks": 1
+          }
+        ]
+      },
+      "analyzePromptQuality": {
+        "success": true,
+        "insightCount": 1,
+        "insightTypes": [
+          "prompt_quality"
+        ],
+        "usage": {
+          "inputTokens": 1000,
+          "outputTokens": 200,
+          "cacheCreationTokens": 50,
+          "cacheReadTokens": 10
+        },
+        "progress": [
+          {
+            "phase": "analyzing"
+          },
+          {
+            "phase": "saving"
+          }
+        ]
+      }
+    },
+    "llmCallStages": [
+      "session",
+      "prompt_quality"
+    ],
+    "dbAfterSessionPass": {
+      "insights": [],
+      "session_facets": [],
+      "session_steps": [],
+      "analysis_usage": [
+        {
+          "session_id": "sess-short",
+          "analysis_type": "session",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-20250514",
+          "input_tokens": 1000,
+          "output_tokens": 200,
+          "cache_creation_tokens": 50,
+          "cache_read_tokens": 10,
+          "estimated_cost_usd": 0.006191,
+          "chunk_count": 0,
+          "session_message_count": 6
+        }
+      ],
+      "generated_title": null
+    }
+  },
+  "cli": {
+    "thrown": "Session analysis failed: Missing or invalid summary field",
+    "llmCallStages": [
+      "session"
+    ],
+    "db": {
+      "insights": [],
+      "session_facets": [],
+      "session_steps": [],
+      "analysis_usage": [
+        {
+          "session_id": "sess-short",
+          "analysis_type": "session",
+          "provider": "stub-provider",
+          "model": "stub-model",
+          "input_tokens": 1000,
+          "output_tokens": 200,
+          "cache_creation_tokens": 50,
+          "cache_read_tokens": 10,
+          "estimated_cost_usd": 0,
+          "chunk_count": 0,
+          "session_message_count": 6
+        }
+      ],
+      "generated_title": null
+    }
+  }
+}

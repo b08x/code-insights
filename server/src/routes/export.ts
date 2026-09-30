@@ -6,7 +6,7 @@ import type { ExportTemplate } from '@code-insights/cli/types';
 import { formatKnowledgeBase } from '../export/knowledge-base.js';
 import { formatAgentRules } from '../export/agent-rules.js';
 import type { SessionRow, InsightRow } from '../export/knowledge-base.js';
-import { createLLMClient, loadLLMConfig } from '../llm/client.js';
+import { createLLMClient, loadLLMConfig } from '@code-insights/cli/llm/client';
 import { requireLLM } from './route-helpers.js';
 import {
   applyDepthCap,

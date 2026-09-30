@@ -1,0 +1,3 @@
+```json
+{"outcome_satisfaction":"medium","workflow_pattern":"iterative-refinement","had_course_correction":true,"course_correction_reason":"queue semantics","iteration_count":5,"friction_points":[{"category":"context-loss","attribution":"ai-capability","description":"Lost earlier constraints.","severity":"medium","resolution":"resolved"},],"effective_patterns":[],}
+```

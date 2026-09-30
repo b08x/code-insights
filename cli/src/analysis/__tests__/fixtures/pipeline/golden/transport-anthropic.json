@@ -1,0 +1,128 @@
+{
+  "server": {
+    "success": [
+      true,
+      true
+    ],
+    "requests": [
+      {
+        "url": "https://api.anthropic.com/v1/messages",
+        "method": "POST",
+        "headers": {
+          "Content-Type": "application/json",
+          "anthropic-beta": "prompt-caching-2024-07-31",
+          "anthropic-version": "2023-06-01",
+          "x-api-key": "test-key"
+        },
+        "hasSignal": false,
+        "body": {
+          "model": "anthropic-fixture-model",
+          "max_tokens": 8192,
+          "system": "<string length=498 sha256=112c62e52a94e0bc>",
+          "messages": [
+            {
+              "role": "user",
+              "content": "<string length=13573 sha256=fae1c12c6998a057>"
+            }
+          ]
+        }
+      },
+      {
+        "url": "https://api.anthropic.com/v1/messages",
+        "method": "POST",
+        "headers": {
+          "Content-Type": "application/json",
+          "anthropic-beta": "prompt-caching-2024-07-31",
+          "anthropic-version": "2023-06-01",
+          "x-api-key": "test-key"
+        },
+        "hasSignal": true,
+        "body": {
+          "model": "anthropic-fixture-model",
+          "max_tokens": 8192,
+          "system": "<string length=498 sha256=112c62e52a94e0bc>",
+          "messages": [
+            {
+              "role": "user",
+              "content": "<string length=9000 sha256=deaf9961831d8594>"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "cliProviderRunner": {
+    "runnerName": "anthropic",
+    "reportedModel": "anthropic-fixture-model",
+    "requests": [
+      {
+        "url": "https://api.anthropic.com/v1/messages",
+        "method": "POST",
+        "headers": {
+          "Content-Type": "application/json",
+          "anthropic-beta": "prompt-caching-2024-07-31",
+          "anthropic-version": "2023-06-01",
+          "x-api-key": "test-key"
+        },
+        "hasSignal": false,
+        "body": {
+          "model": "anthropic-fixture-model",
+          "max_tokens": 8192,
+          "system": "<string length=498 sha256=112c62e52a94e0bc>",
+          "messages": [
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "<string length=878 sha256=730bc1e460148159>",
+                  "cache_control": {
+                    "type": "ephemeral"
+                  }
+                },
+                {
+                  "type": "text",
+                  "text": "<string length=12695 sha256=c4224cf3f9893b44>"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "url": "https://api.anthropic.com/v1/messages",
+        "method": "POST",
+        "headers": {
+          "Content-Type": "application/json",
+          "anthropic-beta": "prompt-caching-2024-07-31",
+          "anthropic-version": "2023-06-01",
+          "x-api-key": "test-key"
+        },
+        "hasSignal": true,
+        "body": {
+          "model": "anthropic-fixture-model",
+          "max_tokens": 8192,
+          "system": "<string length=498 sha256=112c62e52a94e0bc>",
+          "messages": [
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "<string length=878 sha256=730bc1e460148159>",
+                  "cache_control": {
+                    "type": "ephemeral"
+                  }
+                },
+                {
+                  "type": "text",
+                  "text": "<string length=8122 sha256=7a9cdd87edf6d3dd>"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

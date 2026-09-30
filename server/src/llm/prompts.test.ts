@@ -3,19 +3,19 @@ import {
   classifyStoredUserMessage,
   formatMessagesForAnalysis,
   formatSessionMetaLine,
-} from './message-format.js';
+} from '@code-insights/cli/analysis/message-format';
 import {
   parseAnalysisResponse,
   parsePromptQualityResponse,
-} from './response-parsers.js';
+} from '@code-insights/cli/analysis/response-parsers';
 import {
   SHARED_ANALYST_SYSTEM_PROMPT,
   buildCacheableConversationBlock,
   buildSessionAnalysisInstructions,
   buildPromptQualityInstructions,
   buildFacetOnlyInstructions,
-} from './prompts.js';
-import type { SQLiteMessageRow } from './prompt-types.js';
+} from '@code-insights/cli/analysis/prompts';
+import type { SQLiteMessageRow } from '@code-insights/cli/analysis/prompt-types';
 
 // ──────────────────────────────────────────────────────
 // Helpers

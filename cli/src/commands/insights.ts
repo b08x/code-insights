@@ -1,9 +1,13 @@
 /**
- * insights command — analyze a session using configured LLM or native claude -p.
+ * insights command — analyze a session using configured LLM or a native CLI runner.
  *
- * Two modes:
- *   --native   Use claude -p (user's Claude subscription, zero config)
- *   (default)  Use configured LLM provider (OpenAI, Anthropic, Gemini, Ollama)
+ * Modes:
+ *   --native / --codex / --claude / --antigravity / --vibe   Native CLI runners (user's subscription)
+ *   (default)  Use configured LLM provider (OpenAI, Anthropic, Gemini, Ollama, ...)
+ *
+ * All analysis logic lives in analysis/pipeline.ts (analyzeSessionPipeline). This command only
+ * selects a runner, handles hook-mode resume detection, converts pipeline failures into thrown
+ * errors, and renders the report.
  *
  * Hook mode (--hook):
  *   Reads { session_id, transcript_path, cwd } from stdin JSON,
@@ -16,9 +20,6 @@
  */
 
 import chalk from 'chalk';
-import { readFileSync } from 'fs';
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
 import { getDb } from '../db/client.js';
 import { renderAnalysisReport } from '../analysis/render.js';
 import { ClaudeNativeRunner } from '../analysis/native-runner.js';
@@ -26,85 +27,18 @@ import { CodexNativeRunner } from '../analysis/codex-runner.js';
 import { AntigravityNativeRunner } from '../analysis/antigravity-runner.js';
 import { MistralVibeRunner } from '../analysis/mistral-vibe-runner.js';
 import { ProviderRunner } from '../analysis/provider-runner.js';
-import {
-  SHARED_ANALYST_SYSTEM_PROMPT,
-  buildSessionAnalysisInstructions,
-  buildPromptQualityInstructions,
-  buildCacheableConversationBlock,
-} from '../analysis/prompts.js';
-import { formatMessagesForAnalysis } from '../analysis/message-format.js';
-import { detectRageLoopHeuristic } from '../analysis/loop-detector.js';
-import { parseAnalysisResponse, parsePromptQualityResponse } from '../analysis/response-parsers.js';
-import {
-  saveInsightsToDb,
-  deleteSessionInsights,
-  saveFacetsToDb,
-  saveSessionStepsToDb,
-  convertToInsightRows,
-  convertPQToInsightRow,
-  updateSessionTitle,
-} from '../analysis/analysis-db.js';
-import { saveAnalysisUsage } from '../analysis/analysis-usage-db.js';
+import { analyzeSessionPipeline, pipelineFailureToError } from '../analysis/pipeline.js';
+import { FallbackNativeRunner } from '../analysis/native-fallback.js';
 import type { AnalysisRunner } from '../analysis/runner-types.js';
-import type { SQLiteMessageRow } from '../analysis/prompt-types.js';
-
-// ── Schema loading ────────────────────────────────────────────────────────────
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-// Helper to safely load schema files from the same relative location in src or dist
-function loadSchema(filename: string): object | undefined {
-  try {
-    const path = join(__dirname, '..', 'analysis', 'schemas', filename);
-    return JSON.parse(readFileSync(path, 'utf-8'));
-  } catch (err) {
-    // Silently fail if schema is missing; runners will fall back to text-only prompts
-    return undefined;
-  }
-}
-
-const SESSION_ANALYSIS_SCHEMA = loadSchema('session-analysis.json');
-const PROMPT_QUALITY_SCHEMA = loadSchema('prompt-quality.json');
-
-// ── DB types ──────────────────────────────────────────────────────────────────
-
-interface SessionRow {
-  id: string;
-  project_id: string;
-  project_name: string;
-  project_path: string;
-  summary: string | null;
-  ended_at: string;
-  message_count: number;
-  compact_count: number | null;
-  auto_compact_count: number | null;
-  slash_commands: string | null;
-}
-
-// ── Session query helpers ─────────────────────────────────────────────────────
-
-function loadSessionForAnalysis(sessionId: string): SessionRow | null {
-  const db = getDb();
-  return db.prepare(`
-    SELECT id, project_id, project_name, project_path, summary, ended_at,
-           message_count, compact_count, auto_compact_count, slash_commands
-    FROM sessions
-    WHERE id = ? AND deleted_at IS NULL
-  `).get(sessionId) as SessionRow | null;
-}
-
-function loadSessionMessages(sessionId: string): SQLiteMessageRow[] {
-  const db = getDb();
-  return db.prepare(`
-    SELECT id, session_id, type, content, thinking, tool_calls, tool_results, usage, timestamp, parent_id
-    FROM messages
-    WHERE session_id = ?
-    ORDER BY timestamp ASC
-  `).all(sessionId) as SQLiteMessageRow[];
-}
 
 // ── Resume detection ──────────────────────────────────────────────────────────
+
+function loadSessionMessageCount(sessionId: string): number | undefined {
+  const row = getDb().prepare(
+    'SELECT message_count FROM sessions WHERE id = ? AND deleted_at IS NULL'
+  ).get(sessionId) as { message_count: number } | undefined;
+  return row?.message_count;
+}
 
 function isAlreadyAnalyzed(sessionId: string, currentMessageCount: number): boolean {
   const db = getDb();
@@ -158,7 +92,7 @@ export async function runInsightsCommand(options: InsightsCommandOptions): Promi
     CodexNativeRunner.validate();
     runner = new CodexNativeRunner();
   } else if (options.native) {
-    // Default native is now Codex, falling back to Claude
+    // Default native is Codex, falling back to Claude
     try {
       CodexNativeRunner.validate();
       runner = new CodexNativeRunner();
@@ -166,7 +100,7 @@ export async function runInsightsCommand(options: InsightsCommandOptions): Promi
       try {
         ClaudeNativeRunner.validate();
         runner = new ClaudeNativeRunner();
-      } catch (err) {
+      } catch {
         throw new Error(`No native runners found. --native requires either Codex or Claude Code to be installed.`);
       }
     }
@@ -174,285 +108,61 @@ export async function runInsightsCommand(options: InsightsCommandOptions): Promi
     runner = ProviderRunner.fromConfig();
   }
 
-  // Helper to run analysis with multi-level fallback (Codex -> Claude -> Antigravity -> Vibe)
-  const performAnalysis = async (params: { systemPrompt: string; userPrompt: string; jsonSchema?: object }) => {
-    try {
-      return await runner.runAnalysis(params);
-    } catch (err: any) {
-      // If using general 'native' mode (not forced to a specific runner)
-      if (options.native && !options.codex && !options.antigravity && !options.vibe) {
-        // Fallback 1: Codex -> Claude
-        if (runner.name === 'codex-native' && err.message.includes('usage limit reached')) {
-          log(chalk.yellow(`[Code Insights] Codex usage limit reached, falling back to Claude...`));
-          try {
-            ClaudeNativeRunner.validate();
-            const fallbackRunner = new ClaudeNativeRunner();
-            return await fallbackRunner.runAnalysis(params);
-          } catch (fallbackErr: any) {
-            log(chalk.yellow(`[Code Insights] Fallback to Claude failed: ${fallbackErr.message}. Trying Antigravity...`));
-            // Fall through to next fallback
-          }
-        }
+  // General 'native' mode (not forced to one specific runner) gets the multi-level fallback.
+  if (options.native && !options.codex && !options.antigravity && !options.vibe) {
+    runner = new FallbackNativeRunner(runner, log);
+  }
 
-        // Fallback 2: (Codex OR Claude) -> Antigravity
-        if (runner.name === 'codex-native' || runner.name === 'claude-code-native') {
-          try {
-            AntigravityNativeRunner.validate();
-            const fallbackRunner = new AntigravityNativeRunner();
-            return await fallbackRunner.runAnalysis(params);
-          } catch (fallbackErr: any) {
-            log(chalk.yellow(`[Code Insights] Fallback to Antigravity failed: ${fallbackErr.message}. Trying Mistral Vibe...`));
-            // Fall through to next fallback
-          }
-        }
-
-        // Fallback 3: (Codex OR Claude OR Antigravity) -> Vibe
-        if (runner.name === 'codex-native' || runner.name === 'claude-code-native' || runner.name === 'antigravity-native') {
-          try {
-            MistralVibeRunner.validate();
-            const fallbackRunner = new MistralVibeRunner();
-            return await fallbackRunner.runAnalysis(params);
-          } catch (fallbackErr: any) {
-            throw new Error(`Fallback system exhausted. Original error: ${err.message}. Last fallback error: ${fallbackErr.message}`);
-          }
-        }
-      }
-      throw err;
-    }
-  };
-
-  // 2. Load session from DB
-  const session = loadSessionForAnalysis(options.sessionId);
-  if (!session) {
+  // 2. Session must exist; hook mode skips sessions unchanged since the last analysis.
+  const messageCount = loadSessionMessageCount(options.sessionId);
+  if (messageCount === undefined) {
     throw new Error(`Session '${options.sessionId}' not found in local database.`);
   }
-
-  // SessionData is the shared type accepted by analysis-db converters.
-  // SessionRow uses null for optional fields (SQLite); SessionData uses undefined.
-  const sessionData = {
-    ...session,
-    compact_count: session.compact_count ?? undefined,
-    auto_compact_count: session.auto_compact_count ?? undefined,
-    slash_commands: session.slash_commands ?? undefined,
-  };
-
-  // 3. Resume detection — hook mode only (skipped when --force)
-  if (options.hookMode && !options.force) {
-    if (isAlreadyAnalyzed(options.sessionId, session.message_count)) {
-      return; // already analyzed at this session length
-    }
+  if (options.hookMode && !options.force && isAlreadyAnalyzed(options.sessionId, messageCount)) {
+    return; // already analyzed at this session length
   }
 
-  // 4. Load messages
-  const messages = loadSessionMessages(options.sessionId);
-
-  // 5. Build shared conversation block (same for both passes)
-  const formattedMessages = formatMessagesForAnalysis(messages);
-
-  // 5b. Retrieval-augmented context for long conversations
-  let retrievalContext = '';
-  try {
-    const { shouldUseRetrieval, retrieveAnalysisChunks, generateSessionSummary } = await import('../embeddings/retrieval.js');
-    const { checkEmbeddingReadiness, chunkAndEmbedSession } = await import('../embeddings/analysis-pipeline.js');
-
-    if (shouldUseRetrieval(formattedMessages)) {
-      log(chalk.dim(`[Code Insights] Long conversation detected, checking retrieval readiness...`));
-
-      // Check if embeddings exist for this session
-      const readiness = checkEmbeddingReadiness(getDb(), options.sessionId);
-
-      if (!readiness.ready) {
-        // Trigger background chunking + embedding
-        log(chalk.dim(`[Code Insights] Computing embeddings for ${readiness.status.total || messages.length} chunks...`));
-        const chunkResult = await chunkAndEmbedSession(options.sessionId, messages);
-        if (!chunkResult.embedded) {
-          log(chalk.yellow(`[Code Insights] Embedding failed: ${chunkResult.error}. Falling back to full conversation.`));
-        }
-      }
-
-      // Retrieve relevant chunks
-      const sessionSummary = generateSessionSummary(messages);
-      const retrieved = await retrieveAnalysisChunks(
-        options.sessionId,
-        formattedMessages,
-        session.summary || sessionSummary,
-        session.project_name,
-      );
-
-      if (retrieved.usedRetrieval) {
-        retrievalContext = `\n\n${retrieved.augmentedChunks}\n\n`;
-        log(chalk.dim(`[Code Insights] Retrieved ${retrieved.chunkCount} relevant segments (~${retrieved.estimatedTokens} tokens)`));
-      }
-    }
-  } catch {
-    // Retrieval is non-fatal — fall back to full conversation
-  }
-
-  // 6. Heuristic loop detection
-  const loopSignal = detectRageLoopHeuristic(messages);
-
-  // Session metadata for prompt builders
-  const slashCommands = (() => {
-    try {
-      return JSON.parse(session.slash_commands ?? '[]') as string[];
-    } catch {
-      return [] as string[];
-    }
-  })();
-  const sessionMeta = {
-    compactCount: session.compact_count ?? 0,
-    autoCompactCount: session.auto_compact_count ?? 0,
-    slashCommands,
-  };
-  const humanMessageCount = messages.filter(m => m.type === 'user').length;
-  const assistantMessageCount = messages.filter(m => m.type === 'assistant').length;
-  const toolExchangeCount = messages.filter(m => m.tool_calls).length;
-
-  // ── Pass 1: Session analysis ──────────────────────────────────────────────
-
-  const sessionInstructions = buildSessionAnalysisInstructions(
-    session.project_name,
-    session.summary,
-    sessionMeta,
-    loopSignal,
-  );
-
-  let architectureContext = '';
-  try {
-    const { execFileSync } = await import('child_process');
-    const stdout = execFileSync('codebase-memory-mcp', ['cli', 'get_architecture'], {
-      input: JSON.stringify({ project: session.project_name }),
-      encoding: 'utf-8',
-      timeout: 15000,
-      stdio: ['pipe', 'pipe', 'ignore']
-    });
-    if (stdout && stdout.trim()) {
-      architectureContext = `\n\n<project_architecture>\n${stdout.trim()}\n</project_architecture>\n`;
-    }
-  } catch (err) {
-    // Ignore: tool missing, project not indexed, or timeout
-  }
-
-  const sessionUserPrompt = `${buildCacheableConversationBlock(formattedMessages).text}${retrievalContext}${architectureContext}\n${sessionInstructions}`;
-
-  const sessionResult = await performAnalysis({
-    systemPrompt: SHARED_ANALYST_SYSTEM_PROMPT,
-    userPrompt: sessionUserPrompt,
-    jsonSchema: SESSION_ANALYSIS_SCHEMA,
+  // 3. One pipeline for every entry point (session pass + prompt-quality pass).
+  const result = await analyzeSessionPipeline(options.sessionId, {
+    runner,
+    log: message => log(chalk.dim(`[Code Insights] ${message}`)),
   });
 
-  const parsedSession = parseAnalysisResponse(sessionResult.rawJson);
-  if (!parsedSession.success) {
-    throw new Error(`Session analysis failed: ${parsedSession.error.error_message}`);
+  if (!result.success) {
+    throw pipelineFailureToError(result);
   }
-
-  // Save session insights (upsert: insert new, delete old)
-  const sessionInsights = convertToInsightRows(parsedSession.data, sessionData);
-  saveInsightsToDb(sessionInsights);
-  deleteSessionInsights(session.id, {
-    excludeTypes: ['prompt_quality'],
-    excludeIds: sessionInsights.map(i => i.id),
-  });
-
-  if (parsedSession.data.facets) {
-    saveFacetsToDb(session.id, parsedSession.data.facets);
-  }
-
-  if (parsedSession.data.step_matrix && parsedSession.data.step_matrix.length > 0) {
-    saveSessionStepsToDb(session.id, parsedSession.data.step_matrix);
-  }
-
-  // Auto-apply generated title to the session record
-  if (parsedSession.data.summary?.title) {
-    updateSessionTitle(session.id, parsedSession.data.summary.title);
-  }
-
-  saveAnalysisUsage({
-    session_id: session.id,
-    analysis_type: 'session',
-    provider: sessionResult.provider,
-    model: sessionResult.model,
-    input_tokens: sessionResult.inputTokens,
-    output_tokens: sessionResult.outputTokens,
-    cache_creation_tokens: sessionResult.cacheCreationTokens,
-    cache_read_tokens: sessionResult.cacheReadTokens,
-    estimated_cost_usd: 0,
-    duration_ms: sessionResult.durationMs,
-    session_message_count: session.message_count,
-  });
-
-  // ── Pass 2: Prompt quality analysis ──────────────────────────────────────
-
-  const pqInstructions = buildPromptQualityInstructions(
-    session.project_name,
-    { humanMessageCount, assistantMessageCount, toolExchangeCount },
-    sessionMeta,
-  );
-  const pqUserPrompt = `${buildCacheableConversationBlock(formattedMessages).text}${architectureContext}\n${pqInstructions}`;
-
-  const pqResult = await performAnalysis({
-    systemPrompt: SHARED_ANALYST_SYSTEM_PROMPT,
-    userPrompt: pqUserPrompt,
-    jsonSchema: PROMPT_QUALITY_SCHEMA,
-  });
-
-  const parsedPQ = parsePromptQualityResponse(pqResult.rawJson);
-  if (!parsedPQ.success) {
-    throw new Error(`Prompt quality analysis failed: ${parsedPQ.error.error_message}`);
-  }
-
-  const pqInsight = convertPQToInsightRow(parsedPQ.data, sessionData);
-  saveInsightsToDb([pqInsight]);
-  deleteSessionInsights(session.id, {
-    excludeTypes: ['summary', 'decision', 'learning'],
-    excludeIds: [pqInsight.id],
-  });
-
-  saveAnalysisUsage({
-    session_id: session.id,
-    analysis_type: 'prompt_quality',
-    provider: pqResult.provider,
-    model: pqResult.model,
-    input_tokens: pqResult.inputTokens,
-    output_tokens: pqResult.outputTokens,
-    cache_creation_tokens: pqResult.cacheCreationTokens,
-    cache_read_tokens: pqResult.cacheReadTokens,
-    estimated_cost_usd: 0,
-    duration_ms: pqResult.durationMs,
-    session_message_count: session.message_count,
-  });
 
   // ── Render report ──────────────────────────────────────────────────────────
 
-  const resultPayload = {
-    session: parsedSession.data,
-    promptQuality: parsedPQ.data,
-    meta: {
-      model: sessionResult.model,
-      durationMs: (sessionResult.durationMs || 0) + (pqResult.durationMs || 0),
-      inputTokens: (sessionResult.inputTokens || 0) + (pqResult.inputTokens || 0),
-      outputTokens: (sessionResult.outputTokens || 0) + (pqResult.outputTokens || 0),
-      messageCount: session.message_count,
-      projectName: session.project_name,
-    },
-  };
+  const sessionAnalysis = result.session!;
+  const { meta } = result;
 
   if (format === 'json') {
     // Return raw JSON so batch callers can parse and render
-    return JSON.stringify(resultPayload);
-  } else {
-    const report = renderAnalysisReport({
-      sessionAnalysis: parsedSession.data,
-      pqAnalysis: parsedPQ.data,
-      model: sessionResult.model,
-      durationMs: (sessionResult.durationMs || 0) + (pqResult.durationMs || 0),
-      inputTokens: (sessionResult.inputTokens || 0) + (pqResult.inputTokens || 0),
-      outputTokens: (sessionResult.outputTokens || 0) + (pqResult.outputTokens || 0),
-      messageCount: session.message_count,
-      projectName: session.project_name,
+    return JSON.stringify({
+      session: sessionAnalysis,
+      promptQuality: result.promptQuality,
+      meta: {
+        model: meta.model,
+        durationMs: meta.durationMs,
+        inputTokens: meta.inputTokens,
+        outputTokens: meta.outputTokens,
+        messageCount: meta.messageCount,
+        projectName: meta.projectName,
+      },
     });
-    log(report);
   }
+
+  log(renderAnalysisReport({
+    sessionAnalysis,
+    pqAnalysis: result.promptQuality,
+    model: meta.model,
+    durationMs: meta.durationMs,
+    inputTokens: meta.inputTokens,
+    outputTokens: meta.outputTokens,
+    messageCount: meta.messageCount,
+    projectName: meta.projectName,
+  }));
 }
 
 // ── CLI command entry point ───────────────────────────────────────────────────

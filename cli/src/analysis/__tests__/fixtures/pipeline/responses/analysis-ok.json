@@ -1,0 +1,58 @@
+{
+  "summary": {
+    "title": "Fix plus-sign email validation",
+    "content": "The login form rejected valid emails containing a plus sign.",
+    "bullets": [
+      "Relaxed regex",
+      "Added tests"
+    ],
+    "outcome": "success"
+  },
+  "decisions": [
+    {
+      "title": "Relax email regex",
+      "situation": "Plus addressing rejected",
+      "choice": "Allow + and case-insensitive match",
+      "reasoning": "RFC allows plus addressing",
+      "confidence": 85
+    }
+  ],
+  "learnings": [
+    {
+      "title": "Validate at the boundary",
+      "takeaway": "Catch validation errors at the call site",
+      "confidence": 80
+    }
+  ],
+  "facets": {
+    "outcome_satisfaction": "high",
+    "workflow_pattern": "plan-then-implement",
+    "had_course_correction": false,
+    "course_correction_reason": null,
+    "iteration_count": 2,
+    "friction_points": [
+      {
+        "category": "wrong-approach",
+        "attribution": "ai-capability",
+        "description": "First regex was too strict.",
+        "severity": "low",
+        "resolution": "resolved"
+      },
+      {
+        "category": "totally-made-up-category",
+        "attribution": "user-actionable",
+        "description": "Non-canonical category to exercise normalization.",
+        "severity": "medium",
+        "resolution": "workaround"
+      }
+    ],
+    "effective_patterns": [
+      {
+        "category": "verification-workflow",
+        "description": "Ran tests after each edit.",
+        "confidence": 85,
+        "driver": "collaborative"
+      }
+    ]
+  }
+}
