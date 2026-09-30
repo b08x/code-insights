@@ -385,3 +385,63 @@ export interface ChatMessage {
   toolCalls: ChatAssistantMeta | null;
   createdAt: string;
 }
+
+// ── Gold labels (phase 2 labeling) ────────────────────────────────────────────
+// Mirrors cli/src/db/labels.ts. The server validates categories against canonical lists.
+
+export type LabelSplit = 'train' | 'validation' | 'test';
+export type LengthBucket = 'short' | 'medium' | 'long';
+
+export interface LabelInput {
+  outcome: string;
+  frictionCategories: string[];
+  patternCategories: string[];
+  keyPoints: string[];
+  forbiddenClaims: string[];
+  note: string | null;
+}
+
+export interface SessionLabel extends LabelInput {
+  sessionId: string;
+  target: string;
+  /** Assigned by the server on first save; never sent by the client. */
+  split: LabelSplit;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface LabelCategories {
+  outcomes: string[];
+  frictionCategories: string[];
+  patternCategories: string[];
+}
+
+export interface LabelQueueItem {
+  sessionId: string;
+  projectId: string;
+  projectName: string;
+  sourceTool: string;
+  bucket: LengthBucket;
+  score: number;
+  activeLearning: number;
+  title: string | null;
+}
+
+export interface LabelQueueResponse {
+  queue: LabelQueueItem[];
+  unlabeledCount: number;
+}
+
+export interface LabelCoverageRow {
+  labeled: number;
+  available: number;
+  target: number;
+}
+
+export interface LabelProgress {
+  total: number;
+  splits: Record<LabelSplit, number>;
+  targets: { totalLabels: number; perProject: number; perLengthBucket: number };
+  byProject: Array<LabelCoverageRow & { projectId: string; projectName: string }>;
+  byLengthBucket: Array<LabelCoverageRow & { bucket: LengthBucket }>;
+}

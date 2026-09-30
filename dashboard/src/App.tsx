@@ -13,6 +13,7 @@ import ExportPage from '@/pages/ExportPage';
 import JournalPage from '@/pages/JournalPage';
 import PatternsPage from '@/pages/PatternsPage';
 import RagChatPage from '@/pages/RagChatPage';
+import LabelPage from '@/pages/LabelPage';
 
 const ROUTE_TITLES: Record<string, string> = {
   '/dashboard': 'Dashboard',
@@ -21,6 +22,7 @@ const ROUTE_TITLES: Record<string, string> = {
   '/insights': 'Insights',
   '/analytics': 'Analytics',
   '/patterns': 'Patterns',
+  '/label': 'Labeling',
   '/export': 'Export',
   '/journal': 'Journal',
   '/settings': 'Settings',
@@ -76,6 +78,8 @@ export default function App() {
           <Route path="/insights" element={<InsightsPage />} />
           <Route path="/analytics" element={<AnalyticsPage />} />
           <Route path="/patterns" element={<PatternsPage />} />
+          <Route path="/label" element={<LabelPage />} />
+          <Route path="/label/:sessionId" element={<LabelPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/export" element={<ExportPage />} />
           <Route path="/journal" element={<JournalPage />} />

@@ -8,3 +8,4 @@ export { useLlmConfig, useSaveLlmConfig } from './useConfig';
 export { useExportMarkdown } from './useExport';
 export { useFacetAggregation, useReflectSnapshot } from './useReflect';
 export { useMissingFacets, useBackfillFacets } from './useFacets';
+export { useLabelCategories, useLabelQueue, useLabelProgress, useLabel, useSaveLabel, useDeleteLabel } from './useLabels';
