@@ -31,7 +31,7 @@ const RUNNERS: RunnerInfo[] = [
   { id: 'provider', name: 'Background Analysis Provider', flag: 'no flag', modelHint: '', variantHint: null },
 ];
 
-// Mirrors the server's validation (server/src/routes/config.ts): values reach CLI argv.
+// Client-side copy of cli/src/utils/runner-setting.ts (the server enforces it): values reach CLI argv.
 const MODEL_RE = /^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,199}$/;
 const VARIANT_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,49}$/;
 const CUSTOM = '__custom__';

@@ -38,9 +38,21 @@ export interface RunnerIdentityFields {
 
 const PROVIDER_PREFIX = 'provider:';
 
-/** Stable string form stored in `student_identity` columns and used to key prompt versions. */
+/** Separator between identity-key components; forbidden inside any component. */
+const KEY_SEPARATOR = '|';
+
+/**
+ * Stable string form stored in `student_identity` columns and used to key prompt versions.
+ * Throws when a component contains '|': the key would be ambiguous (two identities could
+ * share one key, and a prompt tuned for one would be applied to the other).
+ */
 export function identityKey(identity: StudentIdentity): string {
-  return `${identity.runner}|${identity.model ?? ''}|${identity.variant ?? ''}`;
+  for (const [field, value] of [['runner', identity.runner], ['model', identity.model], ['variant', identity.variant]] as const) {
+    if (value?.includes(KEY_SEPARATOR)) {
+      throw new Error(`Invalid student identity: ${field} must not contain '${KEY_SEPARATOR}' (got ${JSON.stringify(value)}).`);
+    }
+  }
+  return [identity.runner, identity.model ?? '', identity.variant ?? ''].join(KEY_SEPARATOR);
 }
 
 export function parseIdentityKey(key: string): StudentIdentity | null {
@@ -107,7 +119,12 @@ export function currentIdentity(
   config: ClaudeInsightConfig | null,
   runner?: RunnerIdentityFields,
 ): StudentIdentity | null {
-  if (runner) return identityFromRunner(runner);
-  const llm = config?.dashboard?.llm;
-  return llm ? providerIdentity(llm.provider, llm.model ?? null) : null;
+  const identity = runner
+    ? identityFromRunner(runner)
+    : config?.dashboard?.llm
+      ? providerIdentity(config.dashboard.llm.provider, config.dashboard.llm.model ?? null)
+      : null;
+  // Validate eagerly (e.g. a hand-edited dashboard.llm.model containing '|').
+  if (identity) identityKey(identity);
+  return identity;
 }

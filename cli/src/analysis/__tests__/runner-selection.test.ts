@@ -46,6 +46,13 @@ describe('selectRunner', () => {
     expect(selectRunner({}, withRunner({ name: 'cursor' }))).toBeNull();
   });
 
+  it('ignores argv-unsafe model/variant from a hand-edited config.json', () => {
+    expect(runnerConfigFor('claude', withRunner({ name: 'claude', model: '--foo', variant: '-x' }))).toEqual({});
+    expect(runnerConfigFor('claude', withRunner({ name: 'claude', model: 'a|b', variant: 'high; rm' }))).toEqual({});
+    expect(runnerConfigFor('claude', withRunner({ name: 'claude', model: 42, variant: 'high' }))).toEqual({ variant: 'high' });
+    expect(selectRunner({}, withRunner({ name: 'opencode', model: '--foo' }))?.runnerConfig).toEqual({});
+  });
+
   it('drops blank model/variant', () => {
     expect(runnerConfigFor('codex', withRunner({ name: 'codex', model: '  ', variant: '' }))).toEqual({});
   });

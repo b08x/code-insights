@@ -164,6 +164,15 @@ describe('Config routes', () => {
       expect(body.ok).toBe(true);
     });
 
+    it("returns 400 when the model contains '|' (identity-key separator)", async () => {
+      const res = await createApp().request('/api/config/llm', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider: 'openai', model: 'gpt|4o' }),
+      });
+      expect(res.status).toBe(400);
+    });
+
     it('calls saveConfig when LLM config changes', async () => {
       vi.mocked(saveConfig).mockClear();
       const app = createApp();

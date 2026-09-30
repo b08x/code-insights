@@ -23,6 +23,11 @@ describe('identityKey', () => {
     expect(keys.size).toBe(4);
   });
 
+  it.each(['runner', 'model', 'variant'] as const)("throws when %s contains '|'", (field) => {
+    const identity = { runner: 'r', model: 'm', variant: 'v', [field]: 'a|b' };
+    expect(() => identityKey(identity)).toThrow(/must not contain '\|'/);
+  });
+
   it('rejects malformed keys', () => {
     expect(parseIdentityKey('nope')).toBeNull();
     expect(parseIdentityKey('|m|v')).toBeNull();
@@ -30,6 +35,11 @@ describe('identityKey', () => {
 });
 
 describe('currentIdentity', () => {
+  it("rejects a dashboard.llm.model containing '|'", () => {
+    expect(() => currentIdentity(config({ provider: 'openrouter', model: 'a|b' }))).toThrow(/model must not contain/);
+  });
+
+
   it('server path: provider:<llm.provider> / <llm.model>', () => {
     expect(currentIdentity(config({ provider: 'mistral', model: 'mistral-small' })))
       .toEqual({ runner: 'provider:mistral', model: 'mistral-small', variant: null });

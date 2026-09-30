@@ -8,18 +8,9 @@
  */
 
 import { execFile } from 'child_process';
-import type { AnalysisRunnerName } from '@code-insights/cli/types';
+import { ANALYSIS_RUNNER_NAMES, isRunnerName, type AnalysisRunnerName } from '@code-insights/cli/utils/runner-setting';
 
-/** Mirrors ANALYSIS_RUNNER_NAMES in @code-insights/cli/types (type-checked below). */
-export const RUNNER_NAMES = ['claude', 'codex', 'antigravity', 'vibe', 'opencode', 'provider'] as const satisfies readonly AnalysisRunnerName[];
-// Compile-time check that the list covers every AnalysisRunnerName.
-type _Exhaustive = Exclude<AnalysisRunnerName, (typeof RUNNER_NAMES)[number]> extends never ? true : never;
-const _exhaustive: _Exhaustive = true;
-void _exhaustive;
-
-export function isRunnerName(value: unknown): value is AnalysisRunnerName {
-  return typeof value === 'string' && (RUNNER_NAMES as readonly string[]).includes(value);
-}
+export { ANALYSIS_RUNNER_NAMES, isRunnerName };
 
 const MODEL_LIST_COMMANDS: Partial<Record<AnalysisRunnerName, { cmd: string; args: readonly string[] }>> = {
   antigravity: { cmd: 'agy', args: ['models'] },

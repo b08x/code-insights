@@ -682,3 +682,14 @@ describe('insightsCheckCommand — --analyze flag', () => {
     expect(stdoutSpy).not.toHaveBeenCalled();
   });
 });
+
+describe('usesNativeFallback', () => {
+  it('wraps plain --native but never opencode (not in the fallback chain)', async () => {
+    const { usesNativeFallback } = await import('../insights.js');
+    expect(usesNativeFallback({ native: true }, { name: 'codex-native' })).toBe(true);
+    expect(usesNativeFallback({ native: true, opencode: true }, { name: 'opencode' })).toBe(false);
+    expect(usesNativeFallback({ native: true }, { name: 'opencode' })).toBe(false);
+    expect(usesNativeFallback({ native: true, codex: true }, { name: 'codex-native' })).toBe(false);
+    expect(usesNativeFallback({}, { name: 'claude-code-native' })).toBe(false);
+  });
+});

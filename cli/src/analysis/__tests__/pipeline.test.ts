@@ -70,6 +70,8 @@ interface RunnerOptions {
   timeoutMs?: number;
   costUsd?: number;
   delayMs?: number;
+  /** Simulates a fallback runner answering call N: overrides the reported provider/model. */
+  answeredBy?: (call: number) => { provider: string; model: string } | undefined;
 }
 
 let inFlight = 0;
@@ -87,8 +89,9 @@ function waitAbortable(ms: number, signal?: AbortSignal): Promise<void> {
 function makeRunner(opts: RunnerOptions = {}) {
   const calls: RunAnalysisParams[] = [];
   const runner: AnalysisRunner = {
-    name: 'stub',
-    ...(opts.provider && { provider: opts.provider, model: 'claude-sonnet-4-20250514' }),
+    // Native stub: name/model match what its calls report (as the real runners do).
+    name: opts.provider ? 'stub' : 'native',
+    ...(opts.provider ? { provider: opts.provider, model: 'claude-sonnet-4-20250514' } : { model: 'native-model' }),
     ...(opts.maxInputTokens !== undefined && { maxInputTokens: opts.maxInputTokens }),
     ...(opts.timeoutMs !== undefined && { timeoutMs: opts.timeoutMs }),
     async runAnalysis(params) {
@@ -112,6 +115,7 @@ function makeRunner(opts: RunnerOptions = {}) {
         model: opts.provider ? 'claude-sonnet-4-20250514' : 'native-model',
         provider: opts.provider ?? 'native',
         ...(opts.costUsd !== undefined && { costUsd: opts.costUsd }),
+        ...opts.answeredBy?.(callIndex),
       };
       return result;
     },
@@ -261,6 +265,39 @@ describe('analyzeSessionPipeline — provenance (v18 columns)', () => {
     const rows = provenanceRows(id);
     expect(rows.facets).toEqual([{ student_identity: 'native|native-model|', prompt_version_id: 'pv-9' }]);
     expect(rows.insights.every(r => (r as { prompt_version_id: string }).prompt_version_id === 'pv-9')).toBe(true);
+  });
+
+  it('records each row from the call that produced it (fallback between session and PQ calls)', async () => {
+    const id = seed('short');
+    const { runner } = makeRunner({ answeredBy: (call) => (call === 1 ? { provider: 'antigravity-native', model: 'antigravity-native' } : undefined) });
+    const result = await analyzeSessionPipeline(id, { runner });
+    expect(result.success).toBe(true);
+    const rows = mockDb.prepare('SELECT type, student_identity FROM insights WHERE session_id = ?').all(id) as Array<{ type: string; student_identity: string }>;
+    const pq = rows.filter(r => r.type === 'prompt_quality');
+    const session = rows.filter(r => r.type !== 'prompt_quality');
+    expect(pq.map(r => r.student_identity)).toEqual(['antigravity-native|antigravity-native|']);
+    expect(session.length).toBeGreaterThan(0);
+    for (const r of session) expect(r.student_identity).toBe('native|native-model|');
+    expect(provenanceRows(id).facets).toEqual([{ student_identity: 'native|native-model|', prompt_version_id: null }]);
+  });
+
+  it('fails (for a queue retry) when a tuned prompt version is answered by another identity', async () => {
+    const id = seed('short');
+    const { runner } = makeRunner({ answeredBy: () => ({ provider: 'antigravity-native', model: 'antigravity-native' }) });
+    const result = await analyzeSessionPipeline(id, {
+      runner, passes: ['session'], promptOverride: { components: {}, versionId: 'pv-9' },
+    });
+    expect(result.success).toBe(false);
+    expect(!result.success && result.error).toMatch(/pv-9.*tuned for native\|native-model\|/);
+    expect(mockDb.prepare('SELECT COUNT(*) AS n FROM insights WHERE session_id = ?').get(id)).toEqual({ n: 0 });
+  });
+
+  it('a built-in prompt (versionId null) may still be answered by a fallback runner', async () => {
+    const id = seed('short');
+    const { runner } = makeRunner({ answeredBy: () => ({ provider: 'antigravity-native', model: 'antigravity-native' }) });
+    const result = await analyzeSessionPipeline(id, { runner, passes: ['session'] });
+    expect(result.success).toBe(true);
+    expect(provenanceRows(id).facets).toEqual([{ student_identity: 'antigravity-native|antigravity-native|', prompt_version_id: null }]);
   });
 
   it('facets-only backfill records provenance too', async () => {

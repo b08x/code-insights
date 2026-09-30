@@ -72,6 +72,19 @@ export interface InsightsCommandOptions {
 
 // ── Core logic ────────────────────────────────────────────────────────────────
 
+/**
+ * General 'native' mode (not forced to codex/antigravity/vibe) gets the multi-level fallback.
+ * OpenCode is never wrapped: it is not in the fallback chain, so a failure must not silently
+ * switch to a different student (see native-fallback.ts).
+ */
+export function usesNativeFallback(
+  options: Pick<InsightsCommandOptions, 'native' | 'codex' | 'antigravity' | 'vibe' | 'opencode'>,
+  runner: { name: string },
+): boolean {
+  return !!options.native && !options.codex && !options.antigravity && !options.vibe
+    && !options.opencode && runner.name !== 'opencode';
+}
+
 export async function runInsightsCommand(options: InsightsCommandOptions): Promise<string | void> {
   const format = options.format ?? 'rich';
   const log = options.quiet ? () => {} : console.log.bind(console);
@@ -102,8 +115,7 @@ export async function runInsightsCommand(options: InsightsCommandOptions): Promi
     runner = ProviderRunner.fromConfig();
   }
 
-  // General 'native' mode (not forced to one specific runner) gets the multi-level fallback.
-  if (options.native && !options.codex && !options.antigravity && !options.vibe) {
+  if (usesNativeFallback(options, runner)) {
     runner = new FallbackNativeRunner(runner, log);
   }
 

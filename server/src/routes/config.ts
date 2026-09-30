@@ -5,7 +5,10 @@ import { getEffectivePlans } from '@code-insights/cli/utils/plans';
 import { loadLLMConfig, testLLMConfig } from '@code-insights/cli/llm/client';
 import { discoverOllamaModels } from '@code-insights/cli/llm/providers/ollama';
 import { discoverModels } from '../llm/discover.js';
-import { isRunnerName, listRunnerModels, RUNNER_NAMES } from './runner-models.js';
+import { listRunnerModels } from './runner-models.js';
+import {
+  ANALYSIS_RUNNER_NAMES, isRunnerName, RUNNER_MODEL_RE, RUNNER_VARIANT_RE,
+} from '@code-insights/cli/utils/runner-setting';
 
 const app = new Hono();
 
@@ -21,10 +24,7 @@ const PROVIDER_API_KEY_ENV: Record<string, string> = {
 
 type RunnerSetting = NonNullable<NonNullable<NonNullable<ClaudeInsightConfig['dashboard']>['analysis']>['runner']>;
 
-// Model/variant reach CLI argv (execFileSync, no shell). Reject leading '-' so a value can never
-// be read as a flag, and keep to the characters model ids actually use.
-const RUNNER_MODEL_RE = /^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,199}$/;
-const RUNNER_VARIANT_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,49}$/;
+// Model/variant reach CLI argv; RUNNER_MODEL_RE / RUNNER_VARIANT_RE are shared with the CLI.
 
 /**
  * Merge a PUT `runner` body into the saved runner. Omitted fields are kept, except that switching
@@ -37,7 +37,7 @@ function mergeRunnerSetting(
 ): RunnerSetting | null | { error: string } {
   if (body === null || Object.keys(body).length === 0) return null;
   if (body.name !== undefined && !isRunnerName(body.name)) {
-    return { error: `runner.name must be one of: ${RUNNER_NAMES.join(', ')}` };
+    return { error: `runner.name must be one of: ${ANALYSIS_RUNNER_NAMES.join(', ')}` };
   }
   const name = (body.name as RunnerSetting['name'] | undefined) ?? existing?.name;
   if (!name) return { error: 'runner.name is required' };
@@ -159,6 +159,10 @@ app.put('/llm', async (c) => {
 
     if (!updatedLlm.model) {
       return c.json({ error: 'model is required when setting LLM config' }, 400);
+    }
+    // The model is a student-identity component; '|' separates identity-key fields.
+    if (updatedLlm.model.includes('|')) {
+      return c.json({ error: "model must not contain '|'" }, 400);
     }
 
     config.dashboard = { ...config.dashboard, llm: updatedLlm };
@@ -366,7 +370,7 @@ app.post('/llm/models', async (c) => {
 app.get('/models', async (c) => {
   const runner = c.req.query('runner');
   if (!isRunnerName(runner)) {
-    return c.json({ error: `runner must be one of: ${RUNNER_NAMES.join(', ')}` }, 400);
+    return c.json({ error: `runner must be one of: ${ANALYSIS_RUNNER_NAMES.join(', ')}` }, 400);
   }
   const models = await listRunnerModels(runner);
   return c.json({ models });

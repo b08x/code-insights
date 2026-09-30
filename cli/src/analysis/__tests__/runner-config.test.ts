@@ -105,3 +105,29 @@ describe('MistralVibeRunner model', () => {
     expect(r.model).toBe('mistral-vibe');
   });
 });
+
+describe('blank model and unsupported variant', () => {
+  it('treats an empty model as unset (no flag, legacy label)', async () => {
+    exec.mockReturnValue(JSON.stringify([{ type: 'result', result: '{"ok":true}', is_error: false }]));
+    const r = await new ClaudeNativeRunner({ model: '', variant: '' }).runAnalysis(params);
+    expect(call().args).not.toContain('--model');
+    expect(call().args).not.toContain('--effort');
+    expect(r.model).toBe('claude-native');
+  });
+
+  it('antigravity and vibe pass no variant flag and expose no variant', async () => {
+    exec.mockReturnValue('{"ok":true}');
+    const agy = new AntigravityNativeRunner({ variant: 'high' });
+    await agy.runAnalysis(params);
+    expect(call().args.join(' ')).not.toContain('high');
+    expect(agy.variant).toBeUndefined();
+
+    vi.clearAllMocks();
+    exec.mockReturnValue(JSON.stringify([{ role: 'assistant', content: '{"ok":true}' }]));
+    const vibe = new MistralVibeRunner({ variant: 'high' });
+    await vibe.runAnalysis(params);
+    expect(call().args.join(' ')).not.toContain('high');
+    expect(call().opts.env).toBeUndefined();
+    expect(vibe.variant).toBeUndefined();
+  });
+});
