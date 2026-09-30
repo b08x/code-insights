@@ -26,7 +26,8 @@
           ],
           "stream": false,
           "options": {
-            "temperature": 0.7
+            "temperature": 0.7,
+            "num_ctx": 88192
           }
         }
       },
@@ -51,7 +52,8 @@
           ],
           "stream": false,
           "options": {
-            "temperature": 0.7
+            "temperature": 0.7,
+            "num_ctx": 88192
           }
         }
       }
@@ -82,7 +84,8 @@
           ],
           "stream": false,
           "options": {
-            "temperature": 0.7
+            "temperature": 0.7,
+            "num_ctx": 88192
           }
         }
       },
@@ -107,7 +110,8 @@
           ],
           "stream": false,
           "options": {
-            "temperature": 0.7
+            "temperature": 0.7,
+            "num_ctx": 88192
           }
         }
       }

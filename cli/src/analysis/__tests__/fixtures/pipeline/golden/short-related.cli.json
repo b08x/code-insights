@@ -41,7 +41,7 @@
       "fn": "querySimilarFiltered",
       "entity": "insight",
       "vectorLength": 4,
-      "topK": 5,
+      "topK": 15,
       "projectId": "proj-fixture"
     }
   ],

@@ -26,6 +26,8 @@ export interface AnalysisRunner {
   readonly maxInputTokens?: number;
   /** Token estimator matching the runner's transport; the pipeline falls back to chars/4. */
   estimateTokens?(text: string): number;
+  /** Default timeout for the prompt-quality call; undefined = none (native runners cannot honor it). */
+  readonly timeoutMs?: number;
 }
 
 export interface RunAnalysisParams {
@@ -57,4 +59,10 @@ export interface RunAnalysisResult {
   cacheReadTokens?: number;
   model: string;
   provider: string;
+  /**
+   * Authoritative cost of this call when the transport knows it (e.g. batch API pricing).
+   * When every call of a pass reports it, the pipeline records the sum instead of computing
+   * cost from provider + model list prices.
+   */
+  costUsd?: number;
 }

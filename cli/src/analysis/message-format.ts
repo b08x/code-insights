@@ -63,10 +63,30 @@ export function classifyStoredUserMessage(content: string): 'human' | 'tool-resu
  * instead. This ensures User#N references in PQ takeaways and evidence fields
  * align with actual human turns, not inflated by tool-result rows.
  */
-export function formatMessagesForAnalysis(messages: SQLiteMessageRow[]): string {
-  let userIndex = 0;
-  let assistantIndex = 0;
-  let lastTimestamp: number | null = null;
+export interface FormatOffsets {
+  /** First User#N index to use (chunks after the first continue the session's numbering). */
+  userStart?: number;
+  /** First Assistant#N index to use. */
+  assistantStart?: number;
+  /** ISO timestamp of the message before this slice, so the first "+Ns" delta is kept. */
+  previousTimestamp?: string;
+}
+
+/** Count the User#/Assistant# labels a message slice consumes (genuine human messages only). */
+export function countTurns(messages: SQLiteMessageRow[]): { user: number; assistant: number } {
+  let user = 0;
+  let assistant = 0;
+  for (const m of messages) {
+    if (m.type === 'user' && classifyStoredUserMessage(m.content) === 'human') user++;
+    else if (m.type === 'assistant') assistant++;
+  }
+  return { user, assistant };
+}
+
+export function formatMessagesForAnalysis(messages: SQLiteMessageRow[], offsets: FormatOffsets = {}): string {
+  let userIndex = offsets.userStart ?? 0;
+  let assistantIndex = offsets.assistantStart ?? 0;
+  let lastTimestamp: number | null = offsets.previousTimestamp ? new Date(offsets.previousTimestamp).getTime() : null;
 
   return messages
     .map((m) => {

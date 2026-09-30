@@ -6,13 +6,12 @@ import { createLLMClient, isLLMConfigured } from '@code-insights/cli/llm/client'
 import { ProviderRunner } from '@code-insights/cli/analysis/provider-runner';
 import {
   analyzeSessionPipeline,
-  buildSessionMeta,
   type AnalysisPass,
   type PipelineProgress,
   type PipelineResult,
 } from '@code-insights/cli/analysis/pipeline';
-import type { SQLiteMessageRow } from './prompt-types.js';
-import type { SessionData, InsightRow } from './analysis-db.js';
+import type { SQLiteMessageRow } from '@code-insights/cli/analysis/prompt-types';
+import type { SessionData, InsightRow } from '@code-insights/cli/analysis/analysis-db';
 
 // ─── Shared types ─────────────────────────────────────────────────────────────
 
@@ -39,14 +38,6 @@ export interface AnalysisResult {
     cacheReadTokens?: number;
   };
 }
-
-// ─── Shared constants ─────────────────────────────────────────────────────────
-
-/** Maximum input tokens for the server-side facet backfill (leaves room for the response). */
-export const MAX_INPUT_TOKENS = 80000;
-
-// Session metadata for prompt builders lives in the pipeline; re-exported for facet-extraction.
-export { buildSessionMeta };
 
 // ─── Pipeline adapter ─────────────────────────────────────────────────────────
 

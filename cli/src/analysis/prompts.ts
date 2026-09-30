@@ -52,6 +52,17 @@ JSON SAFETY RULES:
  *
  * @param formattedMessages - Output of formatMessagesForAnalysis()
  */
+/**
+ * Guidance prose that prompt optimization may replace. Every field defaults to the built-in
+ * constant, so omitting `components` yields byte-identical prompts. Frozen parts (schema,
+ * canonical categories, output format) are deliberately not injectable.
+ */
+export interface GuidanceComponents {
+  frictionGuidance?: string;
+  patternGuidance?: string;
+  promptQualityGuidance?: string;
+}
+
 export function buildCacheableConversationBlock(formattedMessages: string): ContentBlock {
   return {
     type: 'text',
@@ -87,6 +98,7 @@ export function buildSessionAnalysisInstructions(
   meta?: SessionMetadata,
   loopSignal?: RageLoopSignal,
   relatedInsights?: RelatedInsight[],
+  components?: GuidanceComponents,
 ): string {
   const loopInfo = loopSignal?.detected
     ? `  <detected_signals>
@@ -146,8 +158,8 @@ ${sessionSummary ? `  <session_summary>${sessionSummary}</session_summary>\n` : 
   <decision_attribution name="decided_by">user (user explicitly directed/commanded) | agent (AI proposed and autonomously acted) | collaborative (joint exploration/co-designed)</decision_attribution>
 </definitions>
 
-${FRICTION_CLASSIFICATION_GUIDANCE}
-${EFFECTIVE_PATTERN_CLASSIFICATION_GUIDANCE}
+${components?.frictionGuidance ?? FRICTION_CLASSIFICATION_GUIDANCE}
+${components?.patternGuidance ?? EFFECTIVE_PATTERN_CLASSIFICATION_GUIDANCE}
 
 <output_schema>
 {
@@ -254,7 +266,8 @@ export function buildPromptQualityInstructions(
     assistantMessageCount: number;
     toolExchangeCount: number;
   },
-  meta?: SessionMetadata
+  meta?: SessionMetadata,
+  components?: GuidanceComponents,
 ): string {
   return `<task>
 Analyze the user's input messages in the provided conversation transcript. Extract:
@@ -290,7 +303,7 @@ Assess ONLY the user's input messages (labeled User#N). For each finding, includ
   9. Anchor dimension scores to explicit SFL criteria [0-100] (0 = catastrophic deficit, 50 = baseline functioning, 100 = flawless systemic execution). Score each dimension strictly based on observed user input behavior, independently of model outcome.
 </rules>
 
-${PROMPT_QUALITY_CLASSIFICATION_GUIDANCE}
+${components?.promptQualityGuidance ?? PROMPT_QUALITY_CLASSIFICATION_GUIDANCE}
 
 <output_schema>
 {
@@ -365,6 +378,7 @@ export function buildFacetOnlyInstructions(
   meta?: SessionMetadata,
   loopSignal?: RageLoopSignal,
   relatedInsights?: RelatedInsight[],
+  components?: GuidanceComponents,
 ): string {
   const loopInfo = loopSignal?.detected
     ? `  <detected_signals>
@@ -414,9 +428,9 @@ ${sessionSummary ? `  <session_summary>${sessionSummary}</session_summary>\n` : 
   4. Fill every field in the schema. Return empty arrays for categories yielding no valid findings.
 </rules>
 
-${FRICTION_CLASSIFICATION_GUIDANCE}
+${components?.frictionGuidance ?? FRICTION_CLASSIFICATION_GUIDANCE}
 
-${EFFECTIVE_PATTERN_CLASSIFICATION_GUIDANCE}
+${components?.patternGuidance ?? EFFECTIVE_PATTERN_CLASSIFICATION_GUIDANCE}
 
 <output_schema>
 {

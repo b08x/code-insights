@@ -7,19 +7,19 @@
 import { loadConfig } from '../utils/config.js';
 import type { LLMProviderConfig } from '../types.js';
 import { createProviderClient, resolveApiKey, PROVIDER_API_KEY_ENV } from '../llm/client.js';
+import { DEFAULT_MAX_INPUT_TOKENS } from '../llm/types.js';
 import type { LLMClient, LLMMessage } from '../llm/types.js';
 import type { AnalysisRunner, RunAnalysisParams, RunAnalysisResult } from './runner-types.js';
 
 // ── ProviderRunner ────────────────────────────────────────────────────────────
 
-/** Default request budget for provider transports (leaves room for the response). */
-export const PROVIDER_MAX_INPUT_TOKENS = 80_000;
-
 export class ProviderRunner implements AnalysisRunner {
   readonly name: string;
   readonly provider: string;
   readonly model: string;
-  readonly maxInputTokens = PROVIDER_MAX_INPUT_TOKENS;
+  readonly maxInputTokens = DEFAULT_MAX_INPUT_TOKENS;
+  /** Prompt-quality calls abort after 2 minutes unless the caller overrides it. */
+  readonly timeoutMs = 120_000;
   private readonly client: LLMClient;
 
   /** `client` lets callers that already hold a client (the server) skip a second construction. */

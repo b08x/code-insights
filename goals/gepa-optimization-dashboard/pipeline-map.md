@@ -109,3 +109,34 @@ Every golden under `cli/src/analysis/__tests__/fixtures/pipeline/golden/` that c
 | `transport-openai` (and the other four provider goldens) | Request bodies differ only by the prompt-text hash/length changes above; `hasSignal` true for the CLI prompt-quality call | D2, D12. |
 
 New parity tests in `pipeline-characterization.test.ts` assert that, for every scenario, the server path and a provider-style CLI runner send the same sequence of prompts (sha256 of each full user prompt), and that a native-style runner matches the server for the unchunked scenarios.
+
+## Phase 1a review follow-up
+
+Changes to the resolutions above made after the triple-layer review. Rows here supersede the matching rows in "Resolutions".
+
+| Area | Amended behavior |
+|---|---|
+| D3/D4 retrieval | Retrieval is decided after chunking and only for runners WITHOUT a budget (native CLI). Above the retrieval threshold (~102k tokens) the retrieved segments REPLACE the conversation instead of being appended. Budgeted runners never retrieve or embed; chunk prompts carry no retrieval. |
+| D6/D13 architecture | Architecture context is capped at ~16k chars (~4k tokens) with a truncation marker and appears only in the single-call session prompt (not prompt quality, not chunk prompts, not the facet pass). |
+| D9 chunking | Chunk calls run with concurrency 3 (results kept in chunk order). Chunk size uses the formatted message text (role header, tool sections). Chunks continue the session's User#N/Assistant#N numbering and keep the first timestamp delta. |
+| D9 merge | Decisions (cap 5) and learnings (cap 8) are taken round-robin across chunks; step matrices are concatenated and saved. |
+| D10 facets | Facet-only extraction is a pipeline pass (`passes: ['facets']`); `extractFacetsOnly` is a wrapper. Chunked sessions reuse the same code. Input is head+tail truncated to the budget; it receives related insights and the rage-loop signal. |
+| D12 prompt quality | Budgeted runners: head+tail truncation with a marker. Budget-less (native) runners: no cut. Timeout is `runner.timeoutMs` (ProviderRunner 120 s) or `promptQualityTimeoutMs`; a timeout is `error_type: 'timeout'`, a caller abort stays `abort`. The timeout is implemented without `AbortSignal.any`. |
+| D5 related insights | The session's own rows are excluded (`session_id != ?`); the vector query over-fetches 3 x topK so topK still fills. |
+| D2 prompt caching | `cache_control` blocks only when an Anthropic runner will send the identical conversation block again in the same run (session + prompt quality, unchunked, untruncated, unsubstituted). Separate server calls (session-only, prompt-quality-only) send plain strings. |
+| D17 usage | Usage is recorded on parse failures too; `chunk_count` is the number of chunks that parsed (0 when none). `RunAnalysisResult.costUsd`, when every call reports it, replaces the list-price computation. |
+| New options | `persist` (false = no writes of any kind, including usage and embeddings), `contexts: 'live' \| 'none'`, `promptOverride`, `promptQualityTimeoutMs`. `resolveAnalysisPrompt` stub in `cli/src/optimization/resolve-prompt.ts` (built-in only until step 10); builders take `GuidanceComponents`, default byte-identical. |
+| Budget | One constant, `DEFAULT_MAX_INPUT_TOKENS` in `cli/src/llm/types.ts`; Ollama requests set `options.num_ctx` to budget + 8192. Embedding config honors `dashboard.embedding` (model, baseUrl). |
+
+### Golden changes (review follow-up)
+
+| Golden | Change | Reason |
+|---|---|---|
+| `short.server`, `short-related.server`, `prompt-quality.server`, `transport-anthropic` (server side) | Server requests are plain strings instead of `[cached block, rest]` | Caching only when the same run reuses the block; server session and prompt-quality calls are separate runs. Same text, same hash. |
+| `short-related.cli`, `short-related.server` | Related-insight vector query `topK` 5 -> 15 | Over-fetch so excluding the session's own rows still fills topK. |
+| `long-retrieval.server` | Retrieval and embedding calls gone; chunk prompts lose retrieval text | Budgeted runners never retrieve. |
+| `long-retrieval.cli` | Session prompt conversation = retrieved segments (stub) + architecture; prompt-quality prompt is the full conversation without architecture | Retrieval substitutes for the conversation above the threshold; native runners are not truncated; architecture is session-only. |
+| `long-chunked.cli` | Prompt-quality prompt is the full conversation again (was cut at 80k) | Native runners have no budget. |
+| `long-chunked.server` | Chunk prompts renumbered globally (User#N continues across chunks); merged result has 5 decisions + 8 learnings round-robin (insight count up) | Chunk numbering + merge changes. |
+| `failure-invalid-structure` | An `analysis_usage` row is now written for the failed session parse (CLI and server) | Tokens were spent. |
+| `transport-ollama` | Request body gains `options.num_ctx: 88192` | Ollama otherwise truncates to its small default context. |

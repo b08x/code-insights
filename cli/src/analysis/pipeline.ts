@@ -6,10 +6,10 @@
  * same prompt text regardless of entry point. The caller supplies only an AnalysisRunner
  * (native CLI runner or provider transport); everything else is owned here:
  *
- *   load session + messages -> format -> related insights -> long-session retrieval ->
- *   architecture context + rage-loop signal -> (chunk + merge when over the runner's token
- *   budget) -> jsonrepair/parse -> persist (insights, facets, steps, title) -> usage + cost ->
- *   prompt-quality pass
+ *   load session + messages -> format -> related insights -> (chunk + merge when over the
+ *   runner's token budget | retrieval when a budget-less runner faces a huge conversation) ->
+ *   jsonrepair/parse -> persist (insights, facets, steps, title) -> usage + cost ->
+ *   prompt-quality pass; `facets` runs the facet-only backfill.
  *
  * Behavior differences that existed between the two former pipelines are resolved in
  * goals/gepa-optimization-dashboard/pipeline-map.md ("Resolutions").
@@ -18,20 +18,21 @@
  * want exceptions (the CLI command) convert the result themselves.
  */
 
-import { createHash } from 'crypto';
 import { readFileSync } from 'fs';
+import { createHash } from 'crypto';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { jsonrepair } from 'jsonrepair';
 import { getDb } from '../db/client.js';
 import { loadConfig } from '../utils/config.js';
+import { DEFAULT_MAX_INPUT_TOKENS } from '../llm/types.js';
 import type { ContentBlock } from '../llm/types.js';
 import type { RetrievalConfig } from '../embeddings/retrieval.js';
 import type { EmbeddingConfig } from '../embeddings/types.js';
 import type { AnalysisResponse, PromptQualityResponse, SessionMetadata, SQLiteMessageRow } from './prompt-types.js';
 import type { AnalysisRunner, RunAnalysisResult } from './runner-types.js';
-import { formatMessagesForAnalysis, classifyStoredUserMessage } from './message-format.js';
-import { detectRageLoopHeuristic, type RageLoopSignal } from './loop-detector.js';
+import { formatMessagesForAnalysis, classifyStoredUserMessage, countTurns } from './message-format.js';
+import { detectRageLoopHeuristic } from './loop-detector.js';
 import {
   SHARED_ANALYST_SYSTEM_PROMPT,
   buildCacheableConversationBlock,
@@ -55,19 +56,28 @@ import {
 } from './analysis-db.js';
 import { saveAnalysisUsage } from './analysis-usage-db.js';
 import { calculateAnalysisCost } from './analysis-pricing.js';
+import { resolveAnalysisPrompt, type PromptIdentity, type PromptOverride } from '../optimization/resolve-prompt.js';
+
+// Re-exported so there is exactly one definition of the budget (cli/src/llm/types.ts).
+export { DEFAULT_MAX_INPUT_TOKENS };
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-/** Budget used for retrieval config and prompt-quality truncation when the runner declares none. */
-export const DEFAULT_MAX_INPUT_TOKENS = 80_000;
-
-/** Prompt-quality hard timeout (was server-only; provider transports honor the signal). */
-const PROMPT_QUALITY_TIMEOUT_MS = 120_000;
-
 const ARCHITECTURE_TIMEOUT_MS = 15_000;
+/** ~4k tokens of architecture context is plenty; more crowds out the conversation. */
+const ARCHITECTURE_MAX_CHARS = 16_000;
 
 /** Minimum genuine human messages for a prompt-quality analysis to be meaningful. */
 const MIN_HUMAN_MESSAGES_FOR_PQ = 2;
+
+/** Chunk calls in flight at once (order of results is still the chunk order). */
+const CHUNK_CONCURRENCY = 3;
+
+/** Related-insight candidates fetched per wanted insight, so excluding the session's own rows still fills topK. */
+const RELATED_OVERFETCH = 3;
+
+const MERGED_DECISION_CAP = 5;
+const MERGED_LEARNING_CAP = 8;
 
 // ── Schemas for native runners (--json-schema) ────────────────────────────────
 
@@ -87,28 +97,16 @@ const PROMPT_QUALITY_SCHEMA = loadSchema('prompt-quality.json');
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
-export type AnalysisPass = 'session' | 'prompt_quality';
+/** `facets` = facet-only extraction (the backfill for sessions that already have insights). */
+export type AnalysisPass = 'session' | 'prompt_quality' | 'facets';
 
 export interface PipelineProgress {
-  phase: 'loading_messages' | 'analyzing' | 'saving';
+  phase: 'analyzing' | 'saving';
   currentChunk?: number;
   totalChunks?: number;
 }
 
-/**
- * Student identity (runner + model + variant). Reserved for plan steps 8-10: accepted and
- * echoed in the result today, not yet written to rows.
- */
-export interface PipelineIdentity {
-  runner: string;
-  model: string | null;
-  variant: string | null;
-}
-
-/** Reserved for plan step 10 (prompt resolution). Echoed in the result today. */
-export interface PromptResolution {
-  promptVersionId: string | null;
-}
+export type PipelineIdentity = PromptIdentity;
 
 export interface PipelineInput {
   session: SessionData;
@@ -124,8 +122,22 @@ export interface PipelineOptions {
    * and its messages from SQLite by id. Must describe the same session as `sessionId`.
    */
   input?: PipelineInput;
+  /** Student identity for prompt resolution (plan step 8). */
   identity?: PipelineIdentity;
-  promptResolution?: PromptResolution;
+  /** Caller-supplied prompt components (GEPA candidates). Absent: resolveAnalysisPrompt decides. */
+  promptOverride?: PromptOverride;
+  /**
+   * Default true. When false, NOTHING is written: no insights, facets, steps, title, usage rows
+   * and no embeddings. The result still carries what would have been saved (dry runs / GEPA).
+   */
+  persist?: boolean;
+  /**
+   * 'live' (default) gathers architecture context and related insights; 'none' disables both so
+   * the prompt depends only on the session (deterministic scoring).
+   */
+  contexts?: 'live' | 'none';
+  /** Prompt-quality call timeout in ms. Default: runner.timeoutMs; null disables. */
+  promptQualityTimeoutMs?: number | null;
   onProgress?: (progress: PipelineProgress) => void;
   signal?: AbortSignal;
   /** Human-readable status lines (CLI prints them; the server passes nothing). */
@@ -149,8 +161,12 @@ export interface PassReport {
   cacheCreationTokens: number;
   cacheReadTokens: number;
   costUsd: number;
+  /** Sum of runner-reported call durations. */
   durationMs: number;
+  /** Chunks that parsed successfully (1 for unchunked passes). */
   chunkCount: number;
+  /** Chunks attempted. */
+  chunksTotal: number;
 }
 
 /** One prompt sent to the runner. `hash` = sha256(systemPrompt + "\n---\n" + userPrompt). */
@@ -170,7 +186,8 @@ export interface PipelineSuccess {
   skipped: Partial<Record<AnalysisPass, string>>;
   session?: AnalysisResponse;
   promptQuality?: PromptQualityResponse;
-  /** Insight rows persisted by the completed passes. */
+  facets?: AnalysisResponse['facets'];
+  /** Insight rows produced by the completed passes (persisted unless `persist: false`). */
   insights: InsightRow[];
   reports: Partial<Record<AnalysisPass, PassReport>>;
   /** Summed over all passes. */
@@ -186,7 +203,8 @@ export interface PipelineSuccess {
   };
   prompts: PromptRecord[];
   identity?: PipelineIdentity;
-  promptVersionId?: string | null;
+  /** Prompt version that produced this analysis; null = built-in. */
+  promptVersionId: string | null;
 }
 
 export interface PipelineFailure {
@@ -194,7 +212,7 @@ export interface PipelineFailure {
   sessionId: string;
   /** User-facing message. */
   error: string;
-  /** e.g. session_not_found, no_messages, insufficient_messages, abort, api_error, json_parse_error, no_json_found, invalid_structure. */
+  /** e.g. session_not_found, no_messages, insufficient_messages, abort, timeout, api_error, json_parse_error, no_json_found, invalid_structure. */
   error_type: string;
   /** Parser detail (what the CLI used to throw). */
   error_message?: string;
@@ -209,7 +227,7 @@ export interface PipelineFailure {
 
 export type PipelineResult = PipelineSuccess | PipelineFailure;
 
-// ── Shared helpers (also used by the server facet backfill) ───────────────────
+// ── Shared helpers ────────────────────────────────────────────────────────────
 
 function safeParseJson<T>(value: string | null | undefined, defaultValue: T): T {
   if (!value) return defaultValue;
@@ -237,6 +255,10 @@ export function buildSessionMeta(session: SessionData): SessionMetadata | undefi
 
 const defaultEstimateTokens = (text: string): number => Math.ceil(text.length / 4);
 
+/**
+ * Split messages into chunks of at most 0.8 x budget. Sizes use the formatted text of each
+ * message (role header, thinking, tool sections included), so chunk prompts really fit.
+ */
 export function chunkMessages(
   messages: SQLiteMessageRow[],
   estimateTokens: (text: string) => number,
@@ -248,26 +270,12 @@ export function chunkMessages(
   const chunkLimit = maxInputTokens * 0.8;
 
   for (const message of messages) {
-    let toolResults: Array<{ output?: string }> = [];
-    try {
-      toolResults = message.tool_results ? JSON.parse(message.tool_results) as Array<{ output?: string }> : [];
-    } catch {
-      toolResults = [];
-    }
-
-    const messageText = [
-      message.content,
-      message.thinking?.slice(0, 1000) ?? '',
-      ...toolResults.map(r => (r.output || '').slice(0, 500)),
-    ].join(' ');
-    const messageTokens = estimateTokens(messageText);
-
+    const messageTokens = estimateTokens(formatMessagesForAnalysis([message]));
     if (currentTokens + messageTokens > chunkLimit && currentChunk.length > 0) {
       chunks.push(currentChunk);
       currentChunk = [];
       currentTokens = 0;
     }
-
     currentChunk.push(message);
     currentTokens += messageTokens;
   }
@@ -276,31 +284,52 @@ export function chunkMessages(
   return chunks;
 }
 
-function deduplicateByTitle<T extends { title: string }>(items: T[]): T[] {
+/** Take items round-robin across lists (first of each, then second of each, ...), de-duplicated by title. */
+function roundRobinByTitle<T extends { title: string }>(lists: T[][], cap: number): T[] {
   const seen = new Set<string>();
-  return items.filter((item) => {
-    const normalized = item.title.toLowerCase().trim();
-    if (seen.has(normalized)) return false;
-    seen.add(normalized);
-    return true;
-  });
+  const out: T[] = [];
+  const longest = Math.max(0, ...lists.map(l => l.length));
+  for (let i = 0; i < longest && out.length < cap; i++) {
+    for (const list of lists) {
+      const item = list[i];
+      if (!item) continue;
+      const key = item.title.toLowerCase().trim();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(item);
+      if (out.length >= cap) break;
+    }
+  }
+  return out;
 }
 
-/** Merge per-chunk responses: first summary wins, decisions capped at 3, learnings at 5. */
+/**
+ * Merge per-chunk responses (in chunk order): first summary wins; decisions (cap 5) and learnings
+ * (cap 8) are taken round-robin so late chunks are represented; step matrices are concatenated.
+ */
 export function mergeAnalysisResponses(responses: AnalysisResponse[]): AnalysisResponse {
   if (responses.length === 0) {
     return { summary: { title: 'Analysis failed', content: '', bullets: [] }, decisions: [], learnings: [] };
   }
   if (responses.length === 1) return responses[0];
 
-  const merged: AnalysisResponse = { summary: responses[0].summary, decisions: [], learnings: [] };
-  for (const response of responses) {
-    merged.decisions.push(...response.decisions);
-    merged.learnings.push(...response.learnings);
-  }
-  merged.decisions = deduplicateByTitle(merged.decisions).slice(0, 3);
-  merged.learnings = deduplicateByTitle(merged.learnings).slice(0, 5);
-  return merged;
+  const steps = responses.flatMap(r => r.step_matrix ?? []);
+  return {
+    summary: responses[0].summary,
+    decisions: roundRobinByTitle(responses.map(r => r.decisions), MERGED_DECISION_CAP),
+    learnings: roundRobinByTitle(responses.map(r => r.learnings), MERGED_LEARNING_CAP),
+    ...(steps.length > 0 && { step_matrix: steps }),
+  };
+}
+
+/** Keep the start and end of an over-long conversation; the middle is what gets dropped. */
+function truncateHeadTail(text: string, budgetTokens: number, estimate: (t: string) => number): string {
+  const tokens = estimate(text);
+  if (tokens <= budgetTokens) return text;
+  const keep = Math.floor((budgetTokens / tokens) * text.length * 0.8);
+  const head = Math.ceil(keep / 2);
+  const tail = keep - head;
+  return `${text.slice(0, head)}\n\n[... middle of conversation truncated for analysis ...]\n\n${text.slice(text.length - tail)}`;
 }
 
 // ── DB loading ────────────────────────────────────────────────────────────────
@@ -371,10 +400,22 @@ function getRetrievalSettings(): typeof DEFAULT_RETRIEVAL_SETTINGS {
   };
 }
 
+/** Embedding backend: built-in defaults overridden by dashboard.embedding (model, baseUrl), as `embeddings` does. */
+async function resolveEmbeddingConfig(): Promise<EmbeddingConfig> {
+  const { DEFAULT_EMBEDDING_CONFIG } = await import('../embeddings/types.js');
+  const user = loadConfig()?.dashboard?.embedding;
+  return {
+    ...DEFAULT_EMBEDDING_CONFIG,
+    ...(user?.baseUrl ? { baseUrl: user.baseUrl } : {}),
+    ...(user?.model ? { model: user.model } : {}),
+  };
+}
+
 // ── Context gathering (every step is non-fatal) ───────────────────────────────
 
 /**
- * Semantically similar past insights for the same project (AutoRefine). "Configured" means the
+ * Semantically similar past insights for the same project (AutoRefine), never the session's own
+ * rows (a re-analysis would otherwise be shown its previous output). "Configured" means the
  * vec_insights table exists (embeddings were generated) and retrieval is not disabled; any
  * failure (no Ollama, no sqlite-vec) yields no related insights.
  */
@@ -405,14 +446,16 @@ async function retrieveRelatedInsights(
       : formattedMessages;
     const embedding = await embedOne(embeddingConfig, `session-${session.id}`, textToEmbed);
 
-    const candidates = querySimilarFiltered(db, 'insight', embedding.vector, settings.topK, session.project_id);
+    const candidates = querySimilarFiltered(
+      db, 'insight', embedding.vector, settings.topK * RELATED_OVERFETCH, session.project_id,
+    );
     if (candidates.length === 0) return [];
 
     const ids = candidates.map(c => c.id);
     const placeholders = ids.map(() => '?').join(',');
     const rows = db.prepare(
-      `SELECT id, type, title, content, confidence FROM insights WHERE id IN (${placeholders})`
-    ).all(...ids) as Array<{ id: string; type: string; title: string; content: string; confidence: number }>;
+      `SELECT id, type, title, content, confidence FROM insights WHERE id IN (${placeholders}) AND session_id != ?`
+    ).all(...ids, session.id) as Array<{ id: string; type: string; title: string; content: string; confidence: number }>;
     const insightMap = new Map(rows.map(r => [r.id, r]));
 
     const results: RelatedInsight[] = [];
@@ -435,27 +478,31 @@ async function retrieveRelatedInsights(
   }
 }
 
-/** Retrieval-augmented context block for very long conversations ('' when not used). */
-async function buildRetrievalContext(
+/**
+ * Retrieved conversation segments for a budget-less runner facing a huge conversation, or ''.
+ * Only called above the retrieval threshold; the segments REPLACE the full conversation.
+ */
+async function buildRetrievedConversation(
   session: SessionData,
   messages: SQLiteMessageRow[],
   formattedMessages: string,
   sessionMeta: SessionMetadata | undefined,
   settings: typeof DEFAULT_RETRIEVAL_SETTINGS,
-  maxInputTokens: number,
   embeddingConfig: EmbeddingConfig,
+  persist: boolean,
   log: (m: string) => void,
 ): Promise<string> {
   try {
     const { shouldUseRetrieval, retrieveAnalysisChunks, generateSessionSummary } = await import('../embeddings/retrieval.js');
-    // Trigger uses the module default threshold (~102k estimated tokens), as both former paths did.
+    // Trigger uses the module default threshold (~102k estimated tokens).
     if (!shouldUseRetrieval(formattedMessages)) return '';
 
     const { checkEmbeddingReadiness, chunkAndEmbedSession } = await import('../embeddings/analysis-pipeline.js');
     log('Long conversation detected, checking retrieval readiness...');
 
     const readiness = checkEmbeddingReadiness(getDb(), session.id);
-    if (!readiness.ready) {
+    if (!readiness.ready && persist) {
+      // Embedding writes vectors to SQLite, so a dry run (persist: false) never does it.
       log(`Computing embeddings for ${readiness.status.total || messages.length} chunks...`);
       const chunkResult = await chunkAndEmbedSession(session.id, messages, embeddingConfig);
       if (!chunkResult.embedded) {
@@ -463,7 +510,7 @@ async function buildRetrievalContext(
       }
     }
 
-    const config: RetrievalConfig = { ...settings, maxInputTokens, retrievalThresholdRatio: 0.8 };
+    const config: RetrievalConfig = { ...settings, maxInputTokens: DEFAULT_MAX_INPUT_TOKENS, retrievalThresholdRatio: 0.8 };
     const retrieved = await retrieveAnalysisChunks(
       session.id,
       formattedMessages,
@@ -476,15 +523,15 @@ async function buildRetrievalContext(
     if (!retrieved.usedRetrieval) return '';
 
     log(`Retrieved ${retrieved.chunkCount} relevant segments (~${retrieved.estimatedTokens} tokens)`);
-    return `\n\n${retrieved.augmentedChunks}\n\n`;
+    return retrieved.augmentedChunks;
   } catch {
     return '';
   }
 }
 
 /**
- * Project architecture from codebase-memory-mcp when installed and the project is indexed.
- * Async (execFile) because the server runs this inside its event loop; 15 s cap.
+ * Project architecture from codebase-memory-mcp when installed and the project is indexed,
+ * capped at ~4k tokens. Async (execFile) because the server runs this inside its event loop.
  */
 async function loadArchitectureContext(projectName: string): Promise<string> {
   try {
@@ -500,7 +547,10 @@ async function loadArchitectureContext(projectName: string): Promise<string> {
       child.stdin?.on('error', () => {});
       child.stdin?.end(JSON.stringify({ project: projectName }));
     });
-    return stdout.trim() ? `\n\n<project_architecture>\n${stdout.trim()}\n</project_architecture>\n` : '';
+    let body = stdout.trim();
+    if (!body) return '';
+    if (body.length > ARCHITECTURE_MAX_CHARS) body = `${body.slice(0, ARCHITECTURE_MAX_CHARS)}\n[... architecture truncated ...]`;
+    return `\n\n<project_architecture>\n${body}\n</project_architecture>\n`;
   } catch {
     // Tool missing, project not indexed, or timeout.
     return '';
@@ -515,14 +565,15 @@ interface BuiltPrompt {
 }
 
 /**
- * One prompt text for every runner: `<conversation block><rest>`. Anthropic-backed runners also
- * get it split into [cached conversation block, rest]; flattening the blocks reproduces
- * `userPrompt` exactly, so the hash does not depend on the transport.
+ * One prompt text for every runner: `<conversation block><rest>`. When `cache` is set (Anthropic
+ * runner and a later pass will reuse the identical conversation block) the prompt is also split
+ * into [cached conversation block, rest]; flattening the blocks reproduces `userPrompt` exactly,
+ * so the hash does not depend on the transport.
  */
-function buildPrompt(runner: AnalysisRunner, conversation: string, rest: string): BuiltPrompt {
+function buildPrompt(conversation: string, rest: string, cache: boolean): BuiltPrompt {
   const block = buildCacheableConversationBlock(conversation);
   const userPrompt = `${block.text}${rest}`;
-  if (runner.provider !== 'anthropic') return { userPrompt };
+  if (!cache) return { userPrompt };
   return { userPrompt, userContent: [block, { type: 'text', text: rest }] };
 }
 
@@ -537,13 +588,30 @@ class UsageTotals {
   cacheReadTokens = 0;
   /** Sum of runner-reported call durations (LLM time, excludes retrieval and persistence). */
   durationMs = 0;
+  calls = 0;
+  costedCalls = 0;
+  reportedCostUsd = 0;
 
-  add(r: Pick<RunAnalysisResult, 'inputTokens' | 'outputTokens' | 'cacheCreationTokens' | 'cacheReadTokens' | 'durationMs'>): void {
+  add(r: RunAnalysisResult): void {
+    this.calls++;
     this.durationMs += r.durationMs ?? 0;
     this.inputTokens += r.inputTokens ?? 0;
     this.outputTokens += r.outputTokens ?? 0;
     this.cacheCreationTokens += r.cacheCreationTokens ?? 0;
     this.cacheReadTokens += r.cacheReadTokens ?? 0;
+    if (r.costUsd !== undefined) {
+      this.costedCalls++;
+      this.reportedCostUsd += r.costUsd;
+    }
+  }
+
+  /** Fold another pass's totals into this one (cost bookkeeping stays per pass). */
+  merge(o: UsageTotals): void {
+    this.inputTokens += o.inputTokens;
+    this.outputTokens += o.outputTokens;
+    this.cacheCreationTokens += o.cacheCreationTokens;
+    this.cacheReadTokens += o.cacheReadTokens;
+    this.durationMs += o.durationMs;
   }
 
   toUsage(): PipelineUsage {
@@ -556,14 +624,47 @@ class UsageTotals {
   }
 }
 
-function combineSignals(signal: AbortSignal | undefined, timeoutMs: number): AbortSignal {
-  const timeout = AbortSignal.timeout(timeoutMs);
-  if (!signal) return timeout;
-  return typeof AbortSignal.any === 'function' ? AbortSignal.any([signal, timeout]) : signal;
+/**
+ * Combine the caller's signal with a timeout. Manual (no AbortSignal.any) so it works on every
+ * supported Node version; the timeout aborts with a TimeoutError, which the pipeline reports as
+ * error_type 'timeout' (distinct from a caller abort).
+ */
+function withTimeout(signal: AbortSignal | undefined, ms: number | null | undefined): { signal: AbortSignal | undefined; cleanup: () => void } {
+  if (!ms) return { signal, cleanup: () => {} };
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(new DOMException(`Timed out after ${ms}ms`, 'TimeoutError')), ms);
+  const onAbort = () => controller.abort(signal!.reason);
+  if (signal) {
+    if (signal.aborted) onAbort();
+    else signal.addEventListener('abort', onAbort, { once: true });
+  }
+  return {
+    signal: controller.signal,
+    cleanup: () => {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
+    },
+  };
 }
 
-function isAbortError(error: unknown): boolean {
-  return error instanceof Error && error.name === 'AbortError';
+function errorName(error: unknown): string | undefined {
+  return error instanceof Error || (typeof error === 'object' && error !== null && 'name' in error)
+    ? (error as { name?: string }).name
+    : undefined;
+}
+
+/** Run `count` jobs with at most `limit` in flight; jobs start in index order. */
+async function runPool<T>(count: number, limit: number, job: (index: number) => Promise<T>): Promise<T[]> {
+  const results = new Array<T>(count);
+  let next = 0;
+  const worker = async () => {
+    while (next < count) {
+      const i = next++;
+      results[i] = await job(i);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, count) }, worker));
+  return results;
 }
 
 // ── The pipeline ──────────────────────────────────────────────────────────────
@@ -574,6 +675,8 @@ export async function analyzeSessionPipeline(
 ): Promise<PipelineResult> {
   const { runner, onProgress, signal } = options;
   const log = options.log ?? (() => {});
+  const persist = options.persist ?? true;
+  const live = (options.contexts ?? 'live') === 'live';
   const requested = options.passes ?? ['session', 'prompt_quality'];
   const completed: AnalysisPass[] = [];
   const insights: InsightRow[] = [];
@@ -608,12 +711,13 @@ export async function analyzeSessionPipeline(
     // 2. Prompt-quality gate: >= 2 genuine human messages (tool-result rows are type 'user' too).
     const humanMessages = messages.filter(m => m.type === 'user' && classifyStoredUserMessage(m.content) === 'human');
     const wantSession = requested.includes('session');
+    const wantFacets = requested.includes('facets');
     let wantPQ = requested.includes('prompt_quality');
     const skipped: PipelineSuccess['skipped'] = {};
     if (wantPQ && humanMessages.length < MIN_HUMAN_MESSAGES_FOR_PQ) {
       const reason = `Not enough user messages to analyze prompt quality (need at least ${MIN_HUMAN_MESSAGES_FOR_PQ}).`;
-      if (!wantSession) return failure({ error: reason, error_type: 'insufficient_messages', failedPass: 'prompt_quality' });
-      // Session pass is still useful: skip PQ instead of failing the whole run.
+      if (!wantSession && !wantFacets) return failure({ error: reason, error_type: 'insufficient_messages', failedPass: 'prompt_quality' });
+      // Other passes are still useful: skip PQ instead of failing the whole run.
       skipped.prompt_quality = reason;
       wantPQ = false;
     }
@@ -623,14 +727,23 @@ export async function analyzeSessionPipeline(
     const budget = runner.maxInputTokens;
     const formatted = formatMessagesForAnalysis(messages);
     const sessionMeta = buildSessionMeta(session);
-    const architectureContext = await loadArchitectureContext(session.project_name);
+    const loopSignal = detectRageLoopHeuristic(messages);
+    const sessionPrompt = options.promptOverride ?? resolveAnalysisPrompt('session-analysis', options.identity);
+    const pqPrompt = options.promptOverride ?? resolveAnalysisPrompt('prompt-quality', options.identity);
+
+    const settings = getRetrievalSettings();
+    const embeddingConfig = await resolveEmbeddingConfig();
+    const related = live && (wantSession || wantFacets)
+      ? await retrieveRelatedInsights(session, formatted, embeddingConfig, settings)
+      : [];
+    // Architecture context is for the single-call session prompt only.
+    const architectureContext = live && wantSession ? await loadArchitectureContext(session.project_name) : '';
 
     const reports: PipelineSuccess['reports'] = {};
-    let sessionResponse: AnalysisResponse | undefined;
-    let pqResponse: PromptQualityResponse | undefined;
     const state: { first?: RunAnalysisResult } = {};
     const allUsage = new UsageTotals();
-    let totalDuration = 0;
+    /** True once a cache_control block was sent, so the prompt-quality pass can reuse it. */
+    let cachedBlockSent = false;
 
     const callRunner = async (
       pass: AnalysisPass,
@@ -651,17 +764,19 @@ export async function analyzeSessionPipeline(
       return result;
     };
 
-    const record = (pass: AnalysisPass, usage: UsageTotals, last: RunAnalysisResult, chunkCount: number): PassReport => {
-      const durationMs = usage.durationMs;
-      // Cost needs a priced provider; native runners report none and cost 0.
-      const costUsd = runner.provider
-        ? calculateAnalysisCost(last.provider, last.model, {
-            inputTokens: usage.inputTokens,
-            outputTokens: usage.outputTokens,
-            cacheCreationTokens: usage.cacheCreationTokens,
-            cacheReadTokens: usage.cacheReadTokens,
-          })
-        : 0;
+    /** Write the usage row (when persisting) and keep the report. Also used for failed parses: the tokens were spent. */
+    const record = (pass: AnalysisPass, usage: UsageTotals, last: RunAnalysisResult, chunksParsed: number, chunksTotal: number): PassReport => {
+      const cost = usage.calls > 0 && usage.costedCalls === usage.calls
+        ? usage.reportedCostUsd
+        : runner.provider
+          ? calculateAnalysisCost(last.provider, last.model, {
+              inputTokens: usage.inputTokens,
+              outputTokens: usage.outputTokens,
+              cacheCreationTokens: usage.cacheCreationTokens,
+              cacheReadTokens: usage.cacheReadTokens,
+            })
+          : 0; // native runners report no pricing
+      const costUsd = Math.round(cost * 1_000_000) / 1_000_000;
       const report: PassReport = {
         analysisType: pass,
         provider: last.provider,
@@ -671,56 +786,93 @@ export async function analyzeSessionPipeline(
         cacheCreationTokens: usage.cacheCreationTokens,
         cacheReadTokens: usage.cacheReadTokens,
         costUsd,
-        durationMs,
-        chunkCount,
+        durationMs: usage.durationMs,
+        chunkCount: chunksParsed,
+        chunksTotal,
       };
-      saveAnalysisUsage({
-        session_id: session.id,
-        analysis_type: pass,
-        provider: report.provider,
-        model: report.model,
-        input_tokens: report.inputTokens,
-        output_tokens: report.outputTokens,
-        cache_creation_tokens: report.cacheCreationTokens,
-        cache_read_tokens: report.cacheReadTokens,
-        estimated_cost_usd: costUsd,
-        duration_ms: durationMs,
-        chunk_count: chunkCount,
-        session_message_count: messageCount,
-      });
-      allUsage.add(usage);
-      totalDuration += durationMs;
+      if (persist) {
+        saveAnalysisUsage({
+          session_id: session.id,
+          analysis_type: pass === 'facets' ? 'facet' : pass,
+          provider: report.provider,
+          model: report.model,
+          input_tokens: report.inputTokens,
+          output_tokens: report.outputTokens,
+          cache_creation_tokens: report.cacheCreationTokens,
+          cache_read_tokens: report.cacheReadTokens,
+          estimated_cost_usd: costUsd,
+          duration_ms: report.durationMs,
+          chunk_count: chunksParsed,
+          session_message_count: messageCount,
+        });
+      }
+      allUsage.merge(usage);
       reports[pass] = report;
       return report;
     };
 
-    // ── Pass 1: session analysis ────────────────────────────────────────────
-    if (wantSession) {
-      const settings = getRetrievalSettings();
-      const embeddingConfig = await defaultEmbeddingConfig();
-      const related = await retrieveRelatedInsights(session, formatted, embeddingConfig, settings);
-      const retrievalContext = await buildRetrievalContext(
-        session, messages, formatted, sessionMeta, settings,
-        budget ?? DEFAULT_MAX_INPUT_TOKENS, embeddingConfig, log,
+    /** Facet-only call over the whole conversation (head+tail truncated to the budget). */
+    const extractFacets = async (pass: AnalysisPass, usage: UsageTotals): Promise<{ facets?: AnalysisResponse['facets']; result: RunAnalysisResult; parseError?: string }> => {
+      const conversation = budget !== undefined ? truncateHeadTail(formatted, budget, estimate) : formatted;
+      const prompt = buildPrompt(
+        conversation,
+        buildFacetOnlyInstructions(session.project_name, session.summary, sessionMeta, loopSignal, related, sessionPrompt.components),
+        false,
       );
-      const loopSignal = detectRageLoopHeuristic(messages);
-      const extras = `${retrievalContext}${architectureContext}`;
-      const sessionInstructions = (signalForPrompt?: RageLoopSignal) =>
-        buildSessionAnalysisInstructions(session.project_name, session.summary, sessionMeta, signalForPrompt, related);
+      // No jsonSchema: session-analysis.json does not describe a facets-only payload.
+      const result = await callRunner(pass, 'facets', prompt, undefined, signal);
+      usage.add(result);
+      const payload = extractJsonPayload(result.rawJson);
+      if (!payload) return { result };
+      try {
+        return { facets: JSON.parse(payload), result };
+      } catch {
+        try {
+          return { facets: JSON.parse(jsonrepair(payload)), result };
+        } catch (e) {
+          return { result, parseError: e instanceof Error ? e.message : 'invalid JSON' };
+        }
+      }
+    };
 
-      const singlePrompt = buildPrompt(runner, formatted, `${extras}\n${sessionInstructions(loopSignal)}`);
-      const chunked = budget !== undefined && estimate(singlePrompt.userPrompt) > budget;
+    // Prompt-quality conversation: full for budget-less (native) runners, head+tail cut otherwise.
+    const pqConversation = wantPQ && budget !== undefined ? truncateHeadTail(formatted, budget, estimate) : formatted;
 
+    // ── Pass: session analysis ──────────────────────────────────────────────
+    let sessionResponse: AnalysisResponse | undefined;
+    if (wantSession) {
+      const instructions = (sig?: typeof loopSignal) =>
+        buildSessionAnalysisInstructions(session.project_name, session.summary, sessionMeta, sig, related, sessionPrompt.components);
+
+      // Decide chunking BEFORE any retrieval/embedding work.
+      const fullPromptText = `${buildCacheableConversationBlock(formatted).text}${architectureContext}\n${instructions(loopSignal)}`;
+      const chunked = budget !== undefined && estimate(fullPromptText) > budget;
+
+      // Budget-less runners cannot chunk: above the retrieval threshold, retrieved segments
+      // replace the full conversation. Budgeted runners never use retrieval (they chunk instead).
+      let conversation = formatted;
+      if (budget === undefined) {
+        const retrieved = await buildRetrievedConversation(session, messages, formatted, sessionMeta, settings, embeddingConfig, persist, log);
+        if (retrieved) conversation = retrieved;
+      }
+
+      // Anthropic prompt caching pays off only if the prompt-quality pass sends the identical block.
+      const cache = runner.provider === 'anthropic' && wantPQ && !chunked && conversation === formatted && pqConversation === formatted;
+
+      cachedBlockSent = cache;
       const usage = new UsageTotals();
-      let chunkCount = 1;
-      let last!: RunAnalysisResult;
+      let last: RunAnalysisResult;
+      let chunksParsed = 1;
+      let chunksTotal = 1;
 
       if (!chunked) {
         onProgress?.({ phase: 'analyzing', currentChunk: 1, totalChunks: 1 });
-        last = await callRunner('session', 'session', singlePrompt, SESSION_ANALYSIS_SCHEMA, signal);
+        const prompt = buildPrompt(conversation, `${architectureContext}\n${instructions(loopSignal)}`, cache);
+        last = await callRunner('session', 'session', prompt, SESSION_ANALYSIS_SCHEMA, signal);
         usage.add(last);
         const parsed = parseAnalysisResponse(last.rawJson);
         if (!parsed.success) {
+          record('session', usage, last, 0, 1);
           return failure({
             error: 'Failed to parse LLM response. Please try again.',
             error_type: parsed.error.error_type,
@@ -733,20 +885,39 @@ export async function analyzeSessionPipeline(
         }
         sessionResponse = parsed.data;
       } else {
-        const chunks = chunkMessages(messages, estimate, budget);
-        chunkCount = chunks.length;
-        const chunkResponses: AnalysisResponse[] = [];
-        for (let i = 0; i < chunks.length; i++) {
+        const chunks = chunkMessages(messages, estimate, budget!);
+        chunksTotal = chunks.length;
+
+        // Global turn numbering + timestamp continuity, so evidence refs (User#N) never collide across chunks.
+        const offsets: Array<{ userStart: number; assistantStart: number; previousTimestamp?: string }> = [];
+        let user = 0;
+        let assistant = 0;
+        chunks.forEach((chunk, i) => {
+          offsets.push({ userStart: user, assistantStart: assistant, previousTimestamp: i > 0 ? chunks[i - 1][chunks[i - 1].length - 1].timestamp : undefined });
+          const turns = countTurns(chunk);
+          user += turns.user;
+          assistant += turns.assistant;
+        });
+
+        // Chunk prompts carry no retrieval/architecture context: the chunk IS the conversation.
+        // The rage-loop turn range is session-global, so they omit it too; the facet pass gets it.
+        const results = await runPool(chunks.length, CHUNK_CONCURRENCY, async (i) => {
           onProgress?.({ phase: 'analyzing', currentChunk: i + 1, totalChunks: chunks.length });
-          // The rage-loop turn range is session-global, so chunk prompts omit it; the facet pass
-          // below sees the whole conversation and receives it.
-          const prompt = buildPrompt(runner, formatMessagesForAnalysis(chunks[i]), `${extras}\n${sessionInstructions(undefined)}`);
-          last = await callRunner('session', 'chunk', prompt, SESSION_ANALYSIS_SCHEMA, signal);
-          usage.add(last);
-          const parsed = parseAnalysisResponse(last.rawJson);
+          const prompt = buildPrompt(formatMessagesForAnalysis(chunks[i], offsets[i]), `\n${instructions(undefined)}`, false);
+          return callRunner('session', 'chunk', prompt, SESSION_ANALYSIS_SCHEMA, signal);
+        });
+        results.forEach(r => usage.add(r));
+        last = results[results.length - 1];
+
+        // Parse in chunk order so the merge is order-stable.
+        const chunkResponses: AnalysisResponse[] = [];
+        for (const r of results) {
+          const parsed = parseAnalysisResponse(r.rawJson);
           if (parsed.success) chunkResponses.push(parsed.data);
         }
+        chunksParsed = chunkResponses.length;
         if (chunkResponses.length === 0) {
+          record('session', usage, last, 0, chunksTotal);
           return failure({
             error: 'All chunks failed to parse LLM response',
             error_type: 'json_parse_error',
@@ -759,66 +930,40 @@ export async function analyzeSessionPipeline(
         // Facets are holistic and cannot be merged across chunks: extract them separately.
         if (!sessionResponse.facets) {
           try {
-            let facetMessages = formatted;
-            const facetTokens = estimate(facetMessages);
-            if (facetTokens > budget) {
-              const targetLength = Math.floor((budget / facetTokens) * facetMessages.length * 0.8);
-              facetMessages = facetMessages.slice(0, targetLength) + '\n\n[... conversation truncated for analysis ...]';
-            }
-            const facetPrompt = buildPrompt(
-              runner,
-              facetMessages,
-              buildFacetOnlyInstructions(session.project_name, session.summary, sessionMeta, loopSignal, related),
-            );
-            // No jsonSchema: session-analysis.json does not describe a facets-only payload.
-            const facetResult = await callRunner('session', 'facets', facetPrompt, undefined, signal);
-            last = facetResult;
-            usage.add(facetResult);
-            const facetJson = extractJsonPayload(facetResult.rawJson);
-            if (facetJson) {
-              try {
-                sessionResponse.facets = JSON.parse(facetJson);
-              } catch {
-                sessionResponse.facets = JSON.parse(jsonrepair(facetJson));
-              }
-            }
+            const facetOutcome = await extractFacets('session', usage);
+            last = facetOutcome.result;
+            if (facetOutcome.facets) sessionResponse.facets = facetOutcome.facets;
           } catch (err) {
-            // Facets are best-effort on chunked sessions, but cancellation must still propagate.
-            if (isAbortError(err)) throw err;
+            // Facets are best-effort on chunked sessions, but cancellation and timeouts must propagate.
+            if (errorName(err) === 'AbortError' || errorName(err) === 'TimeoutError') throw err;
           }
         }
       }
 
       onProgress?.({ phase: 'saving' });
-      // Save new rows first, then delete old non-prompt-quality rows: a failed save keeps old data.
       const sessionInsights = convertToInsightRows(sessionResponse, session);
-      saveInsightsToDb(sessionInsights);
-      deleteSessionInsights(session.id, {
-        excludeTypes: ['prompt_quality'],
-        excludeIds: sessionInsights.map(i => i.id),
-      });
-      if (sessionResponse.facets) saveFacetsToDb(session.id, sessionResponse.facets, ANALYSIS_VERSION);
-      if (sessionResponse.step_matrix && sessionResponse.step_matrix.length > 0) {
-        saveSessionStepsToDb(session.id, sessionResponse.step_matrix);
+      if (persist) {
+        // Save new rows first, then delete old non-prompt-quality rows: a failed save keeps old data.
+        saveInsightsToDb(sessionInsights);
+        deleteSessionInsights(session.id, {
+          excludeTypes: ['prompt_quality'],
+          excludeIds: sessionInsights.map(i => i.id),
+        });
+        if (sessionResponse.facets) saveFacetsToDb(session.id, sessionResponse.facets, ANALYSIS_VERSION);
+        if (sessionResponse.step_matrix && sessionResponse.step_matrix.length > 0) {
+          saveSessionStepsToDb(session.id, sessionResponse.step_matrix);
+        }
+        if (sessionResponse.summary?.title) updateSessionTitle(session.id, sessionResponse.summary.title);
       }
-      if (sessionResponse.summary?.title) updateSessionTitle(session.id, sessionResponse.summary.title);
 
-      record('session', usage, last, chunkCount);
+      record('session', usage, last, chunksParsed, chunksTotal);
       insights.push(...sessionInsights);
       completed.push('session');
     }
 
-    // ── Pass 2: prompt quality ──────────────────────────────────────────────
+    // ── Pass: prompt quality ────────────────────────────────────────────────
+    let pqResponse: PromptQualityResponse | undefined;
     if (wantPQ) {
-      // Truncate to the budget (80k when the runner declares none).
-      const pqBudget = budget ?? DEFAULT_MAX_INPUT_TOKENS;
-      let conversation = formatted;
-      const tokens = estimate(formatted);
-      if (tokens > pqBudget) {
-        const targetLength = Math.floor((pqBudget / tokens) * formatted.length * 0.8);
-        conversation = formatted.slice(0, targetLength) + '\n\n[... conversation truncated for analysis ...]';
-      }
-
       // Session shape instead of a raw message count: tool-result rows are type 'user' but
       // are not prompts, so counting them misled the model.
       const assistantCount = messages.filter(m => m.type === 'assistant').length;
@@ -830,16 +975,26 @@ export async function analyzeSessionPipeline(
           toolExchangeCount: messages.length - humanMessages.length - assistantCount,
         },
         sessionMeta,
+        pqPrompt.components,
       );
-      const prompt = buildPrompt(runner, conversation, `${architectureContext}\n${instructions}`);
+      // Reuse the session pass's cached block only when it was sent (same conversation text).
+      const prompt = buildPrompt(pqConversation, `\n${instructions}`, cachedBlockSent && pqConversation === formatted);
 
       onProgress?.({ phase: 'analyzing' });
       const usage = new UsageTotals();
-      const result = await callRunner('prompt_quality', 'prompt_quality', prompt, PROMPT_QUALITY_SCHEMA, combineSignals(signal, PROMPT_QUALITY_TIMEOUT_MS));
+      const timeoutMs = options.promptQualityTimeoutMs !== undefined ? options.promptQualityTimeoutMs : runner.timeoutMs;
+      const guarded = withTimeout(signal, timeoutMs);
+      let result: RunAnalysisResult;
+      try {
+        result = await callRunner('prompt_quality', 'prompt_quality', prompt, PROMPT_QUALITY_SCHEMA, guarded.signal);
+      } finally {
+        guarded.cleanup();
+      }
       usage.add(result);
 
       const parsed = parsePromptQualityResponse(result.rawJson);
       if (!parsed.success) {
+        record('prompt_quality', usage, result, 0, 1);
         return failure({
           error: 'Failed to parse prompt quality analysis. Please try again.',
           error_type: parsed.error.error_type,
@@ -854,12 +1009,37 @@ export async function analyzeSessionPipeline(
 
       onProgress?.({ phase: 'saving' });
       const pqInsight = convertPQToInsightRow(pqResponse, session);
-      saveInsightsToDb([pqInsight]);
-      deleteSessionInsights(session.id, { includeOnlyTypes: ['prompt_quality'], excludeIds: [pqInsight.id] });
+      if (persist) {
+        saveInsightsToDb([pqInsight]);
+        deleteSessionInsights(session.id, { includeOnlyTypes: ['prompt_quality'], excludeIds: [pqInsight.id] });
+      }
 
-      record('prompt_quality', usage, result, 1);
+      record('prompt_quality', usage, result, 1, 1);
       insights.push(pqInsight);
       completed.push('prompt_quality');
+    }
+
+    // ── Pass: facets only (backfill) ────────────────────────────────────────
+    let facetsOnly: AnalysisResponse['facets'];
+    if (wantFacets) {
+      onProgress?.({ phase: 'analyzing' });
+      const usage = new UsageTotals();
+      const outcome = await extractFacets('facets', usage);
+      if (!outcome.facets) {
+        record('facets', usage, outcome.result, 0, 1);
+        return failure({
+          error: outcome.parseError ? 'Facet response was not valid JSON.' : 'No JSON in facet response.',
+          error_type: outcome.parseError ? 'json_parse_error' : 'no_json_found',
+          error_message: outcome.parseError,
+          failedPass: 'facets',
+          usage: usage.toUsage(),
+        });
+      }
+      facetsOnly = outcome.facets;
+      onProgress?.({ phase: 'saving' });
+      if (persist) saveFacetsToDb(session.id, facetsOnly, ANALYSIS_VERSION);
+      record('facets', usage, outcome.result, 1, 1);
+      completed.push('facets');
     }
 
     return {
@@ -869,13 +1049,14 @@ export async function analyzeSessionPipeline(
       skipped,
       ...(sessionResponse && { session: sessionResponse }),
       ...(pqResponse && { promptQuality: pqResponse }),
+      ...(facetsOnly && { facets: facetsOnly }),
       insights,
       reports,
       usage: allUsage.toUsage(),
       meta: {
         provider: state.first?.provider ?? runner.name,
         model: state.first?.model ?? runner.name,
-        durationMs: totalDuration,
+        durationMs: allUsage.durationMs,
         inputTokens: allUsage.inputTokens,
         outputTokens: allUsage.outputTokens,
         messageCount,
@@ -883,10 +1064,12 @@ export async function analyzeSessionPipeline(
       },
       prompts,
       ...(options.identity && { identity: options.identity }),
-      ...(options.promptResolution && { promptVersionId: options.promptResolution.promptVersionId }),
+      promptVersionId: sessionPrompt.versionId,
     };
   } catch (error) {
-    if (isAbortError(error)) return failure({ error: 'Analysis cancelled', error_type: 'abort' });
+    const name = errorName(error);
+    if (name === 'AbortError') return failure({ error: 'Analysis cancelled', error_type: 'abort' });
+    if (name === 'TimeoutError') return failure({ error: 'Analysis timed out', error_type: 'timeout' });
     return failure({
       error: error instanceof Error ? error.message : 'Analysis failed',
       error_type: 'api_error',
@@ -900,13 +1083,8 @@ export async function analyzeSessionPipeline(
  * failures get the pass prefix the `insights` command has always used.
  */
 export function pipelineFailureToError(failure: PipelineFailure): Error {
-  const raw = ['api_error', 'abort', 'session_not_found', 'no_messages'].includes(failure.error_type);
+  const raw = ['api_error', 'abort', 'timeout', 'session_not_found', 'no_messages'].includes(failure.error_type);
   if (raw) return new Error(failure.error);
   const pass = failure.failedPass === 'prompt_quality' ? 'Prompt quality analysis' : 'Session analysis';
   return new Error(`${pass} failed: ${failure.error_message ?? failure.error}`);
-}
-
-async function defaultEmbeddingConfig(): Promise<EmbeddingConfig> {
-  const { DEFAULT_EMBEDDING_CONFIG } = await import('../embeddings/types.js');
-  return { ...DEFAULT_EMBEDDING_CONFIG };
 }

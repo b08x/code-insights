@@ -4,8 +4,8 @@ import { trackEvent } from '@code-insights/cli/utils/telemetry';
 import { parseIntParam } from '../utils.js';
 import { loadLLMConfig } from '@code-insights/cli/llm/client';
 import { analyzeSession, analyzePromptQuality, findRecurringInsights } from '../llm/analysis.js';
-import { getSessionAnalysisUsage } from '../llm/analysis-usage-db.js';
-import { calculateAnalysisCost } from '../llm/analysis-pricing.js';
+import { getSessionAnalysisUsage } from '@code-insights/cli/analysis/analysis-usage-db';
+import { calculateAnalysisCost } from '@code-insights/cli/analysis/analysis-pricing';
 import {
   loadSessionForAnalysis,
   loadSessionMessages,

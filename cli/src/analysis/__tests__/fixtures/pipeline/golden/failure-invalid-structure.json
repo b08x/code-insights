@@ -53,7 +53,21 @@
       "insights": [],
       "session_facets": [],
       "session_steps": [],
-      "analysis_usage": [],
+      "analysis_usage": [
+        {
+          "session_id": "sess-short",
+          "analysis_type": "session",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-20250514",
+          "input_tokens": 1000,
+          "output_tokens": 200,
+          "cache_creation_tokens": 50,
+          "cache_read_tokens": 10,
+          "estimated_cost_usd": 0.006191,
+          "chunk_count": 0,
+          "session_message_count": 6
+        }
+      ],
       "generated_title": null
     }
   },
@@ -66,7 +80,21 @@
       "insights": [],
       "session_facets": [],
       "session_steps": [],
-      "analysis_usage": [],
+      "analysis_usage": [
+        {
+          "session_id": "sess-short",
+          "analysis_type": "session",
+          "provider": "stub-provider",
+          "model": "stub-model",
+          "input_tokens": 1000,
+          "output_tokens": 200,
+          "cache_creation_tokens": 50,
+          "cache_read_tokens": 10,
+          "estimated_cost_usd": 0,
+          "chunk_count": 0,
+          "session_message_count": 6
+        }
+      ],
       "generated_title": null
     }
   }

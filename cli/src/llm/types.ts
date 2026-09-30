@@ -52,3 +52,12 @@ export interface LLMClient {
   readonly provider: string;
   readonly model: string;
 }
+
+/**
+ * The one request input budget (estimated tokens) shared by the analysis pipeline, the provider
+ * runner and Ollama's context window. Leaves room for the response.
+ */
+export const DEFAULT_MAX_INPUT_TOKENS = 80_000;
+
+/** Tokens reserved for the model's answer on top of the input budget (Ollama num_ctx). */
+export const RESPONSE_TOKEN_RESERVE = 8_192;

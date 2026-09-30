@@ -2,8 +2,8 @@
 // (cli/src/analysis/pipeline.ts): genuine-human-message gate, session-shape counts, truncation,
 // timeout, persistence and usage all live there.
 
-import type { SQLiteMessageRow } from './prompt-types.js';
-import type { SessionData } from './analysis-db.js';
+import type { SQLiteMessageRow } from '@code-insights/cli/analysis/prompt-types';
+import type { SessionData } from '@code-insights/cli/analysis/analysis-db';
 import { runPipelinePass, type AnalysisOptions, type AnalysisResult } from './analysis-internal.js';
 
 /**

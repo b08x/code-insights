@@ -4,7 +4,7 @@ import { getDb } from '@code-insights/cli/db/client';
 import { jsonrepair } from 'jsonrepair';
 import { createLLMClient } from '@code-insights/cli/llm/client';
 import { requireLLM } from './route-helpers.js';
-import { extractJsonPayload } from '../llm/response-parsers.js';
+import { extractJsonPayload } from '@code-insights/cli/analysis/response-parsers';
 import {
   FRICTION_WINS_SYSTEM_PROMPT,
   generateFrictionWinsPrompt,

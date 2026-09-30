@@ -7,8 +7,8 @@
 // extractFacetsOnly → facet-extraction.ts
 // Shared types/helpers → analysis-internal.ts
 
-import type { SQLiteMessageRow } from './prompt-types.js';
-import type { InsightRow, SessionData } from './analysis-db.js';
+import type { SQLiteMessageRow } from '@code-insights/cli/analysis/prompt-types';
+import type { InsightRow, SessionData } from '@code-insights/cli/analysis/analysis-db';
 import { runPipelinePass, type AnalysisProgress, type AnalysisOptions, type AnalysisResult } from './analysis-internal.js';
 
 // Re-export from sub-modules so existing imports of these from analysis.ts keep working.

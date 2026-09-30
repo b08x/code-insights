@@ -8,10 +8,10 @@ import { streamSSE } from 'hono/streaming';
 import { getDb } from '@code-insights/cli/db/client';
 import { trackEvent, captureError } from '@code-insights/cli/utils/telemetry';
 import { isLLMConfigured, loadLLMConfig } from '@code-insights/cli/llm/client';
-import { calculateAnalysisCost } from '../llm/analysis-pricing.js';
+import { calculateAnalysisCost } from '@code-insights/cli/analysis/analysis-pricing';
 import type { AnalysisResult, AnalysisOptions } from '../llm/analysis.js';
-import type { SessionData } from '../llm/analysis-db.js';
-import type { SQLiteMessageRow } from '../llm/prompt-types.js';
+import type { SessionData } from '@code-insights/cli/analysis/analysis-db';
+import type { SQLiteMessageRow } from '@code-insights/cli/analysis/prompt-types';
 
 /**
  * Load a session row for LLM analysis. Returns undefined if the session doesn't exist
