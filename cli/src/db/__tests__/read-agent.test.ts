@@ -75,6 +75,15 @@ describe('searchSessionSnippets', () => {
     expect(all).toHaveLength(4);
   });
 
+  it('treats % and _ in the query literally in metadata LIKE matching', () => {
+    addSession('lit', { summary: 'progress at 100% done' });
+    addSession('decoy', { summary: 'progress at 1000 done' });
+    addSession('under', { summary: 'snake_case naming' });
+    addSession('under-decoy', { summary: 'snakeXcase naming' });
+    expect(searchSessionSnippets(db, '100%', {}, 10).map(r => r.sessionId)).toEqual(['lit']);
+    expect(searchSessionSnippets(db, 'snake_case', {}, 10).map(r => r.sessionId)).toEqual(['under']);
+  });
+
   it('survives FTS-hostile input and empty queries', () => {
     addSession('s1'); addMessage('s1', 1, 'user', 'hello');
     expect(() => searchSessionSnippets(db, '"AND (', {}, 5)).not.toThrow();

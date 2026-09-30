@@ -107,9 +107,9 @@ export function searchSessionSnippets(
   // 2. Metadata LIKE (AND across terms)
   if (terms.length > 0) {
     const where = terms
-      .map(() => '(summary LIKE ? OR generated_title LIKE ? OR custom_title LIKE ? OR source_tool LIKE ? OR project_path LIKE ?)')
+      .map(() => "(summary LIKE ? ESCAPE '\\' OR generated_title LIKE ? ESCAPE '\\' OR custom_title LIKE ? ESCAPE '\\' OR source_tool LIKE ? ESCAPE '\\' OR project_path LIKE ? ESCAPE '\\')")
       .join(' AND ');
-    const params = terms.flatMap(t => Array(5).fill(`%${t}%`));
+    const params = terms.flatMap(t => Array(5).fill(`%${t.replace(/[\\%_]/g, '\\$&')}%`));
     const rows = db.prepare(`SELECT id, summary FROM sessions WHERE ${where} LIMIT ?`)
       .all(...params, STAGE_LIMIT) as Array<{ id: string; summary: string | null }>;
     rows.forEach((row, rank) => {

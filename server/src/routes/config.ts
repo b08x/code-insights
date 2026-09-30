@@ -52,6 +52,7 @@ app.get('/llm', (c) => {
       model: agent.model,
       apiKey: maskApiKey(agent.apiKey),
       baseUrl: agent.baseUrl,
+      codebaseTools: agent.codebaseTools === true,
     } : undefined,
     embedding: embedding ? {
       provider: embedding.provider,
@@ -70,7 +71,7 @@ app.put('/llm', async (c) => {
     model?: string;
     apiKey?: string;
     baseUrl?: string;
-    agent?: Partial<LLMProviderConfig>;
+    agent?: Partial<LLMProviderConfig> & { codebaseTools?: boolean };
     embedding?: Partial<LLMProviderConfig>;
   }>();
 
@@ -125,7 +126,7 @@ app.put('/llm', async (c) => {
     if (body.agent.provider && !VALID_PROVIDERS.includes(body.agent.provider as typeof VALID_PROVIDERS[number])) {
       return c.json({ error: `agent provider must be one of: ${VALID_PROVIDERS.join(', ')}` }, 400);
     }
-    const existingAgent = config.dashboard?.agent ?? {} as Partial<LLMProviderConfig>;
+    const existingAgent = config.dashboard?.agent ?? {} as Partial<NonNullable<NonNullable<ClaudeInsightConfig['dashboard']>['agent']>>;
     
     // Check if we are clearing the agent config
     if (body.agent.provider === undefined && body.agent.model === undefined && body.agent.apiKey === undefined && body.agent.baseUrl === undefined && Object.keys(body.agent).length > 0) {
@@ -135,7 +136,8 @@ app.put('/llm', async (c) => {
     if (Object.keys(body.agent).length === 0) {
         config.dashboard = { ...config.dashboard, agent: undefined };
     } else {
-        const updatedAgent: LLMProviderConfig = {
+        const codebaseTools = typeof body.agent.codebaseTools === 'boolean' ? body.agent.codebaseTools : existingAgent.codebaseTools;
+        const updatedAgent: NonNullable<NonNullable<ClaudeInsightConfig['dashboard']>['agent']> = {
             provider: body.agent.provider ?? existingAgent.provider ?? 'openai',
             model: body.agent.model ?? existingAgent.model ?? '',
             ...(body.agent.apiKey !== undefined
@@ -144,6 +146,7 @@ app.put('/llm', async (c) => {
             ...(body.agent.baseUrl !== undefined
               ? { baseUrl: body.agent.baseUrl || undefined }
               : existingAgent.baseUrl !== undefined ? { baseUrl: existingAgent.baseUrl } : {}),
+            ...(codebaseTools !== undefined ? { codebaseTools } : {}),
         };
         config.dashboard = { ...config.dashboard, agent: updatedAgent };
     }

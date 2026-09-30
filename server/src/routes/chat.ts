@@ -69,8 +69,18 @@ function toConversation(row: ConversationRow) {
   return { id: row.id, title: row.title, createdAt: row.created_at, updatedAt: row.updated_at };
 }
 
-function isPageContext(v: unknown): v is PageContext {
-  return typeof v === 'object' && v !== null && !Array.isArray(v);
+const CONTEXT_KEYS = ['page', 'sessionId', 'runId', 'versionId'] as const;
+const CONTEXT_VALUE_MAX = 200;
+
+/** Whitelist + length-cap client-supplied page context; it is persisted and fed to the model. */
+export function sanitizePageContext(v: unknown): PageContext | null {
+  if (typeof v !== 'object' || v === null || Array.isArray(v)) return null;
+  const out: PageContext = {};
+  for (const k of CONTEXT_KEYS) {
+    const val = (v as Record<string, unknown>)[k];
+    if (typeof val === 'string' && val) out[k] = val.slice(0, CONTEXT_VALUE_MAX);
+  }
+  return out;
 }
 
 export function createChatRouter(deps: Partial<ChatDeps> = {}): Hono {
@@ -119,11 +129,12 @@ export function createChatRouter(deps: Partial<ChatDeps> = {}): Hono {
     const conv = db.prepare('SELECT id, title FROM chat_conversations WHERE id = ?').get(conversationId) as { id: string; title: string } | undefined;
     if (!conv) return c.json({ error: 'Conversation not found' }, 404);
 
-    const body = await c.req.json() as { content?: unknown; pageContext?: unknown };
+    const body = await c.req.json().catch(() => null) as { content?: unknown; pageContext?: unknown } | null;
+    if (!body || typeof body !== 'object') return c.json({ error: 'Invalid JSON in request body' }, 400);
     const content = typeof body.content === 'string' ? body.content.trim() : '';
     if (!content) return c.json({ error: 'content is required' }, 400);
     if (content.length > MAX_CONTENT_CHARS) return c.json({ error: `content exceeds ${MAX_CONTENT_CHARS} characters` }, 400);
-    const pageContext = isPageContext(body.pageContext) ? body.pageContext : null;
+    const pageContext = sanitizePageContext(body.pageContext);
 
     const resolved = resolveLLM();
     if ('error' in resolved) return c.json({ error: resolved.error }, 400);

@@ -191,19 +191,10 @@ export async function execMcpCli(toolName: string, args: Record<string, unknown>
 
 const codebaseTools: AxFunction[] = [
   fn('listProjects')
-    .description('List all projects currently indexed in the codebase knowledge graph. Call this first.')
+    .description('List all projects currently indexed in the codebase knowledge graph. Call this first. Indexing new repositories is not available to the agent.')
     .namespace('codebase')
     .returns(f.string('List of indexed projects'))
     .handler(async () => execMcpCli('list_projects', {}))
-    .build(),
-  fn('indexRepository')
-    .description('Index a repository into the knowledge graph. Use this if listProjects shows the repo is missing.')
-    .namespace('codebase')
-    .arg('repo_path', f.string('Absolute path to the repository directory'))
-    .arg('mode', f.string('Optional mode: full, moderate, fast, cross-repo-intelligence').optional())
-    .arg('name', f.string('Optional override for the project name').optional())
-    .returns(f.string('Indexing results and stats'))
-    .handler(async (args: Record<string, unknown>) => execMcpCli('index_repository', args))
     .build(),
   fn('getArchitecture')
     .description('Codebase overview: languages, packages, routes, hotspots.')

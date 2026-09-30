@@ -313,6 +313,7 @@ export interface LLMConfig {
     model?: string;
     apiKey?: string;
     baseUrl?: string;
+    codebaseTools?: boolean;
   };
   embedding?: {
     provider?: 'openai' | 'anthropic' | 'gemini' | 'ollama' | 'openrouter' | 'mistral';

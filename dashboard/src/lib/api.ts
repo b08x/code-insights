@@ -194,6 +194,7 @@ export function saveLlmConfig(body: {
     model?: string;
     apiKey?: string;
     baseUrl?: string;
+    codebaseTools?: boolean;
   };
   embedding?: {
     provider?: string;

@@ -18,8 +18,9 @@ vi.mock('@code-insights/cli/utils/telemetry', () => ({
   trackEvent: vi.fn(),
 }));
 
+let mockConfig: any = null;
 vi.mock('@code-insights/cli/utils/config', () => ({
-  loadConfig: () => null,
+  loadConfig: () => mockConfig,
   saveConfig: vi.fn(),
 }));
 
@@ -166,6 +167,36 @@ describe('Config routes', () => {
         body: JSON.stringify({ provider: 'anthropic', model: 'claude-3-5-sonnet-20241022' }),
       });
       expect(vi.mocked(saveConfig)).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe('agent.codebaseTools', () => {
+    afterEach(() => { mockConfig = null; });
+    const put = (body: unknown) => createApp().request('/api/config/llm', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    const base = () => ({ sync: { claudeDir: '', excludeProjects: [] }, dashboard: { agent: { provider: 'openai', model: 'm', codebaseTools: true } } });
+
+    it('is saved when provided', async () => {
+      mockConfig = base();
+      vi.mocked(saveConfig).mockClear();
+      expect((await put({ agent: { codebaseTools: false } })).status).toBe(200);
+      expect(vi.mocked(saveConfig).mock.calls[0][0].dashboard?.agent?.codebaseTools).toBe(false);
+    });
+
+    it('survives a provider/model save that omits it', async () => {
+      mockConfig = base();
+      vi.mocked(saveConfig).mockClear();
+      await put({ agent: { provider: 'anthropic', model: 'x' } });
+      const saved = vi.mocked(saveConfig).mock.calls[0][0].dashboard?.agent;
+      expect(saved?.provider).toBe('anthropic');
+      expect(saved?.codebaseTools).toBe(true);
+    });
+
+    it('is returned by GET', async () => {
+      mockConfig = base();
+      const body = await (await createApp().request('/api/config/llm')).json() as any;
+      expect(body.agent.codebaseTools).toBe(true);
     });
   });
 
