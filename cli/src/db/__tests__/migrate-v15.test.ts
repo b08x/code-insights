@@ -57,6 +57,8 @@ describe('Migration v15: session_steps table', () => {
       INSERT INTO schema_version (version) VALUES (14);
       CREATE TABLE projects (id TEXT PRIMARY KEY, name TEXT, path TEXT, last_activity TEXT);
       CREATE TABLE sessions (id TEXT PRIMARY KEY, project_id TEXT REFERENCES projects(id), project_name TEXT, project_path TEXT, started_at TEXT, ended_at TEXT);
+      CREATE TABLE insights (id TEXT PRIMARY KEY, session_id TEXT);
+      CREATE TABLE session_facets (session_id TEXT PRIMARY KEY);
     `);
 
     const result = runMigrations(db);

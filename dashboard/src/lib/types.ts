@@ -321,6 +321,17 @@ export interface LLMConfig {
     apiKey?: string;
     baseUrl?: string;
   };
+  /** Runner used by `insights` / the queue when no runner flag is given (dashboard.analysis.runner). */
+  runner?: AnalysisRunnerSetting;
+}
+
+/** Mirrors ANALYSIS_RUNNER_NAMES in cli/src/types.ts. */
+export type AnalysisRunnerName = 'claude' | 'codex' | 'antigravity' | 'vibe' | 'opencode' | 'provider';
+
+export interface AnalysisRunnerSetting {
+  name: AnalysisRunnerName;
+  model?: string;
+  variant?: string;
 }
 
 // ── Agent chat (/api/chat) ────────────────────────────────────────────────────

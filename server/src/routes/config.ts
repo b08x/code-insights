@@ -5,6 +5,10 @@ import { getEffectivePlans } from '@code-insights/cli/utils/plans';
 import { loadLLMConfig, testLLMConfig } from '@code-insights/cli/llm/client';
 import { discoverOllamaModels } from '@code-insights/cli/llm/providers/ollama';
 import { discoverModels } from '../llm/discover.js';
+import { listRunnerModels } from './runner-models.js';
+import {
+  ANALYSIS_RUNNER_NAMES, isRunnerName, RUNNER_MODEL_RE, RUNNER_VARIANT_RE,
+} from '@code-insights/cli/utils/runner-setting';
 
 const app = new Hono();
 
@@ -17,6 +21,43 @@ const PROVIDER_API_KEY_ENV: Record<string, string> = {
   openrouter: 'OPENROUTER_API_KEY',
   mistral:    'MISTRAL_API_KEY',
 };
+
+type RunnerSetting = NonNullable<NonNullable<NonNullable<ClaudeInsightConfig['dashboard']>['analysis']>['runner']>;
+
+// Model/variant reach CLI argv; RUNNER_MODEL_RE / RUNNER_VARIANT_RE are shared with the CLI.
+
+/**
+ * Merge a PUT `runner` body into the saved runner. Omitted fields are kept, except that switching
+ * to a different runner drops the old model/variant (model ids are runner-specific).
+ * Returns null to clear the setting, or an error string.
+ */
+function mergeRunnerSetting(
+  existing: RunnerSetting | undefined,
+  body: { name?: unknown; model?: unknown; variant?: unknown } | null,
+): RunnerSetting | null | { error: string } {
+  if (body === null || Object.keys(body).length === 0) return null;
+  if (body.name !== undefined && !isRunnerName(body.name)) {
+    return { error: `runner.name must be one of: ${ANALYSIS_RUNNER_NAMES.join(', ')}` };
+  }
+  const name = (body.name as RunnerSetting['name'] | undefined) ?? existing?.name;
+  if (!name) return { error: 'runner.name is required' };
+  const keep = existing?.name === name ? existing : undefined;
+
+  const field = (value: unknown, prior: string | undefined, re: RegExp, label: string): string | undefined | { error: string } => {
+    if (value === undefined) return prior;
+    if (value === null || value === '') return undefined;
+    if (typeof value !== 'string') return { error: `runner.${label} must be a string` };
+    const trimmed = value.trim();
+    if (!trimmed) return undefined;
+    if (!re.test(trimmed)) return { error: `runner.${label} contains unsupported characters` };
+    return trimmed;
+  };
+  const model = field(body.model, keep?.model, RUNNER_MODEL_RE, 'model');
+  if (typeof model === 'object') return model;
+  const variant = field(body.variant, keep?.variant, RUNNER_VARIANT_RE, 'variant');
+  if (typeof variant === 'object') return variant;
+  return { name, ...(model ? { model } : {}), ...(variant ? { variant } : {}) };
+}
 
 function maskApiKey(key: string | undefined): string | undefined {
   if (!key || key.length < 8) return key ? '***' : undefined;
@@ -60,6 +101,7 @@ app.get('/llm', (c) => {
       apiKey: maskApiKey(embedding.apiKey),
       baseUrl: embedding.baseUrl,
     } : undefined,
+    runner: config?.dashboard?.analysis?.runner,
   });
 });
 
@@ -73,6 +115,8 @@ app.put('/llm', async (c) => {
     baseUrl?: string;
     agent?: Partial<LLMProviderConfig> & { codebaseTools?: boolean };
     embedding?: Partial<LLMProviderConfig>;
+    /** Analysis runner for CLI/queue. Omitted = unchanged; null or {} = cleared. */
+    runner?: { name?: unknown; model?: unknown; variant?: unknown } | null;
   }>();
 
   const config: ClaudeInsightConfig = loadConfig() ?? {
@@ -115,6 +159,10 @@ app.put('/llm', async (c) => {
 
     if (!updatedLlm.model) {
       return c.json({ error: 'model is required when setting LLM config' }, 400);
+    }
+    // The model is a student-identity component; '|' separates identity-key fields.
+    if (updatedLlm.model.includes('|')) {
+      return c.json({ error: "model must not contain '|'" }, 400);
     }
 
     config.dashboard = { ...config.dashboard, llm: updatedLlm };
@@ -175,6 +223,23 @@ app.put('/llm', async (c) => {
         };
         config.dashboard = { ...config.dashboard, embedding: updatedEmbedding };
     }
+    changed = true;
+  }
+
+  // Update analysis runner (name/model/variant); preserved when omitted.
+  if (body.runner !== undefined) {
+    if (body.runner !== null && (typeof body.runner !== 'object' || Array.isArray(body.runner))) {
+      return c.json({ error: 'runner must be an object or null' }, 400);
+    }
+    const merged = mergeRunnerSetting(config.dashboard?.analysis?.runner, body.runner);
+    if (merged && 'error' in merged) {
+      return c.json({ error: merged.error }, 400);
+    }
+    const { runner: _previous, ...restAnalysis } = config.dashboard?.analysis ?? {};
+    config.dashboard = {
+      ...config.dashboard,
+      analysis: { ...restAnalysis, ...(merged ? { runner: merged } : {}) },
+    };
     changed = true;
   }
 
@@ -298,6 +363,17 @@ app.post('/llm/models', async (c) => {
   } catch (error) {
     return c.json({ error: error instanceof Error ? error.message : 'Failed to fetch models' }, 500);
   }
+});
+
+// GET /api/config/models?runner= — models the runner's CLI reports (`agy models`,
+// `opencode models`); empty list when unsupported, missing, or timed out (UI falls back to text).
+app.get('/models', async (c) => {
+  const runner = c.req.query('runner');
+  if (!isRunnerName(runner)) {
+    return c.json({ error: `runner must be one of: ${ANALYSIS_RUNNER_NAMES.join(', ')}` }, 400);
+  }
+  const models = await listRunnerModels(runner);
+  return c.json({ models });
 });
 
 // GET /api/config/plans — return active pricing plans

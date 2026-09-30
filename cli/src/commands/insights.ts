@@ -2,7 +2,7 @@
  * insights command — analyze a session using configured LLM or a native CLI runner.
  *
  * Modes:
- *   --native / --codex / --claude / --antigravity / --vibe   Native CLI runners (user's subscription)
+ *   --native / --codex / --claude / --antigravity / --vibe / --opencode   Native CLI runners (user's subscription)
  *   (default)  Use configured LLM provider (OpenAI, Anthropic, Gemini, Ollama, ...)
  *
  * All analysis logic lives in analysis/pipeline.ts (analyzeSessionPipeline). This command only
@@ -21,15 +21,15 @@
 
 import chalk from 'chalk';
 import { getDb } from '../db/client.js';
+import { loadConfig } from '../utils/config.js';
 import { renderAnalysisReport } from '../analysis/render.js';
 import { ClaudeNativeRunner } from '../analysis/native-runner.js';
 import { CodexNativeRunner } from '../analysis/codex-runner.js';
-import { AntigravityNativeRunner } from '../analysis/antigravity-runner.js';
-import { MistralVibeRunner } from '../analysis/mistral-vibe-runner.js';
 import { ProviderRunner } from '../analysis/provider-runner.js';
 import { analyzeSessionPipeline, pipelineFailureToError } from '../analysis/pipeline.js';
 import { FallbackNativeRunner } from '../analysis/native-fallback.js';
 import type { AnalysisRunner } from '../analysis/runner-types.js';
+import { buildRunner, configuredRunner, runnerConfigFor, selectRunner, type AnalysisRunnerName } from '../analysis/runner-selection.js';
 
 // ── Resume detection ──────────────────────────────────────────────────────────
 
@@ -60,6 +60,7 @@ export interface InsightsCommandOptions {
   claude?: boolean;
   antigravity?: boolean;
   vibe?: boolean;
+  opencode?: boolean;
   hookMode?: boolean;
   force?: boolean;
   quiet?: boolean;
@@ -71,26 +72,32 @@ export interface InsightsCommandOptions {
 
 // ── Core logic ────────────────────────────────────────────────────────────────
 
+/**
+ * General 'native' mode (not forced to codex/antigravity/vibe) gets the multi-level fallback.
+ * OpenCode is never wrapped: it is not in the fallback chain, so a failure must not silently
+ * switch to a different student (see native-fallback.ts).
+ */
+export function usesNativeFallback(
+  options: Pick<InsightsCommandOptions, 'native' | 'codex' | 'antigravity' | 'vibe' | 'opencode'>,
+  runner: { name: string },
+): boolean {
+  return !!options.native && !options.codex && !options.antigravity && !options.vibe
+    && !options.opencode && runner.name !== 'opencode';
+}
+
 export async function runInsightsCommand(options: InsightsCommandOptions): Promise<string | void> {
   const format = options.format ?? 'rich';
   const log = options.quiet ? () => {} : console.log.bind(console);
 
   // 1. Build the runner (or reuse a pre-built one from batch callers)
   let runner: AnalysisRunner;
+  // Explicit runner flags win; else the runner saved in Settings; else plain --native's
+  // Codex -> Claude default; else the configured provider.
+  const selection = options._runner ? null : selectRunner(options, loadConfig());
   if (options._runner) {
     runner = options._runner;
-  } else if (options.vibe) {
-    MistralVibeRunner.validate();
-    runner = new MistralVibeRunner();
-  } else if (options.antigravity) {
-    AntigravityNativeRunner.validate();
-    runner = new AntigravityNativeRunner();
-  } else if (options.claude) {
-    ClaudeNativeRunner.validate();
-    runner = new ClaudeNativeRunner();
-  } else if (options.codex) {
-    CodexNativeRunner.validate();
-    runner = new CodexNativeRunner();
+  } else if (selection) {
+    runner = buildRunner(selection.name, selection.runnerConfig);
   } else if (options.native) {
     // Default native is Codex, falling back to Claude
     try {
@@ -108,8 +115,7 @@ export async function runInsightsCommand(options: InsightsCommandOptions): Promi
     runner = ProviderRunner.fromConfig();
   }
 
-  // General 'native' mode (not forced to one specific runner) gets the multi-level fallback.
-  if (options.native && !options.codex && !options.antigravity && !options.vibe) {
+  if (usesNativeFallback(options, runner)) {
     runner = new FallbackNativeRunner(runner, log);
   }
 
@@ -175,6 +181,7 @@ export async function insightsCommand(
     claude?: boolean;
     antigravity?: boolean;
     vibe?: boolean;
+  opencode?: boolean;
     hook?: boolean;
     source?: string;
     force?: boolean;
@@ -224,6 +231,7 @@ export async function insightsCommand(
       claude: opts.claude ?? false,
       antigravity: opts.antigravity ?? false,
       vibe: opts.vibe ?? false,
+      opencode: opts.opencode ?? false,
       hookMode: opts.hook ?? false,
       force: opts.force ?? false,
       quiet,
@@ -252,6 +260,7 @@ export async function insightsCheckCommand(opts: {
   claude?: boolean;
   antigravity?: boolean;
   vibe?: boolean;
+  opencode?: boolean;
 }): Promise<void> {
   const days = opts.days ?? 7;
   const quiet = opts.quiet ?? false;
@@ -287,35 +296,20 @@ export async function insightsCheckCommand(opts: {
     // --analyze: process all found sessions with progress output
     if (analyze || count <= 2) {
       let runner: AnalysisRunner | undefined;
-      type RunnerType = 'claude' | 'codex' | 'antigravity' | 'vibe' | 'provider';
+      type RunnerType = AnalysisRunnerName;
 
+      const checkConfig = loadConfig();
       const initializeRunner = (type: RunnerType): AnalysisRunner | undefined => {
         try {
-          if (type === 'antigravity') {
-            AntigravityNativeRunner.validate();
-            return new AntigravityNativeRunner();
-          } else if (type === 'codex') {
-            CodexNativeRunner.validate();
-            return new CodexNativeRunner();
-          } else if (type === 'claude') {
-            ClaudeNativeRunner.validate();
-            return new ClaudeNativeRunner();
-          } else if (type === 'vibe') {
-            MistralVibeRunner.validate();
-            return new MistralVibeRunner();
-          } else {
-            try {
-              return ProviderRunner.fromConfig();
-            } catch (err) {
-              log(chalk.yellow(`[Code Insights] provider runner not available: ${err instanceof Error ? err.message : String(err)}`));
-              return undefined;
-            }
-          }
+          // Saved model/variant apply only when `type` is the runner saved in Settings.
+          return buildRunner(type, runnerConfigFor(type, checkConfig));
         } catch (err) {
           log(chalk.yellow(`[Code Insights] ${type} runner not available: ${err instanceof Error ? err.message : String(err)}`));
           return undefined;
         }
       };
+      // Runner used when no runner flag is given: the one saved in Settings, else the provider.
+      const defaultRunnerType: RunnerType = configuredRunner(checkConfig)?.name ?? 'provider';
 
       if (analyze) {
         // Determine initial runner type
@@ -328,10 +322,12 @@ export async function insightsCheckCommand(opts: {
           currentRunnerType = 'claude';
         } else if (opts.vibe) {
           currentRunnerType = 'vibe';
+        } else if (opts.opencode) {
+          currentRunnerType = 'opencode';
         } else if (opts.native) {
           currentRunnerType = 'codex';
         } else {
-          currentRunnerType = 'provider';
+          currentRunnerType = defaultRunnerType;
         }
 
         runner = initializeRunner(currentRunnerType);
@@ -417,8 +413,9 @@ export async function insightsCheckCommand(opts: {
         else if (opts.codex) runnerType = 'codex';
         else if (opts.claude) runnerType = 'claude';
         else if (opts.vibe) runnerType = 'vibe';
+        else if (opts.opencode) runnerType = 'opencode';
         else if (opts.native) runnerType = 'codex';
-        else runnerType = 'provider';
+        else runnerType = defaultRunnerType;
 
         runner = initializeRunner(runnerType);
         

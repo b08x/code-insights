@@ -2,13 +2,21 @@ import { execFileSync } from 'child_process';
 import { writeFileSync, readFileSync, unlinkSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import type { AnalysisRunner, RunAnalysisParams, RunAnalysisResult } from './runner-types.js';
+import type { AnalysisRunner, RunAnalysisParams, RunAnalysisResult, RunnerConfig } from './runner-types.js';
 
 /**
  * CodexNativeRunner — executes analysis via `codex exec` (non-interactive mode).
  */
 export class CodexNativeRunner implements AnalysisRunner {
   readonly name = 'codex-native';
+  readonly model: string;
+  readonly variant?: string;
+
+  constructor(private readonly config: RunnerConfig = {}) {
+    // 'codex-native' is the legacy label when codex uses its own configured model.
+    this.model = config.model || 'codex-native';
+    this.variant = config.variant || undefined;
+  }
 
   /**
    * Validate that the `codex` CLI is available in PATH.
@@ -45,13 +53,14 @@ export class CodexNativeRunner implements AnalysisRunner {
         '--ephemeral',
         '--sandbox', 'read-only',
         '--skip-git-repo-check',
-        '--model', 'gpt-5.5',
         '--output-last-message', outputFile,
       ];
 
       if (schemaFile) {
         args.push('--output-schema', schemaFile);
       }
+      if (this.config.model) args.push('-m', this.config.model);
+      if (this.config.variant) args.push('-c', `model_reasoning_effort="${this.config.variant}"`);
 
       // Execute codex with prompt via stdin
       execFileSync('codex', args, {
@@ -71,7 +80,7 @@ export class CodexNativeRunner implements AnalysisRunner {
         durationMs: Date.now() - start,
         inputTokens: 0,
         outputTokens: 0,
-        model: 'codex-native',
+        model: this.model,
         provider: 'codex-native',
       };
     } finally {

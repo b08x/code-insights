@@ -17,12 +17,14 @@ import {
   DollarSign,
 } from 'lucide-react';
 import { LlmProviderCard } from '@/components/settings/LlmProviderCard';
+import { RunnerSettingsCard } from '@/components/settings/RunnerSettingsCard';
 
 export default function SettingsPage() {
   const { data: llmConfig, isLoading: configLoading } = useLlmConfig();
   const saveMutation = useSaveLlmConfig();
   const { data: plans } = usePlans();
   const savePlansMutation = useSavePlans();
+  const { profile, saveProfile } = useUserProfile();
   const [planFees, setPlanFees] = useState<Record<string, number>>({});
 
   useEffect(() => {
@@ -196,6 +198,11 @@ export default function SettingsPage() {
             baseUrl: config.baseUrl,
           });
         }}
+      />
+
+      <RunnerSettingsCard
+        saved={llmConfig?.runner}
+        providerSummary={llmConfig?.provider ? `${llmConfig.provider} / ${llmConfig.model ?? ''}` : undefined}
       />
 
       <LlmProviderCard

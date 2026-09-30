@@ -188,7 +188,9 @@
         "scope": "session",
         "analysis_version": "3.1.0",
         "linked_insight_ids": null,
-        "embedding_status": "pending"
+        "embedding_status": "pending",
+        "student_identity": "provider:anthropic|claude-sonnet-4-20250514|",
+        "prompt_version_id": null
       },
       {
         "session_id": "sess-long-chunked",
@@ -205,7 +207,9 @@
         "scope": "session",
         "analysis_version": "3.1.0",
         "linked_insight_ids": null,
-        "embedding_status": "pending"
+        "embedding_status": "pending",
+        "student_identity": "provider:anthropic|claude-sonnet-4-20250514|",
+        "prompt_version_id": null
       },
       {
         "session_id": "sess-long-chunked",
@@ -222,7 +226,9 @@
         "scope": "session",
         "analysis_version": "3.1.0",
         "linked_insight_ids": null,
-        "embedding_status": "pending"
+        "embedding_status": "pending",
+        "student_identity": "provider:anthropic|claude-sonnet-4-20250514|",
+        "prompt_version_id": null
       },
       {
         "session_id": "sess-long-chunked",
@@ -239,7 +245,9 @@
         "scope": "session",
         "analysis_version": "3.1.0",
         "linked_insight_ids": null,
-        "embedding_status": "pending"
+        "embedding_status": "pending",
+        "student_identity": "provider:anthropic|claude-sonnet-4-20250514|",
+        "prompt_version_id": null
       },
       {
         "session_id": "sess-long-chunked",
@@ -256,7 +264,9 @@
         "scope": "session",
         "analysis_version": "3.1.0",
         "linked_insight_ids": null,
-        "embedding_status": "pending"
+        "embedding_status": "pending",
+        "student_identity": "provider:anthropic|claude-sonnet-4-20250514|",
+        "prompt_version_id": null
       },
       {
         "session_id": "sess-long-chunked",
@@ -273,7 +283,9 @@
         "scope": "session",
         "analysis_version": "3.1.0",
         "linked_insight_ids": null,
-        "embedding_status": "pending"
+        "embedding_status": "pending",
+        "student_identity": "provider:anthropic|claude-sonnet-4-20250514|",
+        "prompt_version_id": null
       },
       {
         "session_id": "sess-long-chunked",
@@ -290,7 +302,9 @@
         "scope": "session",
         "analysis_version": "3.1.0",
         "linked_insight_ids": null,
-        "embedding_status": "pending"
+        "embedding_status": "pending",
+        "student_identity": "provider:anthropic|claude-sonnet-4-20250514|",
+        "prompt_version_id": null
       },
       {
         "session_id": "sess-long-chunked",
@@ -307,7 +321,9 @@
         "scope": "session",
         "analysis_version": "3.1.0",
         "linked_insight_ids": null,
-        "embedding_status": "pending"
+        "embedding_status": "pending",
+        "student_identity": "provider:anthropic|claude-sonnet-4-20250514|",
+        "prompt_version_id": null
       },
       {
         "session_id": "sess-long-chunked",
@@ -324,7 +340,9 @@
         "scope": "session",
         "analysis_version": "3.1.0",
         "linked_insight_ids": null,
-        "embedding_status": "pending"
+        "embedding_status": "pending",
+        "student_identity": "provider:anthropic|claude-sonnet-4-20250514|",
+        "prompt_version_id": null
       },
       {
         "session_id": "sess-long-chunked",
@@ -341,7 +359,9 @@
         "scope": "session",
         "analysis_version": "3.1.0",
         "linked_insight_ids": null,
-        "embedding_status": "pending"
+        "embedding_status": "pending",
+        "student_identity": "provider:anthropic|claude-sonnet-4-20250514|",
+        "prompt_version_id": null
       },
       {
         "session_id": "sess-long-chunked",
@@ -358,7 +378,9 @@
         "scope": "session",
         "analysis_version": "3.1.0",
         "linked_insight_ids": null,
-        "embedding_status": "pending"
+        "embedding_status": "pending",
+        "student_identity": "provider:anthropic|claude-sonnet-4-20250514|",
+        "prompt_version_id": null
       },
       {
         "session_id": "sess-long-chunked",
@@ -375,7 +397,9 @@
         "scope": "session",
         "analysis_version": "3.1.0",
         "linked_insight_ids": null,
-        "embedding_status": "pending"
+        "embedding_status": "pending",
+        "student_identity": "provider:anthropic|claude-sonnet-4-20250514|",
+        "prompt_version_id": null
       },
       {
         "session_id": "sess-long-chunked",
@@ -392,7 +416,9 @@
         "scope": "session",
         "analysis_version": "3.1.0",
         "linked_insight_ids": null,
-        "embedding_status": "pending"
+        "embedding_status": "pending",
+        "student_identity": "provider:anthropic|claude-sonnet-4-20250514|",
+        "prompt_version_id": null
       }
     ],
     "session_facets": [
@@ -405,7 +431,9 @@
         "iteration_count": 5,
         "friction_points": "[{\"category\":\"context-loss\",\"attribution\":\"ai-capability\",\"description\":\"Lost earlier constraints.\",\"severity\":\"medium\",\"resolution\":\"resolved\"}]",
         "effective_patterns": "[]",
-        "analysis_version": "3.1.0"
+        "analysis_version": "3.1.0",
+        "student_identity": "provider:anthropic|claude-sonnet-4-20250514|",
+        "prompt_version_id": null
       }
     ],
     "session_steps": [],
@@ -443,7 +471,9 @@
         "scope": "session",
         "analysis_version": "3.1.0",
         "linked_insight_ids": null,
-        "embedding_status": "pending"
+        "embedding_status": "pending",
+        "student_identity": "provider:anthropic|claude-sonnet-4-20250514|",
+        "prompt_version_id": null
       },
       {
         "session_id": "sess-long-chunked",
@@ -460,7 +490,9 @@
         "scope": "session",
         "analysis_version": "3.1.0",
         "linked_insight_ids": null,
-        "embedding_status": "pending"
+        "embedding_status": "pending",
+        "student_identity": "provider:anthropic|claude-sonnet-4-20250514|",
+        "prompt_version_id": null
       },
       {
         "session_id": "sess-long-chunked",
@@ -477,7 +509,9 @@
         "scope": "session",
         "analysis_version": "3.1.0",
         "linked_insight_ids": null,
-        "embedding_status": "pending"
+        "embedding_status": "pending",
+        "student_identity": "provider:anthropic|claude-sonnet-4-20250514|",
+        "prompt_version_id": null
       },
       {
         "session_id": "sess-long-chunked",
@@ -494,7 +528,9 @@
         "scope": "session",
         "analysis_version": "3.1.0",
         "linked_insight_ids": null,
-        "embedding_status": "pending"
+        "embedding_status": "pending",
+        "student_identity": "provider:anthropic|claude-sonnet-4-20250514|",
+        "prompt_version_id": null
       },
       {
         "session_id": "sess-long-chunked",
@@ -511,7 +547,9 @@
         "scope": "session",
         "analysis_version": "3.1.0",
         "linked_insight_ids": null,
-        "embedding_status": "pending"
+        "embedding_status": "pending",
+        "student_identity": "provider:anthropic|claude-sonnet-4-20250514|",
+        "prompt_version_id": null
       },
       {
         "session_id": "sess-long-chunked",
@@ -528,7 +566,9 @@
         "scope": "session",
         "analysis_version": "3.1.0",
         "linked_insight_ids": null,
-        "embedding_status": "pending"
+        "embedding_status": "pending",
+        "student_identity": "provider:anthropic|claude-sonnet-4-20250514|",
+        "prompt_version_id": null
       },
       {
         "session_id": "sess-long-chunked",
@@ -545,7 +585,9 @@
         "scope": "session",
         "analysis_version": "3.1.0",
         "linked_insight_ids": null,
-        "embedding_status": "pending"
+        "embedding_status": "pending",
+        "student_identity": "provider:anthropic|claude-sonnet-4-20250514|",
+        "prompt_version_id": null
       },
       {
         "session_id": "sess-long-chunked",
@@ -562,7 +604,9 @@
         "scope": "session",
         "analysis_version": "3.1.0",
         "linked_insight_ids": null,
-        "embedding_status": "pending"
+        "embedding_status": "pending",
+        "student_identity": "provider:anthropic|claude-sonnet-4-20250514|",
+        "prompt_version_id": null
       },
       {
         "session_id": "sess-long-chunked",
@@ -579,7 +623,9 @@
         "scope": "session",
         "analysis_version": "3.1.0",
         "linked_insight_ids": null,
-        "embedding_status": "pending"
+        "embedding_status": "pending",
+        "student_identity": "provider:anthropic|claude-sonnet-4-20250514|",
+        "prompt_version_id": null
       },
       {
         "session_id": "sess-long-chunked",
@@ -596,7 +642,9 @@
         "scope": "session",
         "analysis_version": "3.1.0",
         "linked_insight_ids": null,
-        "embedding_status": "pending"
+        "embedding_status": "pending",
+        "student_identity": "provider:anthropic|claude-sonnet-4-20250514|",
+        "prompt_version_id": null
       },
       {
         "session_id": "sess-long-chunked",
@@ -613,7 +661,9 @@
         "scope": "session",
         "analysis_version": "3.1.0",
         "linked_insight_ids": null,
-        "embedding_status": "pending"
+        "embedding_status": "pending",
+        "student_identity": "provider:anthropic|claude-sonnet-4-20250514|",
+        "prompt_version_id": null
       },
       {
         "session_id": "sess-long-chunked",
@@ -630,7 +680,9 @@
         "scope": "session",
         "analysis_version": "3.1.0",
         "linked_insight_ids": null,
-        "embedding_status": "pending"
+        "embedding_status": "pending",
+        "student_identity": "provider:anthropic|claude-sonnet-4-20250514|",
+        "prompt_version_id": null
       },
       {
         "session_id": "sess-long-chunked",
@@ -647,7 +699,9 @@
         "scope": "session",
         "analysis_version": "3.1.0",
         "linked_insight_ids": null,
-        "embedding_status": "pending"
+        "embedding_status": "pending",
+        "student_identity": "provider:anthropic|claude-sonnet-4-20250514|",
+        "prompt_version_id": null
       },
       {
         "session_id": "sess-long-chunked",
@@ -664,7 +718,9 @@
         "scope": "session",
         "analysis_version": "3.1.0",
         "linked_insight_ids": null,
-        "embedding_status": "pending"
+        "embedding_status": "pending",
+        "student_identity": "provider:anthropic|claude-sonnet-4-20250514|",
+        "prompt_version_id": null
       }
     ],
     "session_facets": [
@@ -677,7 +733,9 @@
         "iteration_count": 5,
         "friction_points": "[{\"category\":\"context-loss\",\"attribution\":\"ai-capability\",\"description\":\"Lost earlier constraints.\",\"severity\":\"medium\",\"resolution\":\"resolved\"}]",
         "effective_patterns": "[]",
-        "analysis_version": "3.1.0"
+        "analysis_version": "3.1.0",
+        "student_identity": "provider:anthropic|claude-sonnet-4-20250514|",
+        "prompt_version_id": null
       }
     ],
     "session_steps": [],

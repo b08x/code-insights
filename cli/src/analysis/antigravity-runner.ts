@@ -1,6 +1,6 @@
 import { execFileSync } from 'child_process';
 import { tmpdir } from 'os';
-import { type AnalysisRunner, type RunAnalysisParams, type RunAnalysisResult } from './runner-types.js';
+import { type AnalysisRunner, type RunAnalysisParams, type RunAnalysisResult, type RunnerConfig } from './runner-types.js';
 import { extractJsonPayload } from './response-parsers.js';
 
 /**
@@ -8,6 +8,11 @@ import { extractJsonPayload } from './response-parsers.js';
  */
 export class AntigravityNativeRunner implements AnalysisRunner {
   readonly name = 'antigravity-native';
+  readonly model: string;
+
+  constructor(private readonly config: RunnerConfig = {}) {
+    this.model = config.model || 'antigravity-native';
+  }
 
   /**
    * Validate that the `agy` CLI is available in PATH.
@@ -37,6 +42,9 @@ export class AntigravityNativeRunner implements AnalysisRunner {
         '-p', fullPrompt,
         '--dangerously-skip-permissions',
       ];
+      // Not adding --json-schema/--output-format json: the current path parses plain stdout via
+      // extractJsonPayload and the JSON envelope shape is unverified, so parity is not guaranteed.
+      if (this.config.model) args.push('--model', this.config.model);
 
       let rawOutput: string;
       try {
@@ -73,7 +81,7 @@ export class AntigravityNativeRunner implements AnalysisRunner {
         durationMs: Date.now() - start,
         inputTokens,
         outputTokens,
-        model: 'antigravity-native',
+        model: this.model,
         provider: 'antigravity-native',
       };
     } catch (err: any) {

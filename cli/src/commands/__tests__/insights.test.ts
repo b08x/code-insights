@@ -188,7 +188,7 @@ describe('V8 migration — session_message_count column', () => {
       .prepare('SELECT version FROM schema_version ORDER BY version')
       .all() as Array<{ version: number }>;
 
-    expect(rows.map(r => r.version)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]);
+    expect(rows.map(r => r.version)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18]);
     db.close();
   });
 
@@ -680,5 +680,16 @@ describe('insightsCheckCommand — --analyze flag', () => {
     expect(mockRunAnalysis).not.toHaveBeenCalled();
     expect(consoleSpy).not.toHaveBeenCalled();
     expect(stdoutSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('usesNativeFallback', () => {
+  it('wraps plain --native but never opencode (not in the fallback chain)', async () => {
+    const { usesNativeFallback } = await import('../insights.js');
+    expect(usesNativeFallback({ native: true }, { name: 'codex-native' })).toBe(true);
+    expect(usesNativeFallback({ native: true, opencode: true }, { name: 'opencode' })).toBe(false);
+    expect(usesNativeFallback({ native: true }, { name: 'opencode' })).toBe(false);
+    expect(usesNativeFallback({ native: true, codex: true }, { name: 'codex-native' })).toBe(false);
+    expect(usesNativeFallback({}, { name: 'claude-code-native' })).toBe(false);
   });
 });

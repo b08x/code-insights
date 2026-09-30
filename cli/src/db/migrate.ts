@@ -14,6 +14,7 @@ export interface MigrationResult {
   v15Applied: boolean;
   v16Applied: boolean;
   v17Applied: boolean;
+  v18Applied: boolean;
 }
 
 /**
@@ -32,6 +33,8 @@ export interface MigrationResult {
  * Version 10: Add parent_session_id and agent_type columns to sessions for subagent hierarchy (Mistral Vibe)
  * Version 11: Add embedding_status to insights and messages, create embedding_metadata table
  * Version 12: Create FTS5 virtual table messages_fts and triggers for full-text search
+ * Version 17: Add chat_conversations / chat_messages for the persistent agent chat
+ * Version 18: Add student_identity + prompt_version_id provenance columns to insights and session_facets
  */
 export function runMigrations(db: Database.Database): MigrationResult {
   // Create schema_version table first if it doesn't exist.
@@ -137,7 +140,13 @@ export function runMigrations(db: Database.Database): MigrationResult {
     v17Applied = true;
   }
 
-  return { v6Applied, v7Applied, v8Applied, v9Applied, v10Applied, v11Applied, v12Applied, v13Applied, v14Applied, v15Applied, v16Applied, v17Applied };
+  let v18Applied = false;
+  if (currentVersion < 18) {
+    applyV18(db);
+    v18Applied = true;
+  }
+
+  return { v6Applied, v7Applied, v8Applied, v9Applied, v10Applied, v11Applied, v12Applied, v13Applied, v14Applied, v15Applied, v16Applied, v17Applied, v18Applied };
 }
 
 function getCurrentVersion(db: Database.Database): number {
@@ -480,4 +489,20 @@ function applyV17(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_chat_messages_conversation ON chat_messages(conversation_id, created_at);
   `);
   db.prepare('INSERT OR IGNORE INTO schema_version (version) VALUES (?)').run(17);
+}
+
+function applyV18(db: Database.Database): void {
+  // Provenance for prompt optimization: which student (runner|model|variant) and which prompt
+  // version produced each analysis row. NULL on both = analyzed before v18 / built-in prompt.
+  // Nullable with no default so existing rows and older writers stay valid.
+  for (const table of ['insights', 'session_facets']) {
+    for (const column of ['student_identity', 'prompt_version_id']) {
+      try {
+        db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} TEXT`);
+      } catch (e: any) {
+        if (!e.message?.includes('duplicate column')) throw e;
+      }
+    }
+  }
+  db.prepare('INSERT OR IGNORE INTO schema_version (version) VALUES (?)').run(18);
 }

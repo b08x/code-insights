@@ -56,7 +56,8 @@ import {
 } from './analysis-db.js';
 import { saveAnalysisUsage } from './analysis-usage-db.js';
 import { calculateAnalysisCost } from './analysis-pricing.js';
-import { resolveAnalysisPrompt, type PromptIdentity, type PromptOverride } from '../optimization/resolve-prompt.js';
+import { resolveAnalysisPrompt, type PromptOverride } from '../optimization/resolve-prompt.js';
+import { identityForCall, identityFromRunner, identityKey, type StudentIdentity } from '../optimization/identity.js';
 
 // Re-exported so there is exactly one definition of the budget (cli/src/llm/types.ts).
 export { DEFAULT_MAX_INPUT_TOKENS };
@@ -106,8 +107,6 @@ export interface PipelineProgress {
   totalChunks?: number;
 }
 
-export type PipelineIdentity = PromptIdentity;
-
 export interface PipelineInput {
   session: SessionData;
   messages: SQLiteMessageRow[];
@@ -122,8 +121,11 @@ export interface PipelineOptions {
    * and its messages from SQLite by id. Must describe the same session as `sessionId`.
    */
   input?: PipelineInput;
-  /** Student identity for prompt resolution (plan step 8). */
-  identity?: PipelineIdentity;
+  /**
+   * Student identity for prompt resolution and provenance (plan step 8). Absent: prompt resolution
+   * uses the runner's own metadata and provenance is derived from what the first call reported.
+   */
+  identity?: StudentIdentity;
   /** Caller-supplied prompt components (GEPA candidates). Absent: resolveAnalysisPrompt decides. */
   promptOverride?: PromptOverride;
   /**
@@ -202,7 +204,7 @@ export interface PipelineSuccess {
     projectName: string;
   };
   prompts: PromptRecord[];
-  identity?: PipelineIdentity;
+  identity?: StudentIdentity;
   /** Prompt version that produced this analysis; null = built-in. */
   promptVersionId: string | null;
 }
@@ -728,8 +730,25 @@ export async function analyzeSessionPipeline(
     const formatted = formatMessagesForAnalysis(messages);
     const sessionMeta = buildSessionMeta(session);
     const loopSignal = detectRageLoopHeuristic(messages);
-    const sessionPrompt = options.promptOverride ?? resolveAnalysisPrompt('session-analysis', options.identity);
-    const pqPrompt = options.promptOverride ?? resolveAnalysisPrompt('prompt-quality', options.identity);
+    // Resolution happens before any call, so it can only use the caller's identity or the
+    // runner's declared metadata. Provenance is recorded later from the actual call result.
+    const resolveIdentity = options.identity ?? identityFromRunner(runner);
+    const sessionPrompt = options.promptOverride ?? resolveAnalysisPrompt('session-analysis', resolveIdentity);
+    const pqPrompt = options.promptOverride ?? resolveAnalysisPrompt('prompt-quality', resolveIdentity);
+    const resolveKey = identityKey(resolveIdentity);
+    /**
+     * Identity that produced a call: the caller's if given, else what the call reported
+     * (FallbackNativeRunner reports the primary runner's name even after falling back, so the
+     * result's provider/model are the truthful record).
+     */
+    const identityOf = (result: RunAnalysisResult): StudentIdentity => options.identity ?? identityForCall(runner, result);
+    /** Identity for the run summary: the first call's, else the resolve identity. */
+    const recordedIdentity = (): StudentIdentity => (state.first ? identityOf(state.first) : resolveIdentity);
+    /** Provenance for rows derived from `producer`, the call whose output they hold. */
+    const provenanceFor = (prompt: { versionId: string | null }, producer: RunAnalysisResult) => ({
+      studentIdentity: identityKey(identityOf(producer)),
+      promptVersionId: prompt.versionId,
+    });
 
     const settings = getRetrievalSettings();
     const embeddingConfig = await resolveEmbeddingConfig();
@@ -751,6 +770,7 @@ export async function analyzeSessionPipeline(
       prompt: BuiltPrompt,
       jsonSchema: object | undefined,
       callSignal: AbortSignal | undefined,
+      resolved: { versionId: string | null },
     ): Promise<RunAnalysisResult> => {
       prompts.push({ pass, call, hash: hashPrompt(SHARED_ANALYST_SYSTEM_PROMPT, prompt.userPrompt), length: prompt.userPrompt.length });
       const result = await runner.runAnalysis({
@@ -761,6 +781,19 @@ export async function analyzeSessionPipeline(
         ...(callSignal && { signal: callSignal }),
       });
       state.first ??= result;
+      // A prompt version is tuned for one identity (found-7). If a fallback runner answered, the
+      // version was applied to another student: fail so the queue retries. Built-in prompts
+      // (versionId null) are identity-agnostic and may keep falling back.
+      if (resolved.versionId !== null) {
+        const actualKey = identityKey(identityOf(result));
+        if (actualKey !== resolveKey) {
+          const err = new Error(
+            `Prompt version ${resolved.versionId} is tuned for ${resolveKey} but the call was answered by ${actualKey}; retry later.`,
+          );
+          err.name = 'IdentityMismatchError';
+          throw err;
+        }
+      }
       return result;
     };
 
@@ -820,7 +853,7 @@ export async function analyzeSessionPipeline(
         false,
       );
       // No jsonSchema: session-analysis.json does not describe a facets-only payload.
-      const result = await callRunner(pass, 'facets', prompt, undefined, signal);
+      const result = await callRunner(pass, 'facets', prompt, undefined, signal, sessionPrompt);
       usage.add(result);
       const payload = extractJsonPayload(result.rawJson);
       if (!payload) return { result };
@@ -868,7 +901,7 @@ export async function analyzeSessionPipeline(
       if (!chunked) {
         onProgress?.({ phase: 'analyzing', currentChunk: 1, totalChunks: 1 });
         const prompt = buildPrompt(conversation, `${architectureContext}\n${instructions(loopSignal)}`, cache);
-        last = await callRunner('session', 'session', prompt, SESSION_ANALYSIS_SCHEMA, signal);
+        last = await callRunner('session', 'session', prompt, SESSION_ANALYSIS_SCHEMA, signal, sessionPrompt);
         usage.add(last);
         const parsed = parseAnalysisResponse(last.rawJson);
         if (!parsed.success) {
@@ -904,7 +937,7 @@ export async function analyzeSessionPipeline(
         const results = await runPool(chunks.length, CHUNK_CONCURRENCY, async (i) => {
           onProgress?.({ phase: 'analyzing', currentChunk: i + 1, totalChunks: chunks.length });
           const prompt = buildPrompt(formatMessagesForAnalysis(chunks[i], offsets[i]), `\n${instructions(undefined)}`, false);
-          return callRunner('session', 'chunk', prompt, SESSION_ANALYSIS_SCHEMA, signal);
+          return callRunner('session', 'chunk', prompt, SESSION_ANALYSIS_SCHEMA, signal, sessionPrompt);
         });
         results.forEach(r => usage.add(r));
         last = results[results.length - 1];
@@ -935,13 +968,14 @@ export async function analyzeSessionPipeline(
             if (facetOutcome.facets) sessionResponse.facets = facetOutcome.facets;
           } catch (err) {
             // Facets are best-effort on chunked sessions, but cancellation and timeouts must propagate.
-            if (errorName(err) === 'AbortError' || errorName(err) === 'TimeoutError') throw err;
+            if (errorName(err) === 'AbortError' || errorName(err) === 'TimeoutError' || errorName(err) === 'IdentityMismatchError') throw err;
           }
         }
       }
 
       onProgress?.({ phase: 'saving' });
-      const sessionInsights = convertToInsightRows(sessionResponse, session);
+      // `last` is the call whose output the rows hold: the single call, or the facet call after a chunk merge.
+      const sessionInsights = convertToInsightRows(sessionResponse, session, provenanceFor(sessionPrompt, last));
       if (persist) {
         // Save new rows first, then delete old non-prompt-quality rows: a failed save keeps old data.
         saveInsightsToDb(sessionInsights);
@@ -949,7 +983,7 @@ export async function analyzeSessionPipeline(
           excludeTypes: ['prompt_quality'],
           excludeIds: sessionInsights.map(i => i.id),
         });
-        if (sessionResponse.facets) saveFacetsToDb(session.id, sessionResponse.facets, ANALYSIS_VERSION);
+        if (sessionResponse.facets) saveFacetsToDb(session.id, sessionResponse.facets, ANALYSIS_VERSION, provenanceFor(sessionPrompt, last));
         if (sessionResponse.step_matrix && sessionResponse.step_matrix.length > 0) {
           saveSessionStepsToDb(session.id, sessionResponse.step_matrix);
         }
@@ -986,7 +1020,7 @@ export async function analyzeSessionPipeline(
       const guarded = withTimeout(signal, timeoutMs);
       let result: RunAnalysisResult;
       try {
-        result = await callRunner('prompt_quality', 'prompt_quality', prompt, PROMPT_QUALITY_SCHEMA, guarded.signal);
+        result = await callRunner('prompt_quality', 'prompt_quality', prompt, PROMPT_QUALITY_SCHEMA, guarded.signal, pqPrompt);
       } finally {
         guarded.cleanup();
       }
@@ -1008,7 +1042,7 @@ export async function analyzeSessionPipeline(
       pqResponse = parsed.data;
 
       onProgress?.({ phase: 'saving' });
-      const pqInsight = convertPQToInsightRow(pqResponse, session);
+      const pqInsight = convertPQToInsightRow(pqResponse, session, provenanceFor(pqPrompt, result));
       if (persist) {
         saveInsightsToDb([pqInsight]);
         deleteSessionInsights(session.id, { includeOnlyTypes: ['prompt_quality'], excludeIds: [pqInsight.id] });
@@ -1037,7 +1071,7 @@ export async function analyzeSessionPipeline(
       }
       facetsOnly = outcome.facets;
       onProgress?.({ phase: 'saving' });
-      if (persist) saveFacetsToDb(session.id, facetsOnly, ANALYSIS_VERSION);
+      if (persist) saveFacetsToDb(session.id, facetsOnly, ANALYSIS_VERSION, provenanceFor(sessionPrompt, outcome.result));
       record('facets', usage, outcome.result, 1, 1);
       completed.push('facets');
     }
@@ -1063,7 +1097,7 @@ export async function analyzeSessionPipeline(
         projectName: session.project_name,
       },
       prompts,
-      ...(options.identity && { identity: options.identity }),
+      identity: recordedIdentity(),
       promptVersionId: sessionPrompt.versionId,
     };
   } catch (error) {
