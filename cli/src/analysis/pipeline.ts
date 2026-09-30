@@ -56,7 +56,8 @@ import {
 } from './analysis-db.js';
 import { saveAnalysisUsage } from './analysis-usage-db.js';
 import { calculateAnalysisCost } from './analysis-pricing.js';
-import { resolveAnalysisPrompt, type PromptIdentity, type PromptOverride } from '../optimization/resolve-prompt.js';
+import { resolveAnalysisPrompt, type PromptOverride } from '../optimization/resolve-prompt.js';
+import { identityFromRunner, identityFromRunResult, identityKey, type StudentIdentity } from '../optimization/identity.js';
 
 // Re-exported so there is exactly one definition of the budget (cli/src/llm/types.ts).
 export { DEFAULT_MAX_INPUT_TOKENS };
@@ -106,8 +107,6 @@ export interface PipelineProgress {
   totalChunks?: number;
 }
 
-export type PipelineIdentity = PromptIdentity;
-
 export interface PipelineInput {
   session: SessionData;
   messages: SQLiteMessageRow[];
@@ -122,8 +121,11 @@ export interface PipelineOptions {
    * and its messages from SQLite by id. Must describe the same session as `sessionId`.
    */
   input?: PipelineInput;
-  /** Student identity for prompt resolution (plan step 8). */
-  identity?: PipelineIdentity;
+  /**
+   * Student identity for prompt resolution and provenance (plan step 8). Absent: prompt resolution
+   * uses the runner's own metadata and provenance is derived from what the first call reported.
+   */
+  identity?: StudentIdentity;
   /** Caller-supplied prompt components (GEPA candidates). Absent: resolveAnalysisPrompt decides. */
   promptOverride?: PromptOverride;
   /**
@@ -202,7 +204,7 @@ export interface PipelineSuccess {
     projectName: string;
   };
   prompts: PromptRecord[];
-  identity?: PipelineIdentity;
+  identity?: StudentIdentity;
   /** Prompt version that produced this analysis; null = built-in. */
   promptVersionId: string | null;
 }
@@ -728,8 +730,23 @@ export async function analyzeSessionPipeline(
     const formatted = formatMessagesForAnalysis(messages);
     const sessionMeta = buildSessionMeta(session);
     const loopSignal = detectRageLoopHeuristic(messages);
-    const sessionPrompt = options.promptOverride ?? resolveAnalysisPrompt('session-analysis', options.identity);
-    const pqPrompt = options.promptOverride ?? resolveAnalysisPrompt('prompt-quality', options.identity);
+    // Resolution happens before any call, so it can only use the caller's identity or the
+    // runner's declared metadata. Provenance is recorded later from the actual call result.
+    const resolveIdentity = options.identity ?? identityFromRunner(runner);
+    const sessionPrompt = options.promptOverride ?? resolveAnalysisPrompt('session-analysis', resolveIdentity);
+    const pqPrompt = options.promptOverride ?? resolveAnalysisPrompt('prompt-quality', resolveIdentity);
+    /**
+     * Identity recorded on rows: the caller's if given, else what the first call reported
+     * (FallbackNativeRunner reports the primary runner's name even after falling back, so the
+     * result's provider/model are the truthful record). Falls back to the resolve identity.
+     */
+    const recordedIdentity = (): StudentIdentity =>
+      options.identity
+      ?? (state.first ? identityFromRunResult(state.first, { providerBacked: runner.provider !== undefined }) : resolveIdentity);
+    const provenanceFor = (prompt: { versionId: string | null }) => ({
+      studentIdentity: identityKey(recordedIdentity()),
+      promptVersionId: prompt.versionId,
+    });
 
     const settings = getRetrievalSettings();
     const embeddingConfig = await resolveEmbeddingConfig();
@@ -941,7 +958,7 @@ export async function analyzeSessionPipeline(
       }
 
       onProgress?.({ phase: 'saving' });
-      const sessionInsights = convertToInsightRows(sessionResponse, session);
+      const sessionInsights = convertToInsightRows(sessionResponse, session, provenanceFor(sessionPrompt));
       if (persist) {
         // Save new rows first, then delete old non-prompt-quality rows: a failed save keeps old data.
         saveInsightsToDb(sessionInsights);
@@ -949,7 +966,7 @@ export async function analyzeSessionPipeline(
           excludeTypes: ['prompt_quality'],
           excludeIds: sessionInsights.map(i => i.id),
         });
-        if (sessionResponse.facets) saveFacetsToDb(session.id, sessionResponse.facets, ANALYSIS_VERSION);
+        if (sessionResponse.facets) saveFacetsToDb(session.id, sessionResponse.facets, ANALYSIS_VERSION, provenanceFor(sessionPrompt));
         if (sessionResponse.step_matrix && sessionResponse.step_matrix.length > 0) {
           saveSessionStepsToDb(session.id, sessionResponse.step_matrix);
         }
@@ -1008,7 +1025,7 @@ export async function analyzeSessionPipeline(
       pqResponse = parsed.data;
 
       onProgress?.({ phase: 'saving' });
-      const pqInsight = convertPQToInsightRow(pqResponse, session);
+      const pqInsight = convertPQToInsightRow(pqResponse, session, provenanceFor(pqPrompt));
       if (persist) {
         saveInsightsToDb([pqInsight]);
         deleteSessionInsights(session.id, { includeOnlyTypes: ['prompt_quality'], excludeIds: [pqInsight.id] });
@@ -1037,7 +1054,7 @@ export async function analyzeSessionPipeline(
       }
       facetsOnly = outcome.facets;
       onProgress?.({ phase: 'saving' });
-      if (persist) saveFacetsToDb(session.id, facetsOnly, ANALYSIS_VERSION);
+      if (persist) saveFacetsToDb(session.id, facetsOnly, ANALYSIS_VERSION, provenanceFor(sessionPrompt));
       record('facets', usage, outcome.result, 1, 1);
       completed.push('facets');
     }
@@ -1063,7 +1080,7 @@ export async function analyzeSessionPipeline(
         projectName: session.project_name,
       },
       prompts,
-      ...(options.identity && { identity: options.identity }),
+      identity: recordedIdentity(),
       promptVersionId: sessionPrompt.versionId,
     };
   } catch (error) {

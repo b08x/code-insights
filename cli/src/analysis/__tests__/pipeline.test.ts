@@ -218,6 +218,60 @@ describe('analyzeSessionPipeline — persistence and usage', () => {
   });
 });
 
+describe('analyzeSessionPipeline — provenance (v18 columns)', () => {
+  const provenanceRows = (id: string) => ({
+    insights: mockDb.prepare('SELECT DISTINCT type, student_identity, prompt_version_id FROM insights WHERE session_id = ? ORDER BY type').all(id),
+    facets: mockDb.prepare('SELECT student_identity, prompt_version_id FROM session_facets WHERE session_id = ?').all(id),
+  });
+
+  it('records the identity reported by the first call and a null prompt version for the built-in prompt', async () => {
+    const id = seed('short');
+    const { runner } = makeRunner();
+    const result = await analyzeSessionPipeline(id, { runner });
+    const key = 'native|native-model|';
+    const rows = provenanceRows(id);
+    expect(rows.facets).toEqual([{ student_identity: key, prompt_version_id: null }]);
+    expect(rows.insights.map(r => (r as { type: string }).type)).toEqual(expect.arrayContaining(['summary', 'prompt_quality']));
+    for (const row of rows.insights) expect(row).toMatchObject({ student_identity: key, prompt_version_id: null });
+    expect(result.success && result.identity).toEqual({ runner: 'native', model: 'native-model', variant: null });
+  });
+
+  it('provider-backed runners record provider:<provider> identities', async () => {
+    const id = seed('short');
+    const { runner } = makeRunner({ provider: 'anthropic' });
+    await analyzeSessionPipeline(id, { runner, passes: ['session'] });
+    expect(provenanceRows(id).facets).toEqual([
+      { student_identity: 'provider:anthropic|claude-sonnet-4-20250514|', prompt_version_id: null },
+    ]);
+  });
+
+  it('a caller identity (with variant) wins over the result-derived one', async () => {
+    const id = seed('short');
+    const { runner } = makeRunner();
+    await analyzeSessionPipeline(id, { runner, passes: ['session'], identity: { runner: 'codex-native', model: 'gpt-5', variant: 'high' } });
+    expect(provenanceRows(id).facets).toEqual([{ student_identity: 'codex-native|gpt-5|high', prompt_version_id: null }]);
+  });
+
+  it('records the prompt version id on session insights and facets', async () => {
+    const id = seed('short');
+    const { runner } = makeRunner();
+    await analyzeSessionPipeline(id, {
+      runner, passes: ['session'], promptOverride: { components: {}, versionId: 'pv-9' },
+    });
+    const rows = provenanceRows(id);
+    expect(rows.facets).toEqual([{ student_identity: 'native|native-model|', prompt_version_id: 'pv-9' }]);
+    expect(rows.insights.every(r => (r as { prompt_version_id: string }).prompt_version_id === 'pv-9')).toBe(true);
+  });
+
+  it('facets-only backfill records provenance too', async () => {
+    const id = seed('short');
+    const facets = '{"outcome_satisfaction":"medium","workflow_pattern":"iterative","had_course_correction":false,"iteration_count":2,"friction_points":[],"effective_patterns":[]}';
+    const { runner } = makeRunner({ respond: () => facets });
+    await analyzeSessionPipeline(id, { runner, passes: ['facets'] });
+    expect(provenanceRows(id).facets).toEqual([{ student_identity: 'native|native-model|', prompt_version_id: null }]);
+  });
+});
+
 describe('analyzeSessionPipeline — persist and contexts', () => {
   it('persist:false writes nothing (insights, facets, steps, title, usage, embeddings) but still returns the result', async () => {
     const id = seed('short');

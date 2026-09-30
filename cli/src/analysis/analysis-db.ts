@@ -30,6 +30,16 @@ export interface InsightRow {
   scope: string;
   analysis_version: string;
   embedding_status: 'pending' | 'computed' | 'stale' | 'failed';
+  /** identityKey() of the student that produced this row; null/absent = unknown (pre-v18). */
+  student_identity?: string | null;
+  /** Prompt version that produced this row; null/absent = built-in prompt. */
+  prompt_version_id?: string | null;
+}
+
+/** Who and what produced an analysis (plan steps 8-10); written to the v18 provenance columns. */
+export interface AnalysisProvenance {
+  studentIdentity: string | null;
+  promptVersionId: string | null;
 }
 
 // Minimal session data needed for analysis (from SQLite sessions row).
@@ -51,7 +61,11 @@ export interface SessionData {
 
 // --- Data conversion ---
 
-export function convertToInsightRows(response: AnalysisResponse, session: SessionData): InsightRow[] {
+function withProvenance(row: InsightRow, provenance: AnalysisProvenance): InsightRow {
+  return { ...row, student_identity: provenance.studentIdentity, prompt_version_id: provenance.promptVersionId };
+}
+
+export function convertToInsightRows(response: AnalysisResponse, session: SessionData, provenance?: AnalysisProvenance): InsightRow[] {
   const insights: InsightRow[] = [];
   const now = new Date().toISOString();
 
@@ -168,10 +182,10 @@ export function convertToInsightRows(response: AnalysisResponse, session: Sessio
     });
   }
 
-  return insights;
+  return provenance ? insights.map(row => withProvenance(row, provenance)) : insights;
 }
 
-export function convertPQToInsightRow(response: PromptQualityResponse, session: SessionData): InsightRow {
+export function convertPQToInsightRow(response: PromptQualityResponse, session: SessionData, provenance?: AnalysisProvenance): InsightRow {
   const now = new Date().toISOString();
 
   // Normalize categories at write time (mirrors saveFacetsToDb pattern)
@@ -185,7 +199,7 @@ export function convertPQToInsightRow(response: PromptQualityResponse, session: 
     category: t.category ? normalizePromptQualityCategory(t.category) : 'uncategorized',
   }));
 
-  return {
+  const row: InsightRow = {
     id: randomUUID(),
     session_id: session.id,
     project_id: session.project_id,
@@ -210,6 +224,7 @@ export function convertPQToInsightRow(response: PromptQualityResponse, session: 
     analysis_version: ANALYSIS_VERSION,
     embedding_status: 'pending',
   };
+  return provenance ? withProvenance(row, provenance) : row;
 }
 
 // --- DB writes ---
@@ -345,8 +360,9 @@ function insertInsightsBatch(rows: InsightRow[]): void {
     INSERT OR REPLACE INTO insights (
       id, session_id, project_id, project_name, type, title, content,
       summary, bullets, confidence, source, metadata, timestamp,
-      created_at, scope, analysis_version, embedding_status
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      created_at, scope, analysis_version, embedding_status,
+      student_identity, prompt_version_id
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const insertMany = db.transaction((rows: InsightRow[]) => {
@@ -369,6 +385,8 @@ function insertInsightsBatch(rows: InsightRow[]): void {
         row.scope,
         row.analysis_version,
         row.embedding_status,
+        row.student_identity ?? null,
+        row.prompt_version_id ?? null,
       );
     }
   });
@@ -420,6 +438,7 @@ export function saveFacetsToDb(
   sessionId: string,
   facets: NonNullable<AnalysisResponse['facets']>,
   analysisVersion: string = ANALYSIS_VERSION,
+  provenance?: AnalysisProvenance,
 ): void {
   const db = getDb();
 
@@ -444,8 +463,8 @@ export function saveFacetsToDb(
   INSERT OR REPLACE INTO session_facets
   (session_id, outcome_satisfaction, workflow_pattern, had_course_correction,
    course_correction_reason, iteration_count, friction_points, effective_patterns,
-   analysis_version)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+   analysis_version, student_identity, prompt_version_id)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
   sessionId,
   facets.outcome_satisfaction,
@@ -456,6 +475,8 @@ export function saveFacetsToDb(
   JSON.stringify(Array.isArray(facets.friction_points) ? facets.friction_points : []),
   JSON.stringify(normalizedPatterns),
   analysisVersion,
+  provenance?.studentIdentity ?? null,
+  provenance?.promptVersionId ?? null,
   );
   }
 

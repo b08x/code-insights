@@ -14,8 +14,8 @@ describe('SQLite Migration v17: chat conversation store', () => {
     db.close();
   });
 
-  it('CURRENT_SCHEMA_VERSION is 17', () => {
-    expect(CURRENT_SCHEMA_VERSION).toBe(17);
+  it('CURRENT_SCHEMA_VERSION is >= 17', () => {
+    expect(CURRENT_SCHEMA_VERSION).toBeGreaterThanOrEqual(17);
   });
 
   it('creates chat tables on a fresh database', () => {
@@ -40,6 +40,8 @@ describe('SQLite Migration v17: chat conversation store', () => {
       CREATE TABLE projects (id TEXT PRIMARY KEY, name TEXT, path TEXT, last_activity TEXT);
       CREATE TABLE sessions (id TEXT PRIMARY KEY, project_id TEXT, project_name TEXT, project_path TEXT, started_at TEXT, ended_at TEXT);
       INSERT INTO projects (id, name, path, last_activity) VALUES ('p1', 'P', '/p', '2026-01-01');
+      CREATE TABLE insights (id TEXT PRIMARY KEY, session_id TEXT);
+      CREATE TABLE session_facets (session_id TEXT PRIMARY KEY);
     `);
 
     const result = runMigrations(db);
@@ -47,7 +49,7 @@ describe('SQLite Migration v17: chat conversation store', () => {
     expect(result.v16Applied).toBe(false);
 
     const v = db.prepare('SELECT MAX(version) AS v FROM schema_version').get() as { v: number };
-    expect(v.v).toBe(17);
+    expect(v.v).toBe(CURRENT_SCHEMA_VERSION);
     expect(db.prepare('SELECT COUNT(*) AS n FROM projects').get()).toEqual({ n: 1 });
     expect(db.prepare("SELECT name FROM sqlite_master WHERE name IN ('chat_conversations','chat_messages')").all()).toHaveLength(2);
   });

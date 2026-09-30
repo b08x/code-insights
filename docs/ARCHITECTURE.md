@@ -121,7 +121,7 @@ Providers are registered in `providers/registry.ts`. To add a new source tool:
 - **Location:** `~/.code-insights/data.db`
 - **Mode:** WAL (concurrent reads during CLI sync)
 - **Driver:** better-sqlite3 (synchronous, fast, no async overhead)
-- **Schema:** Versioned migrations (V1–V16) applied on startup
+- **Schema:** Versioned migrations (V1–V18) applied on startup. V17 adds the chat tables; V18 adds `student_identity` and `prompt_version_id` provenance columns to `insights` and `session_facets` (labels and optimization tables follow as V19 and V20)
 - **Timestamps:** ISO 8601 strings
 
 ### Tables

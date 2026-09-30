@@ -27,6 +27,7 @@ const ALLOWED: Record<string, string> = {
   'cli/src/analysis/prompts.ts': 'defines the prompt builders',
   'cli/src/analysis/response-parsers.ts': 'defines parseAnalysisResponse',
   'cli/src/analysis/pipeline.ts': 'analyzeSessionPipeline, the single orchestration',
+  'cli/src/optimization/targets.ts': 'target registry describes each target\'s builder and parser (references only, never calls)',
   // The optimization adapter (plan step 21) is the only other sanctioned consumer.
   'cli/src/optimization/adapter.ts': 'optimization adapter evaluates through the same path',
 };

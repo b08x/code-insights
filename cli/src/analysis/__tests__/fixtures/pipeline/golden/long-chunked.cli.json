@@ -179,7 +179,9 @@
         "scope": "session",
         "analysis_version": "3.1.0",
         "linked_insight_ids": null,
-        "embedding_status": "pending"
+        "embedding_status": "pending",
+        "student_identity": "stub-provider|stub-model|",
+        "prompt_version_id": null
       },
       {
         "session_id": "sess-long-chunked",
@@ -196,7 +198,9 @@
         "scope": "session",
         "analysis_version": "3.1.0",
         "linked_insight_ids": null,
-        "embedding_status": "pending"
+        "embedding_status": "pending",
+        "student_identity": "stub-provider|stub-model|",
+        "prompt_version_id": null
       },
       {
         "session_id": "sess-long-chunked",
@@ -213,7 +217,9 @@
         "scope": "session",
         "analysis_version": "3.1.0",
         "linked_insight_ids": null,
-        "embedding_status": "pending"
+        "embedding_status": "pending",
+        "student_identity": "stub-provider|stub-model|",
+        "prompt_version_id": null
       },
       {
         "session_id": "sess-long-chunked",
@@ -230,7 +236,9 @@
         "scope": "session",
         "analysis_version": "3.1.0",
         "linked_insight_ids": null,
-        "embedding_status": "pending"
+        "embedding_status": "pending",
+        "student_identity": "stub-provider|stub-model|",
+        "prompt_version_id": null
       }
     ],
     "session_facets": [
@@ -243,7 +251,9 @@
         "iteration_count": 2,
         "friction_points": "[{\"category\":\"wrong-approach\",\"attribution\":\"ai-capability\",\"description\":\"First regex was too strict.\",\"severity\":\"low\",\"resolution\":\"resolved\"},{\"category\":\"totally-made-up-category\",\"attribution\":\"user-actionable\",\"description\":\"Non-canonical category to exercise normalization.\",\"severity\":\"medium\",\"resolution\":\"workaround\"}]",
         "effective_patterns": "[{\"category\":\"verification-workflow\",\"description\":\"Ran tests after each edit.\",\"confidence\":85,\"driver\":\"collaborative\"}]",
-        "analysis_version": "3.1.0"
+        "analysis_version": "3.1.0",
+        "student_identity": "stub-provider|stub-model|",
+        "prompt_version_id": null
       }
     ],
     "session_steps": [],
