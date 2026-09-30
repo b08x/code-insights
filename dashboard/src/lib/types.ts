@@ -313,6 +313,7 @@ export interface LLMConfig {
     model?: string;
     apiKey?: string;
     baseUrl?: string;
+    codebaseTools?: boolean;
   };
   embedding?: {
     provider?: 'openai' | 'anthropic' | 'gemini' | 'ollama' | 'openrouter' | 'mistral';
@@ -320,4 +321,56 @@ export interface LLMConfig {
     apiKey?: string;
     baseUrl?: string;
   };
+}
+
+// ── Agent chat (/api/chat) ────────────────────────────────────────────────────
+
+/** Page the user is on when sending a chat message. Mirrors server/src/agent/agent.ts PageContext. */
+export interface PageContext {
+  /** e.g. 'session', 'sessions', 'insights', 'run', 'version', 'dashboard' */
+  page?: string;
+  sessionId?: string;
+  runId?: string;
+  versionId?: string;
+  [key: string]: unknown;
+}
+
+export interface ChatConversation {
+  id: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ChatToolCall {
+  name: string;
+  args: unknown;
+  ok: boolean;
+  ms: number;
+}
+
+export type ChatDraftKind = 'note' | 'label' | 'prompt';
+
+export interface ChatDraft {
+  kind: ChatDraftKind;
+  title: string;
+  content: string;
+  sessionId?: string;
+}
+
+/** Shape of `toolCalls` on persisted assistant messages. */
+export interface ChatAssistantMeta {
+  toolCalls: ChatToolCall[];
+  citations: string[];
+  drafts: ChatDraft[];
+}
+
+export interface ChatMessage {
+  id: string;
+  conversationId: string;
+  role: 'user' | 'assistant';
+  content: string;
+  context: PageContext | null;
+  toolCalls: ChatAssistantMeta | null;
+  createdAt: string;
 }

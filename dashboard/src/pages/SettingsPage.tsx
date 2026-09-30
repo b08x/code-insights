@@ -5,6 +5,7 @@ import { useUserProfile, normalizeGithubUsername } from '@/hooks/useUserProfile'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
 import {
   User,
   Check,
@@ -217,6 +218,23 @@ export default function SettingsPage() {
           });
         }}
       />
+
+      <Card>
+        <CardContent className="flex items-center justify-between gap-4 pt-6">
+          <div>
+            <div className="text-sm font-medium">Codebase tools for the chat agent</div>
+            <p className="text-sm text-muted-foreground">
+              Lets the agent query the codebase-memory graph (read-only). Requires codebase-memory-mcp on PATH.
+            </p>
+          </div>
+          <Switch
+            checked={llmConfig?.agent?.codebaseTools === true}
+            disabled={saveMutation.isPending}
+            onCheckedChange={(checked) => saveMutation.mutate({ agent: { codebaseTools: checked } })}
+            aria-label="Enable codebase tools"
+          />
+        </CardContent>
+      </Card>
 
       <LlmProviderCard
         title="Embeddings Provider"

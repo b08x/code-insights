@@ -14,16 +14,16 @@ describe('SQLite Migration v16: deleted_sessions Table', () => {
     db.close();
   });
 
-  it('CURRENT_SCHEMA_VERSION is 16', () => {
-    expect(CURRENT_SCHEMA_VERSION).toBe(16);
+  it('CURRENT_SCHEMA_VERSION is >= 16', () => {
+    expect(CURRENT_SCHEMA_VERSION).toBeGreaterThanOrEqual(16);
   });
 
-  it('creates deleted_sessions table and schema_version reaches 16 on fresh database', () => {
+  it('creates deleted_sessions table and schema_version reaches current on fresh database', () => {
     const result = runMigrations(db);
     expect(result.v16Applied).toBe(true);
 
     const versionRow = db.prepare('SELECT MAX(version) as v FROM schema_version').get() as { v: number };
-    expect(versionRow.v).toBe(16);
+    expect(versionRow.v).toBe(CURRENT_SCHEMA_VERSION);
 
     const tableInfo = db.prepare('PRAGMA table_info(deleted_sessions)').all() as Array<{ name: string; type: string; pk: number }>;
     const colNames = tableInfo.map(c => c.name);
@@ -51,7 +51,7 @@ describe('SQLite Migration v16: deleted_sessions Table', () => {
     expect(result.v16Applied).toBe(true);
 
     const versionRow = db.prepare('SELECT MAX(version) as v FROM schema_version').get() as { v: number };
-    expect(versionRow.v).toBe(16);
+    expect(versionRow.v).toBe(CURRENT_SCHEMA_VERSION);
 
     // Verify deleted_sessions table was created
     const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='deleted_sessions'").all();

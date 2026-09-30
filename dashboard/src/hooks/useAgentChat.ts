@@ -1,194 +1,291 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+// Agent chat state: conversations via TanStack Query, the in-flight turn via
+// the /api/chat SSE contract. One store instance (AgentChatProvider in Layout)
+// is shared by the side panel and the /chat page.
+
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import {
+  createChatConversation,
+  deleteChatConversation,
+  fetchChatConversation,
+  fetchChatConversations,
+  postChatMessage,
+} from '@/lib/api';
+import { parseSSEStream } from '@/lib/sse';
+import {
+  applyChatStreamEvent,
+  createPendingTurn,
+  parseChatStreamEvent,
+  pendingTurnToMessages,
+  type PendingTurn,
+} from '@/lib/chat-stream';
+import type { ChatConversation, ChatMessage, PageContext } from '@/lib/types';
 
-export interface Message {
-  role: 'user' | 'assistant';
-  content: string;
+export const chatKeys = {
+  all: ['chat'] as const,
+  conversations: ['chat', 'conversations'] as const,
+  conversation: (id: string) => ['chat', 'conversation', id] as const,
+};
+
+type ConversationDetail = { conversation: ChatConversation; messages: ChatMessage[] };
+
+const ACTIVE_KEY = 'code-insights:chat:active-conversation';
+const PANEL_KEY = 'code-insights:chat:panel-open';
+
+function readStorage(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
 }
 
-export interface ClarificationDetails {
-  type?: string;
-  choices?: Array<string | { label: string; value: string }>;
-  [key: string]: unknown;
+function writeStorage(key: string, value: string | null) {
+  try {
+    if (value === null) localStorage.removeItem(key);
+    else localStorage.setItem(key, value);
+  } catch {
+    // storage unavailable (private mode) — state still works for this tab
+  }
 }
 
-export interface Clarification {
-  question: string;
-  details: ClarificationDetails;
-  originalRequest: string;
+function isNotFound(err: unknown): boolean {
+  return err instanceof Error && err.message.startsWith('API 404');
 }
 
-export interface LiveMetric {
-  tool: string;
-  args: unknown;
+export function useChatConversations() {
+  return useQuery({
+    queryKey: chatKeys.conversations,
+    queryFn: fetchChatConversations,
+    select: (d) => d.conversations,
+  });
 }
 
-export const INITIAL_GREETING = 'Hello! I can analyze your local code-insights sessions to extract SFL-compliant insights. What would you like to know?';
+export function useChatConversation(id: string | null) {
+  return useQuery({
+    queryKey: chatKeys.conversation(id ?? ''),
+    queryFn: () => fetchChatConversation(id as string),
+    enabled: !!id,
+    retry: (count, err) => !isNotFound(err) && count < 1,
+  });
+}
 
-export function useAgentChat() {
-  const [input, setInput] = useState('');
-  const [messages, setMessages] = useState<Message[]>([
-    { role: 'assistant', content: INITIAL_GREETING }
-  ]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [savedState, setSavedState] = useState<unknown>(null);
-  const [clarification, setClarification] = useState<Clarification | null>(null);
-  const [liveMetrics, setLiveMetrics] = useState<LiveMetric[]>([]);
-  
-  const abortControllerRef = useRef<AbortController | null>(null);
+export interface ChatError {
+  message: string;
+  conversationId: string;
+}
 
-  // Cleanup abort controller on unmount
-  useEffect(() => {
-    return () => {
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
-    };
+export interface AgentChatStore {
+  conversations: ChatConversation[];
+  conversationsLoading: boolean;
+  activeConversationId: string | null;
+  activeConversation: ChatConversation | null;
+  /** Persisted messages for the active conversation plus the in-flight turn. */
+  messages: ChatMessage[];
+  /** The turn currently streaming (only when it belongs to the active conversation). */
+  pending: PendingTurn | null;
+  isStreaming: boolean;
+  isLoadingConversation: boolean;
+  lastError: ChatError | null;
+  selectConversation: (id: string | null) => void;
+  newConversation: () => void;
+  deleteConversation: (id: string) => Promise<void>;
+  /** Resolves true once the server accepted the message (stream started). */
+  sendMessage: (content: string, pageContext?: PageContext | null) => Promise<boolean>;
+  stop: () => void;
+  panelOpen: boolean;
+  setPanelOpen: (open: boolean) => void;
+  togglePanel: () => void;
+}
+
+/** Owns chat state. Call once (AgentChatProvider); consumers use useAgentChat(). */
+export function useAgentChatStore(): AgentChatStore {
+  const qc = useQueryClient();
+  const [activeId, setActiveIdState] = useState<string | null>(() => readStorage(ACTIVE_KEY));
+  const [pending, setPending] = useState<PendingTurn | null>(null);
+  const [lastError, setLastError] = useState<ChatError | null>(null);
+  const [panelOpen, setPanelOpenState] = useState<boolean>(() => readStorage(PANEL_KEY) === '1');
+  const abortRef = useRef<AbortController | null>(null);
+
+  const setActiveId = useCallback((id: string | null) => {
+    setActiveIdState(id);
+    writeStorage(ACTIVE_KEY, id);
   }, []);
 
-  const sendMessage = useCallback(async (textToSubmit?: string) => {
-    const text = textToSubmit || input;
-    if (!text.trim() && !clarification) return;
+  const setPanelOpen = useCallback((open: boolean) => {
+    setPanelOpenState(open);
+    writeStorage(PANEL_KEY, open ? '1' : null);
+  }, []);
 
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
+  const togglePanel = useCallback(() => {
+    setPanelOpenState((prev) => {
+      writeStorage(PANEL_KEY, prev ? null : '1');
+      return !prev;
+    });
+  }, []);
+
+  useEffect(() => () => abortRef.current?.abort(), []);
+
+  const list = useChatConversations();
+  const detail = useChatConversation(activeId);
+
+  // A stored conversation that was deleted elsewhere: fall back to a fresh chat.
+  useEffect(() => {
+    if (activeId && detail.isError && isNotFound(detail.error)) setActiveId(null);
+  }, [activeId, detail.isError, detail.error, setActiveId]);
+
+  const stop = useCallback(() => {
+    abortRef.current?.abort();
+  }, []);
+
+  const selectConversation = useCallback((id: string | null) => {
+    abortRef.current?.abort();
+    setLastError(null);
+    setActiveId(id);
+  }, [setActiveId]);
+
+  const newConversation = useCallback(() => selectConversation(null), [selectConversation]);
+
+  const deleteMutation = useMutation({
+    mutationFn: deleteChatConversation,
+    onSuccess: (_d, id) => {
+      qc.removeQueries({ queryKey: chatKeys.conversation(id) });
+      void qc.invalidateQueries({ queryKey: chatKeys.conversations });
+    },
+  });
+
+  const deleteConversation = useCallback(async (id: string) => {
+    if (id === activeId) selectConversation(null);
+    try {
+      await deleteMutation.mutateAsync(id);
+      toast.success('Conversation deleted');
+    } catch (err) {
+      toast.error('Could not delete conversation', {
+        description: err instanceof Error ? err.message : undefined,
+      });
     }
-    abortControllerRef.current = new AbortController();
+  }, [activeId, deleteMutation, selectConversation]);
 
-    const userMessage = { role: 'user' as const, content: text };
-    setMessages((prev) => [...prev, userMessage]);
-    setInput('');
-    setIsLoading(true);
-    setLiveMetrics([]);
+  const sendMessage = useCallback(async (content: string, pageContext?: PageContext | null) => {
+    const text = content.trim();
+    if (!text || abortRef.current) return false;
+    setLastError(null);
+
+    let conversationId = activeId;
+    if (!conversationId) {
+      try {
+        const { conversation } = await createChatConversation();
+        conversationId = conversation.id;
+        qc.setQueryData<ConversationDetail>(chatKeys.conversation(conversation.id), { conversation, messages: [] });
+        setActiveId(conversation.id);
+      } catch (err) {
+        toast.error('Could not start a conversation', {
+          description: err instanceof Error ? err.message : undefined,
+        });
+        return false;
+      }
+    }
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+    let turn = createPendingTurn(conversationId, text, pageContext ?? null);
+    setPending(turn);
 
     try {
-      // Filter out the initial greeting
-      const history = messages
-        .filter(m => m.content !== INITIAL_GREETING)
-        .map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`);
-      
-      const payload = clarification 
-        ? { answer: text, savedState, chatHistory: history, request: clarification.originalRequest } 
-        : { request: text, chatHistory: history };
-
-      if (clarification) {
-        setClarification(null);
-        setSavedState(null);
+      const res = await postChatMessage(conversationId, { content: text, pageContext: pageContext ?? null }, controller.signal);
+      if (!res.body) throw new Error('Empty response from server');
+      for await (const raw of parseSSEStream(res.body)) {
+        const ev = parseChatStreamEvent(raw);
+        if (!ev) continue;
+        turn = applyChatStreamEvent(turn, ev);
+        setPending(turn);
       }
-
-      const response = await fetch('/api/agent', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-        signal: abortControllerRef.current.signal,
-      });
-
-      if (!response.ok) {
-        throw new Error('Network response was not ok');
+      if (turn.status === 'connecting' || turn.status === 'streaming') {
+        turn = { ...turn, status: 'error', error: 'The stream ended before the agent finished.' };
       }
-
-      const contentType = response.headers.get('content-type');
-      
-      if (contentType && contentType.includes('application/json')) {
-        const data = await response.json();
-        if (data.type === 'clarification') {
-          setClarification({
-            question: data.question,
-            details: data.clarificationDetails,
-            originalRequest: clarification ? clarification.originalRequest : text
-          });
-          setSavedState(data.savedState);
-          setIsLoading(false);
-          return;
-        }
-      }
-
-      const reader = response.body?.getReader();
-      const decoder = new TextDecoder('utf-8');
-      
-      if (!reader) throw new Error('No reader available');
-      
-      setMessages((prev) => [...prev, { role: 'assistant', content: '' }]);
-
-      let buffer = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        
-        buffer += decoder.decode(value, { stream: true });
-        
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || ''; 
-        
-        for (const line of lines) {
-          if (!line.trim()) continue;
-          
-          try {
-            const parsed = JSON.parse(line);
-            
-            if (parsed.type === 'chunk') {
-              setMessages((prev) => {
-                const newMessages = [...prev];
-                const lastIndex = newMessages.length - 1;
-                newMessages[lastIndex].content += parsed.text;
-                return newMessages;
-              });
-            } else if (parsed.type === 'metric') {
-              setLiveMetrics((prev) => [...prev, parsed]);
-            } else if (parsed.type === 'clarification') {
-              setClarification({
-                question: parsed.question,
-                details: parsed.clarificationDetails,
-                originalRequest: clarification ? clarification.originalRequest : text
-              });
-              setSavedState(parsed.savedState);
-              
-              // Remove the empty assistant message bubble that was added for streaming
-              setMessages((prev) => {
-                const newMessages = [...prev];
-                if (newMessages[newMessages.length - 1].content === '') {
-                  newMessages.pop();
-                }
-                return newMessages;
-              });
-            }
-          } catch (e) {
-            console.error('Failed to parse NDJSON line:', line, e);
-          }
-        }
-      }
-    } catch (error: any) {
-      if (error.name === 'AbortError') {
-        console.log('Request aborted');
+    } catch (err) {
+      if (controller.signal.aborted) {
+        turn = { ...turn, status: 'aborted' };
       } else {
-        console.error('Failed to fetch:', error);
-        toast.error('Agent connection failed', {
-          description: 'An error occurred while communicating with the agent. Check the console and server logs.',
-        });
+        turn = { ...turn, status: 'error', error: err instanceof Error ? err.message : 'Agent request failed' };
       }
     } finally {
-      setIsLoading(false);
+      abortRef.current = null;
     }
-  }, [input, messages, clarification, savedState]);
 
-  const clearMessages = useCallback(() => {
-    setMessages([{ role: 'assistant', content: INITIAL_GREETING }]);
-    setClarification(null);
-    setLiveMetrics([]);
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
+    const key = chatKeys.conversation(conversationId);
+    if (turn.status === 'done') {
+      qc.setQueryData<ConversationDetail>(key, (old) =>
+        old ? { ...old, messages: [...old.messages, ...pendingTurnToMessages(turn)] } : old);
+      setPending(null);
+      void qc.invalidateQueries({ queryKey: key });
+    } else {
+      if (turn.status === 'error') {
+        setLastError({ message: turn.error ?? 'Agent error', conversationId });
+        toast.error('Agent chat failed', { description: turn.error ?? undefined });
+      }
+      // Server persists the user turn and any partial reply; resync before dropping the local copy.
+      await qc.invalidateQueries({ queryKey: key });
+      setPending(null);
+      if (turn.status === 'aborted') {
+        // Partial reply is written after the server notices the disconnect.
+        setTimeout(() => void qc.invalidateQueries({ queryKey: key }), 750);
+      }
     }
-  }, []);
+    void qc.invalidateQueries({ queryKey: chatKeys.conversations });
+    return turn.userMessageId !== null;
+  }, [activeId, qc, setActiveId]);
+
+  const activePending = pending && pending.conversationId === activeId ? pending : null;
+
+  const messages = useMemo(() => {
+    const base = detail.data?.messages ?? [];
+    if (!activePending) return base;
+    // Show the in-flight turn; dedupe in case a refetch already returned its user message.
+    const extra = pendingTurnToMessages(activePending).filter((m) => !base.some((b) => b.id === m.id));
+    if (activePending.status !== 'done' && !extra.some((m) => m.role === 'assistant')) {
+      extra.push({
+        id: `pending-assistant-${activePending.startedAt}`,
+        conversationId: activePending.conversationId,
+        role: 'assistant',
+        content: '',
+        context: null,
+        toolCalls: { toolCalls: [], citations: [], drafts: [] },
+        createdAt: activePending.startedAt,
+      });
+    }
+    return [...base, ...extra];
+  }, [detail.data, activePending]);
+
+  const conversations = list.data ?? [];
 
   return {
-    input,
-    setInput,
+    conversations,
+    conversationsLoading: list.isLoading,
+    activeConversationId: activeId,
+    activeConversation: detail.data?.conversation ?? conversations.find((c) => c.id === activeId) ?? null,
     messages,
-    isLoading,
-    clarification,
-    liveMetrics,
+    pending: activePending,
+    isStreaming: pending !== null && (pending.status === 'connecting' || pending.status === 'streaming'),
+    isLoadingConversation: !!activeId && detail.isLoading,
+    lastError: lastError && lastError.conversationId === activeId ? lastError : null,
+    selectConversation,
+    newConversation,
+    deleteConversation,
     sendMessage,
-    clearMessages
+    stop,
+    panelOpen,
+    setPanelOpen,
+    togglePanel,
   };
+}
+
+export const AgentChatContext = createContext<AgentChatStore | null>(null);
+
+/** Shared chat store for the side panel and /chat page. Requires AgentChatProvider. */
+export function useAgentChat(): AgentChatStore {
+  const ctx = useContext(AgentChatContext);
+  if (!ctx) throw new Error('useAgentChat must be used inside AgentChatProvider');
+  return ctx;
 }

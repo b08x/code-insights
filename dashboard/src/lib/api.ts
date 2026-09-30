@@ -2,7 +2,7 @@
 // Base URL is relative in production (SPA served by the same server).
 // In Vite dev mode, the proxy forwards /api -> localhost:7890.
 
-import type { Project, Session, Message, Insight, DashboardStats, LLMConfig, ExportTemplate, SemanticStep, PricingPlan } from '@/lib/types';
+import type { Project, Session, Message, Insight, DashboardStats, LLMConfig, ExportTemplate, SemanticStep, PricingPlan, ChatConversation, ChatMessage, PageContext } from '@/lib/types';
 
 const BASE = '/api';
 
@@ -194,6 +194,7 @@ export function saveLlmConfig(body: {
     model?: string;
     apiKey?: string;
     baseUrl?: string;
+    codebaseTools?: boolean;
   };
   embedding?: {
     provider?: string;
@@ -593,3 +594,56 @@ export function fetchSessionFcaExport(sessionId: string, format: 'json' | 'csv' 
 }
 
 
+
+// ── Agent chat ────────────────────────────────────────────────────────────────
+
+export function fetchChatConversations() {
+  return request<{ conversations: ChatConversation[] }>('/chat/conversations');
+}
+
+export function fetchChatConversation(id: string) {
+  return request<{ conversation: ChatConversation; messages: ChatMessage[] }>(`/chat/conversations/${id}`);
+}
+
+export function createChatConversation(title?: string) {
+  return request<{ conversation: ChatConversation }>('/chat/conversations', {
+    method: 'POST',
+    body: JSON.stringify(title ? { title } : {}),
+  });
+}
+
+export function deleteChatConversation(id: string) {
+  return request<{ success: boolean }>(`/chat/conversations/${id}`, { method: 'DELETE' });
+}
+
+/**
+ * POST a user message. Returns the raw Response so the caller can read the SSE
+ * stream (start/tool_call/citation/draft/token/done/error). Non-2xx responses
+ * (404 unknown conversation, 400 validation / missing LLM key) carry a JSON
+ * `{ error }` body and are thrown as Error here.
+ */
+export async function postChatMessage(
+  conversationId: string,
+  body: { content: string; pageContext?: PageContext | null },
+  signal?: AbortSignal,
+): Promise<Response> {
+  const res = await fetch(`${BASE}/chat/conversations/${conversationId}/messages`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal,
+  });
+  if (!res.ok) {
+    let message = res.statusText;
+    try {
+      const data = await res.json() as { error?: string };
+      if (data.error) message = data.error;
+    } catch {
+      // non-JSON error body
+    }
+    const err = new Error(message) as Error & { status?: number };
+    err.status = res.status;
+    throw err;
+  }
+  return res;
+}

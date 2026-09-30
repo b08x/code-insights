@@ -5,10 +5,13 @@ import { SessionDetailPanel } from '@/components/sessions/SessionDetailPanel';
 import { useInsights } from '@/hooks/useInsights';
 import { parseJsonField, type InsightMetadata } from '@/lib/types';
 import { FcaMatrixCard } from '@/components/insights/FcaMatrixCard';
+import { useRegisterPageContext } from '@/components/chat/panel/PageContextProvider';
 
 export default function SessionDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { data: insights = [] } = useInsights(id ? { sessionId: id } : undefined);
+  // Lets the chat panel resolve "this session" without the user typing an ID (agent-8).
+  useRegisterPageContext(id ? { page: 'session', sessionId: id } : null);
 
   if (!id) return null;
 
