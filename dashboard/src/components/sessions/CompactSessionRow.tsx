@@ -100,7 +100,7 @@ export function CompactSessionRow({
           }
         }}
         aria-current={isActive ? 'true' : undefined}
-        className="flex-1 text-left px-3 py-2.5 outline-none"
+        className="flex-1 min-w-0 text-left px-3 py-2.5 outline-none"
       >
         {/* Title */}
         <p className="text-sm font-medium line-clamp-2 leading-snug">{title}</p>
