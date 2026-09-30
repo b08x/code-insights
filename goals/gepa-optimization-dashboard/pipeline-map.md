@@ -87,3 +87,25 @@ Shared (not divergent): `cli/src/analysis/{prompts,prompt-constants,message-form
 | D22 | `onProgress` + `signal` for every entry point; CLI passes `log` for its console lines. | |
 | D23 | Already one transport (6b). | |
 | D24 | Unchanged: non-canonical friction categories are stored as returned; normalizers run at read time. | |
+| D25 (new) | A session with no messages is refused (`error_type: no_messages`) on every entry point. The CLI used to send an empty conversation to the model. | `insights` tests now seed real messages. |
+
+## Golden changes (Phase 1, step 6d)
+
+Every golden under `cli/src/analysis/__tests__/fixtures/pipeline/golden/` that changed, with the resolution that explains it. Nothing changed outside this list (`pipeline-characterization.test.ts` also gained parity tests that hash each runner call, see below).
+
+| Golden | Change | Reason |
+|---|---|---|
+| `short.server`, `short-related.server`, `prompt-quality.server`, `long-chunked.server`, `long-retrieval.server` | Instruction block (`blocks[1].text`) starts with `\n` (all calls) | D2: one canonical prompt `conversation + extras + "\n" + instructions`; the server block form now flattens to the CLI string. |
+| the same five (`dbAfter*`) | `analysis_usage.session_message_count` null -> session message count; `generated_title` null -> summary title (also after the prompt-quality pass) | D16, D17. |
+| `prompt-quality.server` | Session-pass prompt gains `<detected_signals><rage_loop>` | D7: rage-loop signal for every entry point. |
+| `long-retrieval.server` | `<project_architecture>` added to chunk prompts 0-1 and to the prompt-quality prompt (call 3); facet pass unchanged | D6, D13. |
+| `short.cli`, `prompt-quality.cli`, `short-related.cli`, `transport-native-claude` | Prompt-quality `<session_shape>` counts: `tool_exchanges` 3 -> 0 (short), `human_messages` 9 -> 4 and `tool_exchanges` 3 -> 5 (prompt-quality) | D12: genuine human count, `total - human - assistant`. |
+| `long-retrieval.cli`, `long-chunked.cli` | Prompt-quality prompt truncated (490540 -> 264322 and 365347 -> 264220 chars); session-pass prompts unchanged | D12: 80k-token truncation (native runner declares no budget). |
+| `long-retrieval.cli` | `chunkAndEmbedSession` and `retrieveAnalysisChunks` now receive an embedding config; retrieval config is `{topK 5, similarity 0.75, sameProjectOnly, maxInputTokens 80000, ratio 0.8}` (was the 20 / 0.5 / 128k module default) with `sessionMeta` | D3. |
+| `short-related.cli` | `<related_insights>` injected in the session prompt; two related-insight lookups recorded | D5. |
+| `failure-invalid-structure` | Server result now reports the tokens spent on the failed call (`usage` null -> totals) | Failures carry usage. |
+| `gate-one-human` | CLI: prompt-quality pass skipped (1 LLM call, no `prompt_quality` row); server: prompt-quality refusal gains `error_type: insufficient_messages` | D1, D12. |
+| `transport-anthropic` | CLI `ProviderRunner` now sends `[cached conversation block, rest]` with `cache_control` instead of one string; prompt-quality request carries an abort signal; server bodies are one byte longer (leading `\n`), and now byte-identical to the CLI's | D2, D12. |
+| `transport-openai` (and the other four provider goldens) | Request bodies differ only by the prompt-text hash/length changes above; `hasSignal` true for the CLI prompt-quality call | D2, D12. |
+
+New parity tests in `pipeline-characterization.test.ts` assert that, for every scenario, the server path and a provider-style CLI runner send the same sequence of prompts (sha256 of each full user prompt), and that a native-style runner matches the server for the unchunked scenarios.

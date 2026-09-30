@@ -9,7 +9,12 @@
         "response_preview": "```json\n{\"outcome_satisfaction\":\"medium\",\"workflow_pattern\":\"iterative-refinement\",\"had_course_correction\":true,\"course_correction_reason\":\"queue semantics\",\"iteration_count\":5,\"friction_points\":[{\"category\":\"context-loss\",\"attribution\":\"ai-capability\",\"description\":\"Lost earlier constraints.\",\"severity\":\"medium\",\"resolution\":\"resolved\"},],\"effective_patterns\":[],}\n```",
         "insightCount": 0,
         "insightTypes": [],
-        "usage": null,
+        "usage": {
+          "inputTokens": 1000,
+          "outputTokens": 200,
+          "cacheCreationTokens": 50,
+          "cacheReadTokens": 10
+        },
         "progress": [
           {
             "phase": "analyzing",

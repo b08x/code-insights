@@ -135,7 +135,7 @@ describe('Analysis routes', () => {
       expect(body.error).toMatch(/Session not found/);
     });
 
-    it('returns 200 and sets generated_title on success', async () => {
+    it('returns 200 on success (generated_title is written by the pipeline, not the route)', async () => {
       seedProject('proj-1', 'myproject');
       seedSession('sess-1', 'proj-1');
       mockIsLLMConfigured.mockReturnValue(true);
@@ -153,9 +153,9 @@ describe('Analysis routes', () => {
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.success).toBe(true);
-      // Verify generated_title was set on the session
+      // The route no longer writes the title itself: analyzeSessionPipeline does (see analysis.test.ts).
       const row = testDb.prepare('SELECT generated_title FROM sessions WHERE id = ?').get('sess-1') as { generated_title: string | null };
-      expect(row.generated_title).toBe('Test Title');
+      expect(row.generated_title).toBeNull();
     });
 
     it('returns 422 when analysis fails', async () => {

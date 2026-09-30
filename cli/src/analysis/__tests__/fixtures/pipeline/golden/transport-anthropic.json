@@ -32,7 +32,7 @@
                 },
                 {
                   "type": "text",
-                  "text": "<string length=12694 sha256=ae5b3b7cf92b51bc>"
+                  "text": "<string length=12695 sha256=c4224cf3f9893b44>"
                 }
               ]
             }
@@ -66,7 +66,7 @@
                 },
                 {
                   "type": "text",
-                  "text": "<string length=8121 sha256=cf36b57172486776>"
+                  "text": "<string length=8122 sha256=7a9cdd87edf6d3dd>"
                 }
               ]
             }
@@ -96,7 +96,19 @@
           "messages": [
             {
               "role": "user",
-              "content": "<string length=13573 sha256=fae1c12c6998a057>"
+              "content": [
+                {
+                  "type": "text",
+                  "text": "<string length=878 sha256=730bc1e460148159>",
+                  "cache_control": {
+                    "type": "ephemeral"
+                  }
+                },
+                {
+                  "type": "text",
+                  "text": "<string length=12695 sha256=c4224cf3f9893b44>"
+                }
+              ]
             }
           ]
         }
@@ -110,7 +122,7 @@
           "anthropic-version": "2023-06-01",
           "x-api-key": "test-key"
         },
-        "hasSignal": false,
+        "hasSignal": true,
         "body": {
           "model": "anthropic-fixture-model",
           "max_tokens": 8192,
@@ -118,7 +130,19 @@
           "messages": [
             {
               "role": "user",
-              "content": "<string length=9000 sha256=3105618215e2e813>"
+              "content": [
+                {
+                  "type": "text",
+                  "text": "<string length=878 sha256=730bc1e460148159>",
+                  "cache_control": {
+                    "type": "ephemeral"
+                  }
+                },
+                {
+                  "type": "text",
+                  "text": "<string length=8122 sha256=7a9cdd87edf6d3dd>"
+                }
+              ]
             }
           ]
         }

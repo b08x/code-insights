@@ -1,14 +1,18 @@
 /**
- * Characterization tests for the two production analysis pipelines (Phase 1, step 6a).
+ * Characterization tests for the analysis entry points (Phase 1, steps 6a + 6d).
  *
  *   CLI path    cli/src/commands/insights.ts  (runInsightsCommand) + an AnalysisRunner
  *   server path server/src/llm/analysis.ts    (analyzeSession) + prompt-quality-analysis.ts
  *
- * Both are driven end-to-end against an in-memory SQLite DB with a stubbed LLM transport
- * and the same canned model output, and the exact prompt text, call sequence, retrieval
- * arguments, parsed result, and persisted rows are pinned as golden files under
- * fixtures/pipeline/golden/. The goldens document CURRENT behavior, including behavior that
- * is arguably a bug; step 6c must change a golden deliberately, never by accident.
+ * Since 6d both entry points are thin wrappers over analyzeSessionPipeline (cli src copy for
+ * the CLI, cli dist copy for the server). Both are driven end-to-end against an in-memory
+ * SQLite DB with a stubbed LLM transport and the same canned model output, and the exact
+ * prompt text, call sequence, retrieval arguments, parsed result, and persisted rows are
+ * pinned as golden files under fixtures/pipeline/golden/. The goldens were recorded against
+ * the two pre-unification pipelines in 6a and were changed deliberately in 6d (see the
+ * "Golden changes" table in goals/gepa-optimization-dashboard/pipeline-map.md).
+ * The "entry-point parity" block asserts the core 6d guarantee: the same session yields the
+ * same prompt (and hash) regardless of entry point.
  *
  * Stubs (nothing in production code is modified):
  *  - DB:            getDb() of BOTH the cli/src copy and the cli/dist copy (the server imports
@@ -22,6 +26,7 @@
  * The root `pnpm run build` -> `pnpm run test` order already guarantees that.
  */
 
+import { createHash } from 'crypto';
 import Database from 'better-sqlite3';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
@@ -42,6 +47,8 @@ const H = vi.hoisted(() => {
     state: {
       db: null as unknown,
       chatCalls: [] as unknown[],
+      /** stage + sha256 of the full user prompt of every runner call (parity checks; not in goldens). */
+      hashes: [] as string[],
       retrieval: [] as unknown[],
       related: [] as unknown[],
       execCalls: [] as unknown[],
@@ -69,8 +76,9 @@ vi.mock(H.paths.serverClient, () => ({
   }),
 }));
 
-// Config: null => server falls back to DEFAULT_RETRIEVAL_CONFIG.
+// Config: null => the pipeline uses its default retrieval settings.
 vi.mock(H.paths.cliDist('utils/config.js'), () => ({ loadConfig: () => null }));
+vi.mock(H.paths.cliSrc('utils/config.js'), () => ({ loadConfig: () => null }));
 
 // Retrieval + embeddings. One factory, tagged by which copy (server=dist, cli=src) was called.
 function retrievalMock(tag: 'server' | 'cli') {
@@ -103,30 +111,34 @@ vi.mock(H.paths.cliDist('embeddings/retrieval.js'), async (io) => retrievalMock(
 vi.mock(H.paths.cliSrc('embeddings/retrieval.js'), async (io) => retrievalMock('cli')(io as any));
 vi.mock(H.paths.cliDist('embeddings/analysis-pipeline.js'), pipelineMock('server'));
 vi.mock(H.paths.cliSrc('embeddings/analysis-pipeline.js'), pipelineMock('cli'));
-vi.mock(H.paths.cliDist('embeddings/client.js'), async (io) => ({
-  ...(await (io as any)()),
+const embeddingsClientMock = async (io: () => Promise<any>) => ({
+  ...(await io()),
   embedOne: async (_cfg: unknown, id: string, text: string) => {
     S.related.push({ fn: 'embedOne', id, textLength: text.length });
     return { vector: new Float32Array(4) };
   },
-}));
-vi.mock(H.paths.cliDist('embeddings/store.js'), async (io) => ({
-  ...(await (io as any)()),
+});
+const embeddingsStoreMock = async (io: () => Promise<any>) => ({
+  ...(await io()),
   loadVectorExtension: () => {},
   querySimilarFiltered: (_db: unknown, entity: string, vec: Float32Array, topK: number, projectId: string) => {
     S.related.push({ fn: 'querySimilarFiltered', entity, vectorLength: vec.length, topK, projectId });
     return S.relatedRows;
   },
-}));
+});
+vi.mock(H.paths.cliDist('embeddings/client.js'), async (io) => embeddingsClientMock(io as any));
+vi.mock(H.paths.cliSrc('embeddings/client.js'), async (io) => embeddingsClientMock(io as any));
+vi.mock(H.paths.cliDist('embeddings/store.js'), async (io) => embeddingsStoreMock(io as any));
+vi.mock(H.paths.cliSrc('embeddings/store.js'), async (io) => embeddingsStoreMock(io as any));
 
 vi.mock('child_process', () => ({
-  execFileSync: (cmd: string, args: string[], opts: { input?: string }) => {
-    S.execCalls.push({ cmd, args, input: opts?.input ?? null });
-    if (cmd === 'codebase-memory-mcp') {
-      if (!S.architecture) throw new Error('not installed');
-      return S.architecture;
-    }
-    throw new Error(`unexpected execFileSync(${cmd}) in pipeline matrix test`);
+  // The pipeline gathers architecture context with async execFile (request JSON goes to stdin).
+  execFile: (cmd: string, args: string[], _opts: unknown, cb: (err: Error | null, out?: string) => void) => {
+    if (cmd !== 'codebase-memory-mcp') throw new Error(`unexpected execFile(${cmd}) in pipeline matrix test`);
+    const call = { cmd, args, input: null as string | null };
+    S.execCalls.push(call);
+    queueMicrotask(() => (S.architecture ? cb(null, S.architecture) : cb(new Error('not installed'))));
+    return { stdin: { on: () => {}, end: (input: string) => { call.input = input; } } };
   },
 }));
 
@@ -176,6 +188,14 @@ function cannedResponse(stage: Stage, path: 'server' | 'cli', callIndex: number,
   return loadResponse(canned.analysis);
 }
 
+/** Attach call hashes as a non-enumerable property so they never leak into golden JSON. */
+function withHashes<T extends object>(out: T): T & { hashes: string[] } {
+  Object.defineProperty(out, 'hashes', { value: [...S.hashes], enumerable: false });
+  return out as T & { hashes: string[] };
+}
+
+const sha = (text: string) => createHash('sha256').update(text).digest('hex');
+
 // ── Drivers ───────────────────────────────────────────────────────────────────
 
 interface ScenarioOptions {
@@ -210,7 +230,7 @@ function freshDb(input: LoadedInput, opts: ScenarioOptions): Database.Database {
 
 function resetState(db: Database.Database, opts: ScenarioOptions) {
   S.db = db;
-  S.chatCalls = []; S.retrieval = []; S.related = []; S.execCalls = [];
+  S.chatCalls = []; S.hashes = []; S.retrieval = []; S.related = []; S.execCalls = [];
   S.architecture = opts.architecture ?? '';
   if (!opts.related) S.relatedRows = [];
 }
@@ -241,6 +261,8 @@ async function runServer(input: LoadedInput, opts: ScenarioOptions) {
   (S as any).serverChat = async (messages: any[], options: any) => {
     const flat = messages.map(m => (typeof m.content === 'string' ? m.content : m.content.map((b: any) => b.text).join(''))).join('\n');
     const stage = detectStage(flat);
+    const userMessage = messages[1].content;
+    S.hashes.push(`${stage}:${sha(typeof userMessage === 'string' ? userMessage : userMessage.map((b: any) => b.text).join(''))}`);
     S.chatCalls.push({
       stage,
       hasSignal: !!options?.signal,
@@ -272,24 +294,35 @@ async function runServer(input: LoadedInput, opts: ScenarioOptions) {
     dbAfterPromptQualityPass: snapshotDb(db, input.session.id),
   };
   db.close();
-  return out;
+  return withHashes(out);
 }
 
-async function runCli(input: LoadedInput, opts: ScenarioOptions) {
+interface CliRunnerMeta {
+  /** Declare runner metadata like a provider runner (parity checks); default is a native-style runner. */
+  provider?: string;
+  maxInputTokens?: number;
+  /** Serve the canned responses the server path gets (chunk variants) so call sequences line up. */
+  responsesAs?: 'server' | 'cli';
+}
+
+async function runCli(input: LoadedInput, opts: ScenarioOptions, meta: CliRunnerMeta = {}) {
   const db = freshDb(input, opts);
   resetState(db, opts);
   let sessionCalls = 0;
   const runner = {
     name: 'stub-runner',
+    ...(meta.provider && { provider: meta.provider, model: 'stub-model' }),
+    ...(meta.maxInputTokens !== undefined && { maxInputTokens: meta.maxInputTokens }),
     async runAnalysis(params: { systemPrompt: string; userPrompt: string; jsonSchema?: object }) {
       const stage = detectStage(params.userPrompt);
+      S.hashes.push(`${stage}:${sha(params.userPrompt)}`);
       S.chatCalls.push({
         stage,
         systemPrompt: capturePrompt(params.systemPrompt),
         userPrompt: capturePrompt(params.userPrompt),
         jsonSchemaTopLevelKeys: params.jsonSchema ? Object.keys(params.jsonSchema).sort() : null,
       });
-      const rawJson = cannedResponse(stage, 'cli', stage === 'session' ? sessionCalls++ : 0, opts.canned);
+      const rawJson = cannedResponse(stage, meta.responsesAs ?? 'cli', stage === 'session' ? sessionCalls++ : 0, opts.canned);
       return { rawJson, durationMs: 0, ...USAGE, model: 'stub-model', provider: 'stub-provider' };
     },
   };
@@ -316,7 +349,7 @@ async function runCli(input: LoadedInput, opts: ScenarioOptions) {
     db: snapshotDb(db, input.session.id),
   };
   db.close();
-  return out;
+  return withHashes(out);
 }
 
 // ── Scenarios ─────────────────────────────────────────────────────────────────
@@ -357,6 +390,28 @@ describe('pipeline characterization (stubbed transport, both paths)', () => {
       });
     });
   }
+
+  describe('entry-point parity (6d)', () => {
+    // Same session, same canned model output: the CLI (native-style runner, then a provider-style
+    // runner with the server's budget) and the server must send byte-identical prompts.
+    for (const sc of SCENARIOS) {
+      it(`${sc.name}: server and CLI (provider-style runner) send identical prompts`, async () => {
+        const server = await runServer(loadInput(sc.input), sc.opts);
+        const cli = await runCli(loadInput(sc.input), sc.opts, { provider: 'anthropic', maxInputTokens: 80_000, responsesAs: 'server' });
+        expect(server.hashes.length).toBeGreaterThan(1);
+        expect(cli.hashes).toEqual(server.hashes);
+      });
+    }
+
+    for (const name of ['short', 'short-related', 'prompt-quality']) {
+      const sc = SCENARIOS.find(x => x.name === name)!;
+      it(`${name}: a native-style runner (no budget, plain string) sends the same prompts as the server`, async () => {
+        const server = await runServer(loadInput(sc.input), sc.opts);
+        const cli = await runCli(loadInput(sc.input), sc.opts);
+        expect(cli.hashes).toEqual(server.hashes);
+      });
+    }
+  });
 
   describe('failure behavior', () => {
     it('model output that parses but has no summary: server returns a result object, CLI throws', async () => {

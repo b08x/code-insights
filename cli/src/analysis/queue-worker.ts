@@ -11,7 +11,9 @@
 
 import chalk from 'chalk';
 import { claimNext, markCompleted, markFailed, resetStale } from '../db/queue.js';
-import { runInsightsCommand } from '../commands/insights.js';
+import { analyzeSessionPipeline, pipelineFailureToError } from './pipeline.js';
+import { FallbackNativeRunner } from './native-fallback.js';
+import { ProviderRunner } from './provider-runner.js';
 import { ClaudeNativeRunner } from './native-runner.js';
 import { CodexNativeRunner } from './codex-runner.js';
 import { AntigravityNativeRunner } from './antigravity-runner.js';
@@ -120,18 +122,20 @@ export async function processQueue(options: ProcessQueueOptions = {}): Promise<n
     log(chalk.dim(`[Code Insights] Analyzing session ${item.session_id} (attempt ${item.attempt_count + 1}/${item.max_attempts})...`));
 
     const isNative = item.runner_type === 'native';
-    const runner = isNative ? getNativeRunner() : undefined;
 
     try {
-      await runInsightsCommand({
-        sessionId: item.session_id,
-        native: isNative && currentNativeType === 'claude',
-        codex: isNative && currentNativeType === 'codex',
-        antigravity: isNative && currentNativeType === 'antigravity',
-        vibe: isNative && currentNativeType === 'vibe',
-        quiet,
-        _runner: runner,
-      });
+      let runner: AnalysisRunner;
+      if (isNative) {
+        const native = getNativeRunner();
+        if (!native) throw new Error(`No native runner available (tried ${currentNativeType}).`);
+        // Claude items get the usage-limit fallback chain, as `insights --native` does.
+        runner = currentNativeType === 'claude' ? new FallbackNativeRunner(native, log) : native;
+      } else {
+        runner = ProviderRunner.fromConfig();
+      }
+
+      const result = await analyzeSessionPipeline(item.session_id, { runner });
+      if (!result.success) throw pipelineFailureToError(result);
       markCompleted(item.session_id);
       successCount++;
       log(chalk.green(`[Code Insights] Session ${item.session_id} analyzed successfully`));

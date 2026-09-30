@@ -18,7 +18,7 @@
               "role": "user",
               "parts": [
                 {
-                  "text": "<string length=13572 sha256=a9f36aaf41efeea2>"
+                  "text": "<string length=13573 sha256=fae1c12c6998a057>"
                 }
               ]
             }
@@ -50,7 +50,7 @@
               "role": "user",
               "parts": [
                 {
-                  "text": "<string length=8999 sha256=5ba39edf03d0c585>"
+                  "text": "<string length=9000 sha256=deaf9961831d8594>"
                 }
               ]
             }
@@ -113,14 +113,14 @@
         "headers": {
           "Content-Type": "application/json"
         },
-        "hasSignal": false,
+        "hasSignal": true,
         "body": {
           "contents": [
             {
               "role": "user",
               "parts": [
                 {
-                  "text": "<string length=9000 sha256=3105618215e2e813>"
+                  "text": "<string length=9000 sha256=deaf9961831d8594>"
                 }
               ]
             }

@@ -1,17 +1,22 @@
-// Internal helpers and shared types for analysis modules.
-// Not part of the public API — consumers import from analysis.ts or a specific analysis module.
+// Shared types and the adapter between the server's AnalysisResult contract and the unified
+// analysis pipeline (cli/src/analysis/pipeline.ts). Not part of the public API — consumers
+// import from analysis.ts or a specific analysis module.
 
-import type { SessionMetadata } from './prompt-types.js';
+import { createLLMClient, isLLMConfigured } from '@code-insights/cli/llm/client';
+import { ProviderRunner } from '@code-insights/cli/analysis/provider-runner';
+import {
+  analyzeSessionPipeline,
+  buildSessionMeta,
+  type AnalysisPass,
+  type PipelineProgress,
+  type PipelineResult,
+} from '@code-insights/cli/analysis/pipeline';
+import type { SQLiteMessageRow } from './prompt-types.js';
 import type { SessionData, InsightRow } from './analysis-db.js';
-import { safeParseJson } from '../utils.js';
 
 // ─── Shared types ─────────────────────────────────────────────────────────────
 
-export interface AnalysisProgress {
-  phase: 'loading_messages' | 'analyzing' | 'saving';
-  currentChunk?: number;
-  totalChunks?: number;
-}
+export type AnalysisProgress = PipelineProgress;
 
 export interface AnalysisOptions {
   onProgress?: (progress: AnalysisProgress) => void;
@@ -37,24 +42,69 @@ export interface AnalysisResult {
 
 // ─── Shared constants ─────────────────────────────────────────────────────────
 
-/** Maximum input tokens to send to the LLM (leaves room for the response). */
+/** Maximum input tokens for the server-side facet backfill (leaves room for the response). */
 export const MAX_INPUT_TOKENS = 80000;
 
-// ─── Shared helper ────────────────────────────────────────────────────────────
+// Session metadata for prompt builders lives in the pipeline; re-exported for facet-extraction.
+export { buildSessionMeta };
+
+// ─── Pipeline adapter ─────────────────────────────────────────────────────────
+
+function toAnalysisResult(result: PipelineResult): AnalysisResult {
+  if (result.success) {
+    return { success: true, insights: result.insights, usage: result.usage };
+  }
+  return {
+    success: false,
+    insights: result.insights,
+    error: result.error,
+    error_type: result.error_type,
+    ...(result.response_length !== undefined && { response_length: result.response_length }),
+    ...(result.response_preview !== undefined && { response_preview: result.response_preview }),
+    ...(result.usage && { usage: result.usage }),
+  };
+}
 
 /**
- * Build a SessionMetadata object from V6 session columns.
- * Returns undefined when all V6 fields are absent (pre-V6 sessions with NULL columns).
- * When undefined, prompt generators omit the "Context signals" line entirely.
+ * Run one analysis pass for a session through the shared pipeline using the configured LLM.
+ * Returns (never throws) the AnalysisResult shape the routes and SSE helpers expect.
  */
-export function buildSessionMeta(session: SessionData): SessionMetadata | undefined {
-  const hasCompacts = !!(session.compact_count || session.auto_compact_count);
-  const hasSlashCommands = !!(session.slash_commands);
-  if (!hasCompacts && !hasSlashCommands) return undefined;
+export async function runPipelinePass(
+  pass: AnalysisPass,
+  session: SessionData,
+  messages: SQLiteMessageRow[],
+  options?: AnalysisOptions,
+): Promise<AnalysisResult> {
+  if (!isLLMConfigured()) {
+    return {
+      success: false,
+      insights: [],
+      error: 'LLM not configured. Run `code-insights config llm` to configure a provider.',
+    };
+  }
 
-  return {
-    compactCount: session.compact_count ?? 0,
-    autoCompactCount: session.auto_compact_count ?? 0,
-    slashCommands: safeParseJson<string[]>(session.slash_commands, []),
-  };
+  if (messages.length === 0) {
+    return { success: false, insights: [], error: 'No messages found for this session.' };
+  }
+
+  try {
+    const runner = ProviderRunner.fromClient(createLLMClient());
+    const result = await analyzeSessionPipeline(session.id, {
+      runner,
+      passes: [pass],
+      // The route already loaded these rows; hand them over instead of re-querying.
+      input: { session, messages },
+      onProgress: options?.onProgress,
+      signal: options?.signal,
+    });
+    return toAnalysisResult(result);
+  } catch (error) {
+    // The pipeline returns failures; this only catches client construction errors.
+    return {
+      success: false,
+      insights: [],
+      error: error instanceof Error ? error.message : 'Analysis failed',
+      error_type: 'api_error',
+    };
+  }
 }

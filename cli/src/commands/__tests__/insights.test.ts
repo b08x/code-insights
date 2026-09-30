@@ -31,6 +31,15 @@ vi.mock('../../db/write.js', () => ({
   recalculateUsageStats: vi.fn(() => ({ sessionsWithUsage: 0 })),
 }));
 
+// The pipeline asks codebase-memory-mcp for project architecture; never run the real binary in tests.
+vi.mock('child_process', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('child_process')>()),
+  execFile: (_cmd: string, _args: string[], _opts: unknown, cb: (err: Error | null) => void) => {
+    queueMicrotask(() => cb(new Error('not installed')));
+    return { stdin: { on: () => {}, end: () => {} } };
+  },
+}));
+
 const { mockValidate, mockRunAnalysis } = vi.hoisted(() => ({
   mockValidate: vi.fn(),
   mockRunAnalysis: vi.fn()
@@ -93,6 +102,21 @@ function seedSession(db: Database.Database, id = 'sess1', messageCount = 10): vo
       (id, project_id, project_name, project_path, started_at, ended_at, message_count)
       VALUES ('${id}', 'p1', 'test-project', '/test', datetime('now'), datetime('now'), ${messageCount});
   `);
+  seedMessages(db, id);
+}
+
+/**
+ * The pipeline refuses sessions without messages, and prompt quality needs >= 2 genuine human
+ * messages, so every seeded session carries a minimal real conversation.
+ */
+function seedMessages(db: Database.Database, id: string): void {
+  const insert = db.prepare(
+    `INSERT OR IGNORE INTO messages (id, session_id, type, content, timestamp, tool_calls, tool_results)
+     VALUES (?, ?, ?, ?, ?, '[]', '[]')`,
+  );
+  insert.run(`${id}-m1`, id, 'user', 'Please fix the failing login test.', '2026-01-01T10:00:00Z');
+  insert.run(`${id}-m2`, id, 'assistant', 'Looking at the test now.', '2026-01-01T10:00:30Z');
+  insert.run(`${id}-m3`, id, 'user', 'Also update the docs afterwards.', '2026-01-01T10:02:00Z');
 }
 
 function makeAnalysisResponse(): string {
@@ -554,6 +578,7 @@ describe('insightsCheckCommand — auto-analyze (1-2 sessions)', () => {
   function seedOne(db: Database.Database, id: string): void {
     db.exec(`INSERT OR IGNORE INTO projects (id, name, path, last_activity) VALUES ('pa1', 'proj', '/p', datetime('now'));`);
     db.exec(`INSERT OR IGNORE INTO sessions (id, project_id, project_name, project_path, started_at, ended_at, message_count) VALUES ('${id}', 'pa1', 'proj', '/p', datetime('now'), datetime('now'), 10);`);
+    seedMessages(db, id);
   }
 
   it('auto-analyzes 1 unanalyzed session using native runner', async () => {
@@ -608,6 +633,7 @@ describe('insightsCheckCommand — --analyze flag', () => {
     db.exec(`INSERT OR IGNORE INTO projects (id, name, path, last_activity) VALUES ('pb1', 'proj', '/p', datetime('now'));`);
     for (let i = 0; i < count; i++) {
       db.exec(`INSERT OR IGNORE INTO sessions (id, project_id, project_name, project_path, started_at, ended_at, message_count) VALUES ('an-sess-${i}', 'pb1', 'proj', '/p', datetime('now', '-${i} minutes'), datetime('now', '-${i} minutes'), 10);`);
+      seedMessages(db, `an-sess-${i}`);
     }
   }
 

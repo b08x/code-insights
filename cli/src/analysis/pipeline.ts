@@ -535,8 +535,11 @@ class UsageTotals {
   outputTokens = 0;
   cacheCreationTokens = 0;
   cacheReadTokens = 0;
+  /** Sum of runner-reported call durations (LLM time, excludes retrieval and persistence). */
+  durationMs = 0;
 
-  add(r: Pick<RunAnalysisResult, 'inputTokens' | 'outputTokens' | 'cacheCreationTokens' | 'cacheReadTokens'>): void {
+  add(r: Pick<RunAnalysisResult, 'inputTokens' | 'outputTokens' | 'cacheCreationTokens' | 'cacheReadTokens' | 'durationMs'>): void {
+    this.durationMs += r.durationMs ?? 0;
     this.inputTokens += r.inputTokens ?? 0;
     this.outputTokens += r.outputTokens ?? 0;
     this.cacheCreationTokens += r.cacheCreationTokens ?? 0;
@@ -648,7 +651,8 @@ export async function analyzeSessionPipeline(
       return result;
     };
 
-    const record = (pass: AnalysisPass, usage: UsageTotals, last: RunAnalysisResult, durationMs: number, chunkCount: number): PassReport => {
+    const record = (pass: AnalysisPass, usage: UsageTotals, last: RunAnalysisResult, chunkCount: number): PassReport => {
+      const durationMs = usage.durationMs;
       // Cost needs a priced provider; native runners report none and cost 0.
       const costUsd = runner.provider
         ? calculateAnalysisCost(last.provider, last.model, {
@@ -708,7 +712,6 @@ export async function analyzeSessionPipeline(
       const chunked = budget !== undefined && estimate(singlePrompt.userPrompt) > budget;
 
       const usage = new UsageTotals();
-      const passStart = Date.now();
       let chunkCount = 1;
       let last!: RunAnalysisResult;
 
@@ -800,7 +803,7 @@ export async function analyzeSessionPipeline(
       }
       if (sessionResponse.summary?.title) updateSessionTitle(session.id, sessionResponse.summary.title);
 
-      record('session', usage, last, Date.now() - passStart, chunkCount);
+      record('session', usage, last, chunkCount);
       insights.push(...sessionInsights);
       completed.push('session');
     }
@@ -832,7 +835,6 @@ export async function analyzeSessionPipeline(
 
       onProgress?.({ phase: 'analyzing' });
       const usage = new UsageTotals();
-      const passStart = Date.now();
       const result = await callRunner('prompt_quality', 'prompt_quality', prompt, PROMPT_QUALITY_SCHEMA, combineSignals(signal, PROMPT_QUALITY_TIMEOUT_MS));
       usage.add(result);
 
@@ -855,7 +857,7 @@ export async function analyzeSessionPipeline(
       saveInsightsToDb([pqInsight]);
       deleteSessionInsights(session.id, { includeOnlyTypes: ['prompt_quality'], excludeIds: [pqInsight.id] });
 
-      record('prompt_quality', usage, result, Date.now() - passStart, 1);
+      record('prompt_quality', usage, result, 1);
       insights.push(pqInsight);
       completed.push('prompt_quality');
     }
@@ -890,6 +892,18 @@ export async function analyzeSessionPipeline(
       error_type: 'api_error',
     });
   }
+}
+
+/**
+ * Convert a pipeline failure to the Error the CLI paths throw. Runner/transport errors keep their
+ * raw message (the queue worker matches "usage limit reached" in it); parse and structure
+ * failures get the pass prefix the `insights` command has always used.
+ */
+export function pipelineFailureToError(failure: PipelineFailure): Error {
+  const raw = ['api_error', 'abort', 'session_not_found', 'no_messages'].includes(failure.error_type);
+  if (raw) return new Error(failure.error);
+  const pass = failure.failedPass === 'prompt_quality' ? 'Prompt quality analysis' : 'Session analysis';
+  return new Error(`${pass} failed: ${failure.error_message ?? failure.error}`);
 }
 
 async function defaultEmbeddingConfig(): Promise<EmbeddingConfig> {
