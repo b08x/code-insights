@@ -350,3 +350,38 @@ export function streamBatchBackfill(
     });
   });
 }
+
+// ─── Generic event-generator SSE helper ───────────────────────────────────────
+
+export interface SSEMessage {
+  event: string;
+  data: unknown;
+}
+
+/**
+ * Stream an async generator of `{ event, data }` items as SSE. Shared by endpoints whose
+ * events are produced incrementally (chat turns, later: optimization run monitor).
+ * - `data` is JSON-stringified.
+ * - Client disconnect (request abort) stops iteration; the generator's `finally` blocks run.
+ * - A thrown error becomes a final `error` event `{ error }`; it never reaches the client as a stack trace.
+ */
+export function streamEvents(
+  c: Context,
+  producer: (signal: AbortSignal) => AsyncGenerator<SSEMessage>,
+): ReturnType<typeof streamSSE> {
+  return streamSSE(c, async (stream) => {
+    const signal = c.req.raw.signal;
+    try {
+      for await (const msg of producer(signal)) {
+        if (signal.aborted) break;
+        await stream.writeSSE({ event: msg.event, data: JSON.stringify(msg.data) });
+      }
+    } catch (err) {
+      captureError(err, { type: 'sse_stream' });
+      await stream.writeSSE({
+        event: 'error',
+        data: JSON.stringify({ error: err instanceof Error ? err.message : 'Unknown error' }),
+      }).catch(() => {});
+    }
+  });
+}

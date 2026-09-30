@@ -55,6 +55,7 @@ export function saveConfig(config: ClaudeInsightConfig): void {
       clean.dashboard.llm = llmWithoutKey;
     }
     if (config.dashboard.agent !== undefined) {
+      // Spread preserves non-secret agent keys such as `codebaseTools`.
       const { apiKey: _omitted, ...agentWithoutKey } = config.dashboard.agent;
       clean.dashboard.agent = agentWithoutKey;
     }

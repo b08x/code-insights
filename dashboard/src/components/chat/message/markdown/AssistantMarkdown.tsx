@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
+import { Link } from 'react-router';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import type { SyntaxHighlighterProps } from 'react-syntax-highlighter';
@@ -21,6 +22,13 @@ export function AssistantMarkdown({ content, codeStyle, searchQuery }: Assistant
   }, [searchQuery]);
 
   const components = useMemo(() => ({
+    a({ href, children }: { href?: string; children?: React.ReactNode }) {
+      // Internal dashboard paths (e.g. agent citations to /sessions/:id) navigate client-side.
+      if (href && href.startsWith('/') && !href.startsWith('//')) {
+        return <Link to={href} className="text-primary underline underline-offset-2">{children}</Link>;
+      }
+      return <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>;
+    },
     p({ children }: { children?: React.ReactNode }) {
       return <p>{hl(children)}</p>;
     },

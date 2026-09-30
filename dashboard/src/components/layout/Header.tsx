@@ -11,6 +11,7 @@ import {
   Github,
   Sparkles,
   Search,
+  Bot,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -24,6 +25,8 @@ import {
 import { ThemeToggle } from './ThemeToggle';
 import { Logo } from '@/components/brand/Logo';
 import { cn } from '@/lib/utils';
+import { useAgentChat } from '@/hooks/useAgentChat';
+import { CHAT_PANEL_ID, CHAT_TOGGLE_ID } from '@/components/chat/panel/ChatPanel';
 
 const NAV_ITEMS = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, exact: true },
@@ -41,10 +44,13 @@ const BOTTOM_TABS = NAV_ITEMS.slice(0, 4);
 
 interface HeaderProps {
   onOpenSearch?: () => void;
+  /** False on /chat, where the full-page view replaces the side panel. */
+  chatPanelAvailable?: boolean;
 }
 
-export function Header({ onOpenSearch }: HeaderProps) {
+export function Header({ onOpenSearch, chatPanelAvailable = true }: HeaderProps) {
   const { pathname } = useLocation();
+  const { panelOpen, togglePanel, isStreaming } = useAgentChat();
 
   const isActive = (href: string, exact: boolean) =>
     exact ? pathname === href : pathname.startsWith(href);
@@ -143,6 +149,27 @@ export function Header({ onOpenSearch }: HeaderProps) {
                 ⌘K
               </kbd>
             </Button>
+
+            {chatPanelAvailable && (
+              <Button
+                id={CHAT_TOGGLE_ID}
+                variant={panelOpen ? 'secondary' : 'ghost'}
+                size="sm"
+                className="relative h-8 gap-1.5 px-2.5"
+                onClick={togglePanel}
+                aria-label="Agent chat"
+                aria-pressed={panelOpen}
+                aria-controls={panelOpen ? CHAT_PANEL_ID : undefined}
+                aria-keyshortcuts="Control+J Meta+J"
+                title="Agent chat (Ctrl/Cmd+J)"
+              >
+                <Bot className="h-4 w-4" aria-hidden />
+                <span className="hidden sm:inline text-xs">Agent</span>
+                {isStreaming && !panelOpen && (
+                  <span className="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-primary animate-pulse" aria-hidden />
+                )}
+              </Button>
+            )}
 
             <ThemeToggle />
 

@@ -194,8 +194,30 @@ CREATE TABLE IF NOT EXISTS deleted_sessions (
   reason     TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_deleted_sessions_deleted_at ON deleted_sessions(deleted_at DESC);
+
+-- ============================================================
+-- Agent chat conversations (v17)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS chat_conversations (
+  id         TEXT PRIMARY KEY,
+  title      TEXT NOT NULL DEFAULT 'New conversation',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_chat_conversations_updated ON chat_conversations(updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS chat_messages (
+  id              TEXT PRIMARY KEY,
+  conversation_id TEXT NOT NULL REFERENCES chat_conversations(id) ON DELETE CASCADE,
+  role            TEXT NOT NULL,
+  content         TEXT NOT NULL,
+  context_json    TEXT,
+  tool_calls_json TEXT,
+  created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_chat_messages_conversation ON chat_messages(conversation_id, created_at);
 `;
 
-export const CURRENT_SCHEMA_VERSION = 16;
+export const CURRENT_SCHEMA_VERSION = 17;
 
 export { runMigrations } from './migrate.js';

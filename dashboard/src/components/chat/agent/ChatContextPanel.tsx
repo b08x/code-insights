@@ -1,48 +1,58 @@
-import { Database } from 'lucide-react';
+import { Wrench } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { LiveMetric } from '@/hooks/useAgentChat';
+import type { ChatMessage } from '@/lib/types';
+import { ToolCallActivity } from './ToolCallActivity';
+import { CitationLinks } from './CitationLinks';
 
 interface ChatContextPanelProps {
   showContext: boolean;
-  liveMetrics: LiveMetric[];
+  messages: ChatMessage[];
+  isStreaming: boolean;
 }
 
-export function ChatContextPanel({ showContext, liveMetrics }: ChatContextPanelProps) {
-  return (
-    <aside className={cn(
-      "flex-shrink-0 border-l bg-card/50 backdrop-blur-xl flex flex-col h-full transition-all duration-300 overflow-hidden relative absolute md:relative right-0 z-20",
-      showContext ? "w-full md:w-80 opacity-100 translate-x-0" : "w-0 opacity-0 translate-x-full border-none"
-    )}>
-      <div className="p-4 border-b bg-background/50 flex items-center justify-between sticky top-0 z-10">
-        <h3 className="font-semibold text-sm flex items-center gap-2">
-          <Database className="w-4 h-4 text-primary" />
-          Live Metrics
-        </h3>
-        <span className="text-[10px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded-full font-medium border border-emerald-500/20">
-          Agent Online
-        </span>
-      </div>
+/** Right rail on /chat: tool activity and sources for every reply in the conversation. */
+export function ChatContextPanel({ showContext, messages, isStreaming }: ChatContextPanelProps) {
+  const replies = messages.filter((m) => m.role === 'assistant');
+  const lastReplyId = replies[replies.length - 1]?.id;
+  const citations = Array.from(new Set(replies.flatMap((m) => m.toolCalls?.citations ?? [])));
+  const withTools = replies.filter((m) => (m.toolCalls?.toolCalls.length ?? 0) > 0 || (isStreaming && m.id === lastReplyId));
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {liveMetrics.length === 0 ? (
-          <div className="text-xs text-muted-foreground italic mb-2">
-            Metadata and context visualization will appear here during active tool usage.
-          </div>
-        ) : (
-          liveMetrics.map((metric, index) => (
-            <div key={index} className="bg-background rounded-lg border p-3 shadow-sm text-xs">
-              <div className="font-semibold text-primary mb-1 flex items-center gap-1">
-                <Database className="w-3 h-3" />
-                {metric.tool}
-              </div>
-              <div className="text-muted-foreground whitespace-pre-wrap font-mono text-[10px] break-all">
-                {typeof metric.args === 'string' 
-                  ? metric.args 
-                  : JSON.stringify(metric.args, null, 2)}
-              </div>
-            </div>
-          ))
-        )}
+  if (!showContext) return null;
+
+  return (
+    <aside className="hidden w-80 shrink-0 flex-col border-l bg-muted/10 lg:flex" aria-label="Agent activity">
+      <div className="flex h-11 items-center gap-2 border-b px-4">
+        <Wrench className="h-4 w-4 text-muted-foreground" aria-hidden />
+        <h2 className="text-sm font-semibold">Activity</h2>
+      </div>
+      <div className="flex-1 space-y-5 overflow-y-auto p-4">
+        <section>
+          <h3 className="mb-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Tool calls</h3>
+          {withTools.length === 0 ? (
+            <p className="text-xs text-muted-foreground">Tool calls appear here as the agent queries your sessions, insights, and analytics.</p>
+          ) : (
+            <ol className="space-y-3">
+              {withTools.map((m, i) => (
+                <li key={m.id} className={cn('rounded-md border bg-background p-2')}>
+                  <div className="mb-1 text-[10px] text-muted-foreground">Reply {i + 1}</div>
+                  <ToolCallActivity
+                    toolCalls={m.toolCalls?.toolCalls ?? []}
+                    active={isStreaming && m.id === lastReplyId}
+                    defaultOpen
+                  />
+                </li>
+              ))}
+            </ol>
+          )}
+        </section>
+        <section>
+          <h3 className="mb-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Cited sessions</h3>
+          {citations.length === 0 ? (
+            <p className="text-xs text-muted-foreground">None yet.</p>
+          ) : (
+            <CitationLinks citations={citations} />
+          )}
+        </section>
       </div>
     </aside>
   );

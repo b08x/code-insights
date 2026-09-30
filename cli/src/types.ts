@@ -412,7 +412,10 @@ export interface ClaudeInsightConfig {
   dashboard?: {
     port?: number;
     llm?: LLMProviderConfig; // used for background analysis
-    agent?: LLMProviderConfig; // used for the interactive RAG agent
+    agent?: LLMProviderConfig & {
+      // Expose codebase.* graph tools to the chat agent. Off unless explicitly true (agent-4).
+      codebaseTools?: boolean;
+    }; // used for the interactive chat agent
     embedding?: LLMProviderConfig; // used for generating embeddings
     analysis?: {
       retrieval?: {

@@ -13,6 +13,7 @@ export interface MigrationResult {
   v14Applied: boolean;
   v15Applied: boolean;
   v16Applied: boolean;
+  v17Applied: boolean;
 }
 
 /**
@@ -130,7 +131,13 @@ export function runMigrations(db: Database.Database): MigrationResult {
     v16Applied = true;
   }
 
-  return { v6Applied, v7Applied, v8Applied, v9Applied, v10Applied, v11Applied, v12Applied, v13Applied, v14Applied, v15Applied, v16Applied };
+  let v17Applied = false;
+  if (currentVersion < 17) {
+    applyV17(db);
+    v17Applied = true;
+  }
+
+  return { v6Applied, v7Applied, v8Applied, v9Applied, v10Applied, v11Applied, v12Applied, v13Applied, v14Applied, v15Applied, v16Applied, v17Applied };
 }
 
 function getCurrentVersion(db: Database.Database): number {
@@ -450,4 +457,27 @@ function applyV16(db: Database.Database): void {
   db.prepare('INSERT OR IGNORE INTO schema_version (version) VALUES (?)').run(16);
 }
 
+function applyV17(db: Database.Database): void {
+  // Persistent agent chat (side panel + /chat page share these tables).
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS chat_conversations (
+      id         TEXT PRIMARY KEY,
+      title      TEXT NOT NULL DEFAULT 'New conversation',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_chat_conversations_updated ON chat_conversations(updated_at DESC);
 
+    CREATE TABLE IF NOT EXISTS chat_messages (
+      id              TEXT PRIMARY KEY,
+      conversation_id TEXT NOT NULL REFERENCES chat_conversations(id) ON DELETE CASCADE,
+      role            TEXT NOT NULL,
+      content         TEXT NOT NULL,
+      context_json    TEXT,
+      tool_calls_json TEXT,
+      created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_chat_messages_conversation ON chat_messages(conversation_id, created_at);
+  `);
+  db.prepare('INSERT OR IGNORE INTO schema_version (version) VALUES (?)').run(17);
+}
