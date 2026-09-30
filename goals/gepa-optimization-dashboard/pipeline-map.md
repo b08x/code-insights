@@ -57,3 +57,33 @@ Shared (not divergent): `cli/src/analysis/{prompts,prompt-constants,message-form
 - Server route layer (`route-helpers.ts` SSE, `applyGeneratedTitle`, telemetry) and `extractFacetsOnly` are not in the goldens.
 - Provider error paths (HTTP errors, rate limiter) are not pinned.
 - The server path consumes `cli/dist` (workspace exports map), so `pnpm --filter @code-insights/cli build` must precede the tests; the root build-then-test order already does this.
+
+## Resolutions (Phase 1, step 6c)
+
+`cli/src/analysis/pipeline.ts` `analyzeSessionPipeline(sessionId, { runner, passes?, input?, identity?, promptResolution?, onProgress?, signal?, log? })` is now the only implementation. Runner capabilities come from optional `AnalysisRunner` metadata: `provider`/`model` (priced + Anthropic blocks), `maxInputTokens` (chunking budget), `estimateTokens`. `ProviderRunner` declares all four (budget 80k); native CLI runners declare none.
+
+| # | Resolution in the unified pipeline | Notes / residual |
+|---|---|---|
+| D1 | One function with `passes` (`session`, `prompt_quality`; default both). Failures are returned as `{success:false, error_type, failedPass, completedPasses}`; the CLI wrapper throws, the server wrappers map to `AnalysisResult`. With both passes requested, a prompt-quality gate failure skips that pass (`skipped.prompt_quality`) instead of failing the run; prompt-quality-only returns `insufficient_messages`. | Server keeps two functions/endpoints as thin wrappers (`passes:['session']`, `passes:['prompt_quality']`). |
+| D2 | One canonical prompt string `conversation block + retrieval + architecture + "\n" + instructions`. Runners with `provider === 'anthropic'` also receive it split into `[cached conversation block, rest]` (`userContent`); flattened blocks equal the string byte for byte, so the prompt hash does not depend on transport. | |
+| D3 | Single config: `dashboard.analysis.retrieval` over defaults topK 5, similarity 0.75, sameProjectOnly; `maxInputTokens` = `runner.maxInputTokens ?? 80000`, ratio 0.8; `sessionMeta` and `embeddingConfig` always passed. | CLI previously used topK 20 / 0.5 / 128k. |
+| D4 | Trigger unchanged: `shouldUseRetrieval(formatted)` with the module default (~102.4k estimated tokens). Both former paths already shared it. | Sessions between the 80k chunk budget and 102k chunk without retrieval (as server did). |
+| D5 | Related insights run in both entry points whenever embeddings are configured, defined as: `retrieval.enabled !== false` and the `vec_insights` table exists. Injected into session, chunk and facet-only prompts, not prompt-quality. | No table or no embedding backend -> no related insights, silently. |
+| D6, D13 | Architecture context (`codebase-memory-mcp cli get_architecture`, 15 s) is gathered once and added to session, chunk and prompt-quality prompts for every entry point when available. Facet-only pass omits it (as before). Uses async `execFile` so the server event loop is not blocked. | |
+| D7 | Rage-loop signal on for all entry points: injected into the single-call session prompt; for chunked sessions the signal goes to the facet-only pass (whole conversation) because its turn range is session-global. | Chunk prompts omit it. |
+| D8 | Server `buildSessionMeta` semantics (undefined when no compacts/slash commands). Rendered prompt identical. | |
+| D9 | Chunk + merge when the prompt's estimated tokens exceed `runner.maxInputTokens`; chunk size 0.8 x budget; merge unchanged (first summary, 3 decisions, 5 learnings, title dedup, unparseable chunks skipped, all-fail -> `json_parse_error`). Native runners declare no budget and never chunk. | The estimate covers the whole prompt (conversation + retrieval + architecture + instructions), not only the conversation as the server did. |
+| D10 | Extra facet-only call only on chunked sessions, conversation truncated to the budget, no `jsonSchema` (the session schema does not describe it). Cancellation inside it now propagates (previously swallowed). | |
+| D11 | `jsonrepair` fallback for the facet-only payload lives in the pipeline; `parseAnalysisResponse`/`parsePromptQualityResponse` keep theirs. | |
+| D12 | Server gate (>= 2 genuine human messages via `classifyStoredUserMessage`), genuine-only `humanMessageCount`, `toolExchangeCount = total - human - assistant`, 80k truncation (`runner.maxInputTokens ?? 80000`), 120 s timeout combined with the caller signal. | Native runners cannot honor the signal. |
+| D14 | `deleteSessionInsights(includeOnlyTypes:['prompt_quality'], excludeIds:[new])` (server form; never deletes other types). | |
+| D15 | `saveFacetsToDb(id, facets, ANALYSIS_VERSION)` everywhere. | Same stored value (3.1.0). |
+| D16 | `generated_title` written by the pipeline (session pass). Route `applyGeneratedTitle` removed in 6d. | |
+| D17 | Usage row always recorded per pass: provider/model from the runner result, tokens summed over chunk + facet calls, `chunk_count`, `session_message_count` set, cost from `calculateAnalysisCost(provider, model)` when the runner declares a provider, 0 for native runners. | Server rows previously had NULL `session_message_count` and were skipped when no usage was reported. `calculateAnalysisCost` moved to `cli/src/analysis/analysis-pricing.ts` (server shim re-exports). |
+| D18 | Unchanged: native runners report 0 tokens. | |
+| D19 | `jsonSchema` still passed to every runner; native Claude uses it, `ProviderRunner` ignores it. | |
+| D20 | Native fallback chain (codex -> claude -> antigravity -> vibe) stays CLI-only as a runner wrapper in `insights.ts`; the pipeline sees one runner. | Not unified: the server has no native runners. |
+| D21 | Resume detection stays in the CLI command (hook mode only). | Not unified by design: it is a hook concern. |
+| D22 | `onProgress` + `signal` for every entry point; CLI passes `log` for its console lines. | |
+| D23 | Already one transport (6b). | |
+| D24 | Unchanged: non-canonical friction categories are stored as returned; normalizers run at read time. | |

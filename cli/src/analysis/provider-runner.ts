@@ -12,17 +12,35 @@ import type { AnalysisRunner, RunAnalysisParams, RunAnalysisResult } from './run
 
 // ── ProviderRunner ────────────────────────────────────────────────────────────
 
+/** Default request budget for provider transports (leaves room for the response). */
+export const PROVIDER_MAX_INPUT_TOKENS = 80_000;
+
 export class ProviderRunner implements AnalysisRunner {
   readonly name: string;
+  readonly provider: string;
+  readonly model: string;
+  readonly maxInputTokens = PROVIDER_MAX_INPUT_TOKENS;
   private readonly client: LLMClient;
-  private readonly _model: string;
-  private readonly _provider: string;
 
-  constructor(config: LLMProviderConfig, resolvedApiKey: string | undefined) {
+  /** `client` lets callers that already hold a client (the server) skip a second construction. */
+  constructor(config: LLMProviderConfig, resolvedApiKey: string | undefined, client?: LLMClient) {
     this.name = config.provider;
-    this._model = config.model;
-    this._provider = config.provider;
-    this.client = createProviderClient(config, resolvedApiKey);
+    this.model = config.model;
+    this.provider = config.provider;
+    this.client = client ?? createProviderClient(config, resolvedApiKey);
+  }
+
+  /** Wrap an existing LLMClient (provider/model are read from the client). */
+  static fromClient(client: LLMClient): ProviderRunner {
+    return new ProviderRunner(
+      { provider: client.provider as LLMProviderConfig['provider'], model: client.model },
+      undefined,
+      client,
+    );
+  }
+
+  estimateTokens(text: string): number {
+    return this.client.estimateTokens(text);
   }
 
   /**
@@ -54,10 +72,10 @@ export class ProviderRunner implements AnalysisRunner {
 
     const messages: LLMMessage[] = [
       { role: 'system', content: params.systemPrompt },
-      { role: 'user', content: params.userPrompt },
+      { role: 'user', content: params.userContent ?? params.userPrompt },
     ];
 
-    const response = await this.client.chat(messages);
+    const response = await this.client.chat(messages, { signal: params.signal });
 
     return {
       rawJson: response.content,
@@ -70,8 +88,8 @@ export class ProviderRunner implements AnalysisRunner {
       ...(response.usage?.cacheReadTokens !== undefined && {
         cacheReadTokens: response.usage.cacheReadTokens,
       }),
-      model: this._model,
-      provider: this._provider,
+      model: this.model,
+      provider: this.provider,
     };
   }
 }
