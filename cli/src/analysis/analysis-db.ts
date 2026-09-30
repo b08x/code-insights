@@ -322,7 +322,10 @@ export async function saveInsightsToDbWithDedup(
     // Check for near-duplicates (similarity >= 0.85).
     const nearDupes = findSimilarFn(db, 'insight', vector, MERGE_THRESHOLD, 5);
     if (nearDupes.length > 0) {
-      // Merge: update the existing insight's metadata with link_ids.
+      // Merge: update the existing insight's metadata with link_ids. student_identity and
+      // prompt_version_id are intentionally NOT restamped: the stored title/content are still the
+      // original student's output, and provenance records who produced that text
+      // (see __tests__/dedup-provenance.test.ts).
       const existingRow = db.prepare('SELECT id, metadata FROM insights WHERE id = ?').get(nearDupes[0].id) as { id: string; metadata: string | null } | undefined;
       if (existingRow) {
         const existingMeta = existingRow.metadata ? JSON.parse(existingRow.metadata) : {};

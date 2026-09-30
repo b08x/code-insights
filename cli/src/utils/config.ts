@@ -63,9 +63,13 @@ export function saveConfig(config: ClaudeInsightConfig): void {
       const { apiKey: _omitted, ...embeddingWithoutKey } = config.dashboard.embedding;
       clean.dashboard.embedding = embeddingWithoutKey;
     }
-    // Preserve dashboard.analysis sub-object (retrieval config, etc.)
+    // Preserve dashboard.analysis sub-object (runner selection, retrieval config, etc.)
     if (config.dashboard?.analysis) {
-      clean.dashboard.analysis = { ...config.dashboard.analysis };
+      const { runner, ...restAnalysis } = config.dashboard.analysis;
+      clean.dashboard.analysis = {
+        ...restAnalysis,
+        ...(runner?.name ? { runner: { ...runner } } : {}),
+      };
     }
   }
   if (config.plans !== undefined) {

@@ -403,6 +403,16 @@ export interface PlanBreakdownItem {
   tools: string[];
 }
 
+/** Runner names selectable in Settings and via CLI flags (`provider` = configured dashboard.llm). */
+export const ANALYSIS_RUNNER_NAMES = ['claude', 'codex', 'antigravity', 'vibe', 'opencode', 'provider'] as const;
+export type AnalysisRunnerName = (typeof ANALYSIS_RUNNER_NAMES)[number];
+
+export interface AnalysisRunnerSetting {
+  name: AnalysisRunnerName;
+  model?: string;
+  variant?: string;
+}
+
 export interface ClaudeInsightConfig {
   sync: {
     claudeDir: string;
@@ -418,6 +428,11 @@ export interface ClaudeInsightConfig {
     }; // used for the interactive chat agent
     embedding?: LLMProviderConfig; // used for generating embeddings
     analysis?: {
+      /**
+       * Default student for CLI/queue analysis when no runner flag is given (found-8).
+       * `model`/`variant` apply only to this runner; unset keeps the runner CLI's own defaults.
+       */
+      runner?: AnalysisRunnerSetting;
       retrieval?: {
         enabled?: boolean;
         topK?: number;

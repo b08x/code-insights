@@ -87,10 +87,12 @@ function extractResultFromEnvelope(rawOutput: string): string {
 export class ClaudeNativeRunner implements AnalysisRunner {
   readonly name = 'claude-code-native';
   readonly model: string;
+  readonly variant?: string;
 
   constructor(private readonly config: RunnerConfig = {}) {
     // 'claude-native' is the legacy label when the CLI picks its own default model.
-    this.model = config.model ?? 'claude-native';
+    this.model = config.model || 'claude-native';
+    this.variant = config.variant || undefined;
   }
 
   /**

@@ -214,6 +214,25 @@ describe('config utilities', () => {
       });
     });
 
+    it('preserves dashboard.analysis.runner alongside retrieval', () => {
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+
+      saveConfig({
+        sync: { claudeDir: '/test/.claude/projects', excludeProjects: [] },
+        dashboard: {
+          analysis: {
+            runner: { name: 'opencode', model: 'openrouter/qwen', variant: 'high' },
+            retrieval: { enabled: true },
+          },
+        },
+      });
+
+      const [, writtenContent] = vi.mocked(fs.writeFileSync).mock.calls[0];
+      const parsed = JSON.parse(writtenContent as string);
+      expect(parsed.dashboard.analysis.runner).toEqual({ name: 'opencode', model: 'openrouter/qwen', variant: 'high' });
+      expect(parsed.dashboard.analysis.retrieval).toEqual({ enabled: true });
+    });
+
     it('preserves partial retrieval config (defaults for omitted fields)', () => {
       vi.mocked(fs.existsSync).mockReturnValue(true);
 

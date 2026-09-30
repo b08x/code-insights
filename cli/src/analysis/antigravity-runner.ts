@@ -11,7 +11,7 @@ export class AntigravityNativeRunner implements AnalysisRunner {
   readonly model: string;
 
   constructor(private readonly config: RunnerConfig = {}) {
-    this.model = config.model ?? 'antigravity-native';
+    this.model = config.model || 'antigravity-native';
   }
 
   /**

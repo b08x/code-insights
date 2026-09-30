@@ -57,7 +57,7 @@ import {
 import { saveAnalysisUsage } from './analysis-usage-db.js';
 import { calculateAnalysisCost } from './analysis-pricing.js';
 import { resolveAnalysisPrompt, type PromptOverride } from '../optimization/resolve-prompt.js';
-import { identityFromRunner, identityFromRunResult, identityKey, type StudentIdentity } from '../optimization/identity.js';
+import { identityForCall, identityFromRunner, identityKey, type StudentIdentity } from '../optimization/identity.js';
 
 // Re-exported so there is exactly one definition of the budget (cli/src/llm/types.ts).
 export { DEFAULT_MAX_INPUT_TOKENS };
@@ -742,7 +742,7 @@ export async function analyzeSessionPipeline(
      */
     const recordedIdentity = (): StudentIdentity =>
       options.identity
-      ?? (state.first ? identityFromRunResult(state.first, { providerBacked: runner.provider !== undefined }) : resolveIdentity);
+      ?? (state.first ? identityForCall(runner, state.first) : resolveIdentity);
     const provenanceFor = (prompt: { versionId: string | null }) => ({
       studentIdentity: identityKey(recordedIdentity()),
       promptVersionId: prompt.versionId,

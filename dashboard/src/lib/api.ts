@@ -2,7 +2,7 @@
 // Base URL is relative in production (SPA served by the same server).
 // In Vite dev mode, the proxy forwards /api -> localhost:7890.
 
-import type { Project, Session, Message, Insight, DashboardStats, LLMConfig, ExportTemplate, SemanticStep, PricingPlan, ChatConversation, ChatMessage, PageContext } from '@/lib/types';
+import type { Project, Session, Message, Insight, DashboardStats, LLMConfig, ExportTemplate, SemanticStep, PricingPlan, ChatConversation, ChatMessage, PageContext, AnalysisRunnerName } from '@/lib/types';
 
 const BASE = '/api';
 
@@ -202,11 +202,18 @@ export function saveLlmConfig(body: {
     apiKey?: string;
     baseUrl?: string;
   };
+  /** Omitted = unchanged; null = cleared. */
+  runner?: { name?: AnalysisRunnerName; model?: string; variant?: string } | null;
 }) {
   return request<{ ok: boolean }>('/config/llm', {
     method: 'PUT',
     body: JSON.stringify(body),
   });
+}
+
+/** Models reported by the runner's CLI (`agy models` / `opencode models`); empty = free text. */
+export function fetchRunnerModels(runner: AnalysisRunnerName) {
+  return request<{ models: string[] }>(`/config/models?runner=${encodeURIComponent(runner)}`);
 }
 
 export function fetchPlans() {

@@ -7,8 +7,10 @@
  *   - CLI / queue: a native runner (`claude-code-native`, `codex-native`, ...) or a provider runner
  *   - server / dashboard: always the configured provider, `provider:<llm.provider>` + `<llm.model>`
  *
- * Limitation: native CLI runners do not report a real model until plan step 6 lands, so their
- * identities carry the runner's placeholder model ('claude-native', ...) or null.
+ * Native CLI runners report their configured model, or a legacy label ('claude-native', ...) when
+ * the CLI picks its own default. Every runner's `name`/`model`/`variant` equal the
+ * `provider`/`model` its calls report, so the identity resolved before the first call equals the
+ * identity recorded after it (identityForCall), unless a fallback runner answered.
  */
 
 import type { ClaudeInsightConfig } from '../types.js';
@@ -31,6 +33,7 @@ export interface RunnerIdentityFields {
   name: string;
   provider?: string;
   model?: string;
+  variant?: string;
 }
 
 const PROVIDER_PREFIX = 'provider:';
@@ -58,7 +61,10 @@ export function providerIdentity(provider: string, model: string | null, variant
  * Identity from the runner's own metadata, known before the first call (used to resolve the
  * active prompt version). A runner with `provider` set is backed by the shared LLM transport.
  */
-export function identityFromRunner(runner: RunnerIdentityFields, variant: string | null = null): StudentIdentity {
+export function identityFromRunner(
+  runner: RunnerIdentityFields,
+  variant: string | null = runner.variant ?? null,
+): StudentIdentity {
   if (runner.provider) return providerIdentity(runner.provider, runner.model ?? null, variant);
   return { runner: runner.name, model: runner.model ?? null, variant };
 }
@@ -76,6 +82,20 @@ export function identityFromRunResult(
   return opts.providerBacked
     ? providerIdentity(result.provider, result.model, variant)
     : { runner: result.provider, model: result.model, variant };
+}
+
+/**
+ * Identity to record for a call made through `runner`. The variant is kept only when the runner
+ * itself answered: a fallback runner (FallbackNativeRunner) runs with its CLI's defaults, and its
+ * result names a different provider than `runner.name`.
+ */
+export function identityForCall(runner: RunnerIdentityFields, result: RunResultIdentityFields): StudentIdentity {
+  const providerBacked = runner.provider !== undefined;
+  const answeredByRunner = providerBacked || result.provider === runner.name;
+  return identityFromRunResult(result, {
+    providerBacked,
+    variant: answeredByRunner ? runner.variant ?? null : null,
+  });
 }
 
 /**

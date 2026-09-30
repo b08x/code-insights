@@ -24,8 +24,18 @@ export interface AnalysisRunner {
    * computed from provider + model. Native CLI runners leave it undefined (cost 0, plain string).
    */
   readonly provider?: string;
-  /** Model id used for cost computation; set together with `provider`. */
+  /**
+   * Model id. Provider runners: the model used for cost computation (set with `provider`).
+   * Native runners: the configured model, or the runner's legacy label when the CLI picks its
+   * own default. Must equal the `model` every successful call reports, so the identity used for
+   * prompt resolution matches the identity recorded afterwards.
+   */
   readonly model?: string;
+  /**
+   * Variant (reasoning effort) actually passed to the CLI. Undefined when unset or when the
+   * runner's CLI has no such flag (the configured value is then not part of the identity).
+   */
+  readonly variant?: string;
   /**
    * Input token budget for one request. The pipeline chunks + merges when a prompt exceeds it.
    * Undefined means "no chunking": native CLI runners manage their own context window.

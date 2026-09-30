@@ -17,12 +17,17 @@ import type { AnalysisRunner, RunAnalysisParams, RunAnalysisResult } from './run
  */
 export class FallbackNativeRunner implements AnalysisRunner {
   readonly name: string;
+  /** Primary's model/variant, so the pre-call identity matches a call the primary answers. */
+  readonly model?: string;
+  readonly variant?: string;
 
   constructor(
     private readonly primary: AnalysisRunner,
     private readonly log: (message: string) => void,
   ) {
     this.name = primary.name;
+    this.model = primary.model;
+    this.variant = primary.variant;
   }
 
   async runAnalysis(params: RunAnalysisParams): Promise<RunAnalysisResult> {

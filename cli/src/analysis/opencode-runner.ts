@@ -88,10 +88,12 @@ export function parseOpenCodeEvents(stdout: string): OpenCodeParsed {
 export class OpenCodeRunner implements AnalysisRunner {
   readonly name = 'opencode';
   readonly model: string;
+  readonly variant?: string;
 
   /** @param config.model `provider/model` as accepted by `opencode -m`; omitted = opencode default. */
   constructor(private readonly config: RunnerConfig = {}) {
-    this.model = config.model ?? 'opencode-default';
+    this.model = config.model || 'opencode-default';
+    this.variant = config.variant || undefined;
   }
 
   static validate(): void {

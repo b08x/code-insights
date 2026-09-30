@@ -10,10 +10,12 @@ import type { AnalysisRunner, RunAnalysisParams, RunAnalysisResult, RunnerConfig
 export class CodexNativeRunner implements AnalysisRunner {
   readonly name = 'codex-native';
   readonly model: string;
+  readonly variant?: string;
 
   constructor(private readonly config: RunnerConfig = {}) {
     // 'codex-native' is the legacy label when codex uses its own configured model.
-    this.model = config.model ?? 'codex-native';
+    this.model = config.model || 'codex-native';
+    this.variant = config.variant || undefined;
   }
 
   /**

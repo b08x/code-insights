@@ -20,6 +20,8 @@ import { AntigravityNativeRunner } from './antigravity-runner.js';
 import { MistralVibeRunner } from './mistral-vibe-runner.js';
 import { OpenCodeRunner } from './opencode-runner.js';
 import type { AnalysisRunner } from './runner-types.js';
+import { configuredRunner, explicitRunnerName, runnerConfigFor } from './runner-selection.js';
+import { loadConfig } from '../utils/config.js';
 
 export interface ProcessQueueOptions {
   quiet?: boolean;
@@ -60,8 +62,21 @@ export async function processQueue(options: ProcessQueueOptions = {}): Promise<n
   let vibeRunner: MistralVibeRunner | undefined;
   let opencodeRunner: OpenCodeRunner | undefined;
   
-  let currentNativeType: 'claude' | 'codex' | 'antigravity' | 'vibe' | 'opencode' = 
-    options.useOpencode ? 'opencode' : options.useVibe ? 'vibe' : (options.useAntigravity ? 'antigravity' : (options.useCodex ? 'codex' : 'claude'));
+  // Explicit runner flags win; else the runner saved in Settings applies to native items; else
+  // Claude. Saved model/variant apply only to the saved runner (runnerConfigFor), so a
+  // usage-limit switch to another runner runs it with its CLI defaults.
+  const config = loadConfig();
+  const explicit = explicitRunnerName({
+    claude: options.useClaude, codex: options.useCodex, antigravity: options.useAntigravity,
+    vibe: options.useVibe, opencode: options.useOpencode,
+  });
+  const saved = explicit ? null : configuredRunner(config);
+  /** Settings chose the provider: native items use it too (items queued as 'provider' always do). */
+  const nativeItemsUseProvider = saved?.name === 'provider';
+  let currentNativeType: 'claude' | 'codex' | 'antigravity' | 'vibe' | 'opencode' =
+    explicit && explicit !== 'provider' ? explicit
+    : saved && saved.name !== 'provider' ? saved.name
+    : 'claude';
 
   const getNativeRunner = (): AnalysisRunner | undefined => {
     // OpenCode is opt-in only: not part of the fallback chain (see native-fallback.ts), so a
@@ -70,7 +85,7 @@ export async function processQueue(options: ProcessQueueOptions = {}): Promise<n
       if (!opencodeRunner) {
         try {
           OpenCodeRunner.validate();
-          opencodeRunner = new OpenCodeRunner();
+          opencodeRunner = new OpenCodeRunner(runnerConfigFor('opencode', config));
         } catch { return undefined; }
       }
       return opencodeRunner;
@@ -80,7 +95,7 @@ export async function processQueue(options: ProcessQueueOptions = {}): Promise<n
       if (!vibeRunner) {
         try {
           MistralVibeRunner.validate();
-          vibeRunner = new MistralVibeRunner();
+          vibeRunner = new MistralVibeRunner(runnerConfigFor('vibe', config));
         } catch {
           // If vibe fails, try Antigravity as next fallback
           log(chalk.yellow(`[Code Insights] Mistral Vibe not found, trying Antigravity fallback...`));
@@ -95,7 +110,7 @@ export async function processQueue(options: ProcessQueueOptions = {}): Promise<n
       if (!antigravityRunner) {
         try {
           AntigravityNativeRunner.validate();
-          antigravityRunner = new AntigravityNativeRunner();
+          antigravityRunner = new AntigravityNativeRunner(runnerConfigFor('antigravity', config));
         } catch { return undefined; }
       }
       return antigravityRunner;
@@ -105,7 +120,7 @@ export async function processQueue(options: ProcessQueueOptions = {}): Promise<n
       if (!codexRunner) {
         try {
           CodexNativeRunner.validate();
-          codexRunner = new CodexNativeRunner();
+          codexRunner = new CodexNativeRunner(runnerConfigFor('codex', config));
         } catch { 
           // If codex fails, try Antigravity as final fallback
           log(chalk.yellow(`[Code Insights] Codex not found, trying Antigravity fallback...`));
@@ -120,7 +135,7 @@ export async function processQueue(options: ProcessQueueOptions = {}): Promise<n
     if (!claudeRunner) {
       try {
         ClaudeNativeRunner.validate();
-        claudeRunner = new ClaudeNativeRunner();
+        claudeRunner = new ClaudeNativeRunner(runnerConfigFor('claude', config));
       } catch {
         // Fallback to Codex if Claude not found
         log(chalk.yellow(`[Code Insights] Claude not found, trying Codex fallback...`));
@@ -137,7 +152,7 @@ export async function processQueue(options: ProcessQueueOptions = {}): Promise<n
 
     log(chalk.dim(`[Code Insights] Analyzing session ${item.session_id} (attempt ${item.attempt_count + 1}/${item.max_attempts})...`));
 
-    const isNative = item.runner_type === 'native';
+    const isNative = item.runner_type === 'native' && !nativeItemsUseProvider;
 
     try {
       let runner: AnalysisRunner;

@@ -7,7 +7,7 @@ export class MistralVibeRunner implements AnalysisRunner {
   readonly model: string;
 
   constructor(private readonly config: RunnerConfig = {}) {
-    this.model = config.model ?? 'mistral-vibe';
+    this.model = config.model || 'mistral-vibe';
   }
 
   /**
