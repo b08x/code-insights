@@ -2,7 +2,7 @@
 // Provider metadata (PROVIDERS constant) lives in cli/src/constants/llm-providers.ts.
 // LLMProvider, LLMProviderConfig, ProviderInfo are imported from CLI types (single source of truth).
 
-export type { LLMProvider, LLMProviderConfig, ProviderInfo, ProviderModelOption } from '@code-insights/cli/types';
+export type { LLMProvider, LLMProviderConfig, ProviderInfo, ProviderModelOption } from '../types.js';
 
 /**
  * A structured content block for LLM messages.

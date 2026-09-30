@@ -23,7 +23,7 @@ vi.mock('@code-insights/cli/utils/telemetry', () => ({
 const mockIsLLMConfigured = vi.fn(() => false);
 const mockLoadLLMConfig = vi.fn(() => ({ provider: 'openai', model: 'gpt-4o' }));
 
-vi.mock('../llm/client.js', () => ({
+vi.mock('@code-insights/cli/llm/client', () => ({
   isLLMConfigured: () => mockIsLLMConfigured(),
   createLLMClient: vi.fn(),
   loadLLMConfig: () => mockLoadLLMConfig(),

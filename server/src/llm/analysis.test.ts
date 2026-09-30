@@ -17,7 +17,7 @@ vi.mock('@code-insights/cli/db/client', () => ({
 const mockChat = vi.fn();
 const mockIsConfigured = vi.fn(() => true);
 
-vi.mock('./client.js', () => ({
+vi.mock('@code-insights/cli/llm/client', () => ({
   isLLMConfigured: (...args: unknown[]) => mockIsConfigured(...args),
   createLLMClient: () => ({
     provider: 'test',

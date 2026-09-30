@@ -23,7 +23,7 @@ const mockChat = vi.fn();
 const mockIsLLMConfigured = vi.fn(() => false);
 const mockLoadLLMConfig = vi.fn(() => ({ provider: 'openai', model: 'gpt-4o' }));
 
-vi.mock('../llm/client.js', () => ({
+vi.mock('@code-insights/cli/llm/client', () => ({
   isLLMConfigured: () => mockIsLLMConfigured(),
   createLLMClient: () => ({ chat: mockChat, provider: 'openai', model: 'gpt-4o', estimateTokens: (t: string) => Math.ceil(t.length / 4) }),
   loadLLMConfig: () => mockLoadLLMConfig(),

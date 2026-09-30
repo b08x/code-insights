@@ -2,8 +2,8 @@ import { Hono } from 'hono';
 import { loadConfig, saveConfig } from '@code-insights/cli/utils/config';
 import type { ClaudeInsightConfig, LLMProviderConfig, PricingPlan } from '@code-insights/cli/types';
 import { getEffectivePlans } from '@code-insights/cli/utils/plans';
-import { loadLLMConfig, testLLMConfig } from '../llm/client.js';
-import { discoverOllamaModels } from '../llm/providers/ollama.js';
+import { loadLLMConfig, testLLMConfig } from '@code-insights/cli/llm/client';
+import { discoverOllamaModels } from '@code-insights/cli/llm/providers/ollama';
 import { discoverModels } from '../llm/discover.js';
 
 const app = new Hono();

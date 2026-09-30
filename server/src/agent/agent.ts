@@ -7,7 +7,7 @@
 import { ai, ax } from '@ax-llm/ax';
 import type { AxAIService, AxFunction } from '@ax-llm/ax';
 import { loadConfig } from '@code-insights/cli/utils/config';
-import { loadLLMConfig } from '../llm/client.js';
+import { loadLLMConfig } from '@code-insights/cli/llm/client';
 import { SYSTEM_PROMPT } from './prompt.js';
 import { toDraftPayload, toolRegistry, type DraftPayload } from './tools.js';
 

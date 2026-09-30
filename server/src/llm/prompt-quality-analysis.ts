@@ -1,7 +1,7 @@
 // Prompt quality analysis — isolated from the main session analysis pipeline.
 // Extracted from analysis.ts to keep each analysis type in its own focused module.
 
-import { createLLMClient, isLLMConfigured, loadLLMConfig } from './client.js';
+import { createLLMClient, isLLMConfigured, loadLLMConfig } from '@code-insights/cli/llm/client';
 import { calculateAnalysisCost } from './analysis-pricing.js';
 import { saveAnalysisUsage } from './analysis-usage-db.js';
 import type { SQLiteMessageRow } from './prompt-types.js';

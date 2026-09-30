@@ -2,7 +2,7 @@
 // Extracted from analysis.ts to keep each analysis responsibility in its own module.
 
 import { jsonrepair } from 'jsonrepair';
-import { createLLMClient, isLLMConfigured, loadLLMConfig } from './client.js';
+import { createLLMClient, isLLMConfigured, loadLLMConfig } from '@code-insights/cli/llm/client';
 import { calculateAnalysisCost } from './analysis-pricing.js';
 import { saveAnalysisUsage } from './analysis-usage-db.js';
 import type { SQLiteMessageRow, AnalysisResponse } from './prompt-types.js';

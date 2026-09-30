@@ -14,7 +14,7 @@
 import type Database from 'better-sqlite3';
 import * as sqliteVec from 'sqlite-vec';
 import { getDb } from '@code-insights/cli/db/client';
-import { createLLMClient, isLLMConfigured } from './client.js';
+import { createLLMClient, isLLMConfigured } from '@code-insights/cli/llm/client';
 
 // ---------------------------------------------------------------------------
 // Configuration

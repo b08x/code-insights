@@ -7,7 +7,7 @@ import type { Context, MiddlewareHandler } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { getDb } from '@code-insights/cli/db/client';
 import { trackEvent, captureError } from '@code-insights/cli/utils/telemetry';
-import { isLLMConfigured, loadLLMConfig } from '../llm/client.js';
+import { isLLMConfigured, loadLLMConfig } from '@code-insights/cli/llm/client';
 import { calculateAnalysisCost } from '../llm/analysis-pricing.js';
 import type { AnalysisResult, AnalysisOptions } from '../llm/analysis.js';
 import type { SessionData } from '../llm/analysis-db.js';

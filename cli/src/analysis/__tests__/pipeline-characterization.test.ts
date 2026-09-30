@@ -37,7 +37,7 @@ const H = vi.hoisted(() => {
     paths: {
       cliSrc: (m: string) => p(`../../${m}`),
       cliDist: (m: string) => p(`../../../dist/${m}`),
-      serverClient: p('../../../../server/src/llm/client.js'),
+      serverClient: p('../../../dist/llm/client.js'),
     },
     state: {
       db: null as unknown,

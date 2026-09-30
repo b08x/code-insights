@@ -4,7 +4,7 @@
  * pipeline-characterization.test.ts stubs the LLM client/runner, so it pins WHAT is asked.
  * This file stubs only `fetch` / `execFileSync`, so it pins HOW each path talks to a provider:
  *
- *   server path  analyzeSession/analyzePromptQuality -> server/src/llm/client.ts -> providers/*
+ *   server path  analyzeSession/analyzePromptQuality -> cli/dist/llm/client.js -> providers/*
  *   CLI provider insights.ts -> ProviderRunner (cli/src/analysis/provider-runner.ts make*Chat)
  *   CLI native   insights.ts -> ClaudeNativeRunner (`claude -p` via execFileSync)
  *

@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { getDb } from '@code-insights/cli/db/client';
 import { trackEvent } from '@code-insights/cli/utils/telemetry';
 import { parseIntParam } from '../utils.js';
-import { loadLLMConfig } from '../llm/client.js';
+import { loadLLMConfig } from '@code-insights/cli/llm/client';
 import { analyzeSession, analyzePromptQuality, findRecurringInsights } from '../llm/analysis.js';
 import { getSessionAnalysisUsage } from '../llm/analysis-usage-db.js';
 import { calculateAnalysisCost } from '../llm/analysis-pricing.js';

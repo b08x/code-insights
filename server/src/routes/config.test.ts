@@ -24,13 +24,13 @@ vi.mock('@code-insights/cli/utils/config', () => ({
   saveConfig: vi.fn(),
 }));
 
-vi.mock('../llm/client.js', () => ({
+vi.mock('@code-insights/cli/llm/client', () => ({
   loadLLMConfig: () => null,
   isLLMConfigured: () => false,
   testLLMConfig: vi.fn().mockResolvedValue({ success: true }),
 }));
 
-vi.mock('../llm/providers/ollama.js', () => ({
+vi.mock('@code-insights/cli/llm/providers/ollama', () => ({
   discoverOllamaModels: vi.fn().mockResolvedValue([]),
 }));
 

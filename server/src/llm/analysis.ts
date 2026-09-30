@@ -13,7 +13,7 @@
 // Shared types/helpers → analysis-internal.ts
 
 import { jsonrepair } from 'jsonrepair';
-import { createLLMClient, isLLMConfigured, loadLLMConfig } from './client.js';
+import { createLLMClient, isLLMConfigured, loadLLMConfig } from '@code-insights/cli/llm/client';
 import type { SQLiteMessageRow, AnalysisResponse } from './prompt-types.js';
 import type { RelatedInsight } from './prompts.js';
 import { formatMessagesForAnalysis } from './message-format.js';

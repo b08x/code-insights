@@ -17,7 +17,7 @@ vi.mock('@code-insights/cli/utils/telemetry', () => ({
   trackEvent: vi.fn(),
   captureError: vi.fn(),
 }));
-vi.mock('../llm/client.js', () => ({
+vi.mock('@code-insights/cli/llm/client', () => ({
   isLLMConfigured: () => false,
   createLLMClient: vi.fn(),
   loadLLMConfig: () => null,
