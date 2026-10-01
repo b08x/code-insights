@@ -1,0 +1,17 @@
+Resolved: /home/b08x/WorkspaceV3/code-insights/goals/gepa-optimization-dashboard/plan.md
+# File Feedback
+
+I've reviewed this file and have 2 pieces of feedback:
+
+## 1. (line 113) Feedback on: "Duplicate server/CLI parsers: optimized prompts are validated on the CLI parser; the parity test (step 12) is the guard. Consolidating the two copies is out of scope but recommended."
+> Let's add in the consolidation of the duplicate server CLI parsers. Unless there's a really jarring reason not to, I feel like that's part of the reason why things are a little out of sync overall.
+
+## 2. (line 114) [👍 Looks good] Feedback on: "CLI runner harness drift: a CLI upgrade (claude/codex/opencode) changes the harness under a fixed identity. Mitigation: record CLI --version in identity metadata and warn on change; not a new identity by default."
+
+---
+
+## Label Summary
+
+- **👍 Looks good**: 1
+
+

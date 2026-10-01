@@ -1,0 +1,551 @@
+{
+  "stage": "facts",
+  "title": "GEPA optimization dashboard + agent chat replacement",
+  "goalSlug": "gepa-optimization-dashboard",
+  "facts": [
+    {
+      "id": "agent-1",
+      "text": "The old RLM agent (AxJSRuntime, SFL reply template, full-transcript memory search) is removed from server/src/routes/agent.ts.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "agent-2",
+      "text": "The new chat agent answers session questions using typed tools that query SQLite directly: searchSessions, getSession (turn-range window), listInsights, getAnalytics.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "agent-3",
+      "text": "searchSessions returns ranked snippets with session IDs, never full transcripts.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "agent-4",
+      "text": "Codebase-graph tools are available to the agent only when the codebase-tools toggle is on; when off, they are absent from the agent's function list.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "agent-5",
+      "text": "Chat replies are free-form markdown with citations that link to the cited sessions.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": false,
+      "automatedVerification": false
+    },
+    {
+      "id": "agent-6",
+      "text": "Conversations persist in SQLite; reloading the page restores the conversation.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "agent-7",
+      "text": "A chat side panel can be opened on every dashboard page, and a full-width /chat page shows the same conversations.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": false,
+      "automatedVerification": false
+    },
+    {
+      "id": "agent-8",
+      "text": "The side panel sends the current page context (page type plus IDs such as sessionId, runId, versionId) with each message, and the agent can answer 'this session' / 'this run' without the user typing IDs.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "agent-9",
+      "text": "Each page type shows context-specific suggested prompts in the side panel.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": false,
+      "automatedVerification": false
+    },
+    {
+      "id": "agent-10",
+      "text": "The agent has no tool that writes labels, promotes versions, or starts runs; draft outputs appear with a UI button the user must click to save.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "agent-11",
+      "text": "Optimization tools (listRuns, getRun, getRoundDiff, compareVersions, getLabel) are added to the agent when their server routes exist.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "found-1",
+      "text": "Every CLI runner accepts a configured model: claude --model, codex -m, agy --model, vibe via VIBE_ACTIVE_MODEL, opencode -m provider/model.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "found-2",
+      "text": "The codex runner no longer hardcodes gpt-5.5.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "found-3",
+      "text": "A new OpenCode runner runs `opencode run -m <provider/model> --format json` and its output passes through the existing response parser.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "found-4",
+      "text": "Runners that support a reasoning-effort setting accept an optional variant.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "found-5",
+      "text": "A student identity is the triple runner + model + variant, and each analysis records the identity that produced it.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "found-6",
+      "text": "Each analysis row records the prompt_version_id that produced it (null = built-in prompt).",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "found-7",
+      "text": "At analysis time, the pipeline uses the active prompt version for (target, current student identity); if none exists it uses the built-in prompt, never a version tuned for another identity.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "found-8",
+      "text": "Settings lets the user choose runner, model, and variant; model lists are filled from `agy models` / `opencode models` where available and free text otherwise.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": false,
+      "automatedVerification": false
+    },
+    {
+      "id": "found-9",
+      "text": "A target registry defines session-analysis as the only enabled target; adding prompt-quality requires only a registry entry, no engine code changes.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "label-1",
+      "text": "A schema migration to v17 adds label storage; existing databases migrate without data loss.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "label-2",
+      "text": "A label stores: outcome, friction categories, pattern categories, key points, forbidden claims, optional note, split, and timestamps.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "label-3",
+      "text": "The labeling page shows the current production analysis for a session; keeping an item adds it as a key point, rejecting it as wrong adds it as a forbidden claim.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": false,
+      "automatedVerification": false
+    },
+    {
+      "id": "label-4",
+      "text": "The user can type additional key points that the analysis missed.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": false,
+      "automatedVerification": false
+    },
+    {
+      "id": "label-5",
+      "text": "Outcome, friction categories, and pattern categories are chosen from the canonical category lists.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "label-6",
+      "text": "Each labeled session is assigned train, validation, or test (60/20/20, seeded, stratified by project) at label time, and the assignment never changes.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "label-7",
+      "text": "A suggested labeling queue ranks unlabeled sessions for coverage across project, session-length bucket, and source tool.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "label-8",
+      "text": "After at least one completed run, the queue also ranks sessions where candidates disagreed most or test-gate scores were lowest.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "label-9",
+      "text": "SessionDetail has a 'Label this session' action that opens the labeling page for that session.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": false,
+      "automatedVerification": false
+    },
+    {
+      "id": "label-10",
+      "text": "Sessions without an analysis can be pre-analyzed in bulk through the batch API (Mistral or OpenRouter) when the provider supports it.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "label-11",
+      "text": "Embeddings are used only for labeling aids (duplicate key-point detection, item-to-key-point suggestions), never for scoring.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "label-12",
+      "text": "View 7 (label progress) shows label counts per split, per project, and per length bucket against coverage targets.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": false,
+      "automatedVerification": false
+    },
+    {
+      "id": "engine-1",
+      "text": "GEPA evaluates candidates through the real session-analysis pipeline: same message formatter, response parser, and normalizers as production.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "engine-2",
+      "text": "Only free-text guidance is optimizable; the JSON schema, canonical category lists, and output format are never exposed as GEPA components.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "engine-3",
+      "text": "Scoring objectives are outcome, friction_f1, pattern_f1, keypoint_recall, faithfulness, and schema_valid; an unparseable output scores 0 on all objectives.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "engine-4",
+      "text": "keypoint_recall and faithfulness come from a typed AxGen judge on the fixed judge model; judge results are cached by output hash.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "engine-5",
+      "text": "The judge's rationales are passed to GEPA as feedbackFn text.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "engine-6",
+      "text": "The regex heuristic metrics are removed from scoring.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "engine-7",
+      "text": "One weights config drives both GEPA's paretoScalarize and version selection, so the saved version is the one selected.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "engine-8",
+      "text": "The optimized result is applied with applyOptimization(result.optimizedProgram); the saved version equals the best candidate, not the last evaluated.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "engine-9",
+      "text": "Validation examples are always the held-out validation split; the train set is never reused as validation.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "engine-10",
+      "text": "Starting a run creates an optimization_runs row; the server runs one job at a time in-process; the user can cancel a running job.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "engine-11",
+      "text": "Each round writes an optimization_rounds row with candidate component text, parent candidate, per-objective scores, judge rationales, and token cost.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "engine-12",
+      "text": "A run stops cleanly when it reaches maxMetricCalls or its token/USD cap and keeps its best-so-far candidate.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "engine-13",
+      "text": "The run form shows a pre-run estimate of calls, tokens, cost, and duration before starting.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": false,
+      "automatedVerification": false
+    },
+    {
+      "id": "engine-14",
+      "text": "The student is always the production student identity and cannot be changed per run; the teacher is selectable per run; the judge is fixed config.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "engine-15",
+      "text": "Versions scored by different judge models show a warning when compared.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": false,
+      "automatedVerification": false
+    },
+    {
+      "id": "engine-16",
+      "text": "Transient API errors retry per call; a single rate-limit error does not restart the whole run.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "engine-17",
+      "text": "Evaluation goes through one gepaAdapter with three modes: sync API, batch API, and CLI runner.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "engine-18",
+      "text": "The run form has an 'overnight' toggle that batches GEPA loop evaluations; it is enabled only for provider:mistral or provider:openrouter students.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "engine-19",
+      "text": "CLI-runner students always run synchronously, and the run form shows estimated duration and a quota warning.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": false,
+      "automatedVerification": false
+    },
+    {
+      "id": "engine-20",
+      "text": "The test gate scores the candidate and the currently active prompt (or built-in) on the test split, using the batch API when available.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "engine-21",
+      "text": "Promote is disabled when the candidate's weighted test score does not beat the baseline, unless the user confirms an override.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "engine-22",
+      "text": "Promoting sets the active version for (target, student identity); promoting a previous version is the rollback.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "engine-23",
+      "text": "'Adopt for this model' runs only the test gate for an existing version on a new student identity and allows promotion without a GEPA run.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "engine-24",
+      "text": "Existing analyses are not re-run on promotion; re-analysis is a separate optional action that uses the batch API when available.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "engine-25",
+      "text": "The existing ~/.code-insights/optimization JSON manifest is imported into prompt_versions once, then no longer read.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "engine-26",
+      "text": "`code-insights optimize` uses the same engine and tables, so CLI-started runs appear in the dashboard.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "engine-27",
+      "text": "flow.ts, metric.ts, the unused template builders, and scripts/debug-optimization.mjs are deleted.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "engine-28",
+      "text": "View 1 (run monitor) shows per-objective and weighted score lines by round, accepted/rejected candidates, cumulative tokens/cost, and a Cancel button, updating while the run is live.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": false,
+      "automatedVerification": false
+    },
+    {
+      "id": "engine-29",
+      "text": "View 4 (promotion gate) shows baseline vs candidate per objective, a per-test-session delta table, and side-by-side analysis outputs for any test session.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": false,
+      "automatedVerification": false
+    },
+    {
+      "id": "view-1",
+      "text": "View 2 (prompt evolution) shows the candidate lineage tree; selecting a candidate shows a word-level diff against its parent plus the reflection and judge rationales behind it.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": false,
+      "automatedVerification": false
+    },
+    {
+      "id": "view-2",
+      "text": "View 6 (judge audit) samples judge covered/violated decisions for the user to confirm or override and shows the judge-vs-human agreement rate.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "view-3",
+      "text": "View 3 (Pareto front) is a scatter plot with selectable objective axes; points are clickable and the selected version is highlighted.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": false,
+      "automatedVerification": false
+    },
+    {
+      "id": "view-4",
+      "text": "View 5 (version history) shows each promoted version's test score over time and how friction/pattern category distributions in production analyses changed between prompt versions.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": false,
+      "automatedVerification": false
+    },
+    {
+      "id": "cross-1",
+      "text": "Each phase ships as its own PR to development in the order: agent, foundations, labeling, engine, insight views.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": false,
+      "automatedVerification": false
+    },
+    {
+      "id": "cross-2",
+      "text": "Server routes and DB functions for each phase have Vitest tests, and `pnpm run test` passes at the end of each phase.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "cross-3",
+      "text": "The v17 migration and the manifest import are verified against a copy of the user's real database before merge.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": false,
+      "automatedVerification": false
+    }
+  ]
+}
