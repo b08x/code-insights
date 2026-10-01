@@ -677,15 +677,10 @@ export function fetchLabelProgress() {
   return request<LabelProgress>('/labels/progress');
 }
 
-/** Returns null when the session has no label yet (404). */
+/** Returns null when the session has no label yet. */
 export async function fetchLabel(sessionId: string): Promise<SessionLabel | null> {
-  const res = await fetch(`${BASE}/labels/${encodeURIComponent(sessionId)}`);
-  if (res.status === 404) return null;
-  if (!res.ok) {
-    const text = await res.text().catch(() => res.statusText);
-    throw new Error(`API ${res.status}: ${text}`);
-  }
-  return ((await res.json()) as { label: SessionLabel }).label;
+  const res = await request<{ label: SessionLabel | null }>(`/labels/${encodeURIComponent(sessionId)}`);
+  return res.label;
 }
 
 export async function saveLabel(sessionId: string, input: LabelInput): Promise<SessionLabel> {
