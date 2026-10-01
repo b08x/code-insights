@@ -22,12 +22,13 @@
 
 import { createHash } from 'node:crypto';
 import { analyzeSessionPipeline, type PipelineResult } from '../analysis/pipeline.js';
-import { calculateAnalysisCost } from '../analysis/analysis-pricing.js';
 import type { AnalysisRunner, RunAnalysisParams, RunAnalysisResult } from '../analysis/runner-types.js';
 import { loadLLMConfig, resolveApiKey } from '../llm/client.js';
+import { DEFAULT_TEMPERATURE } from '../llm/types.js';
 import {
   BatchJobError,
   BatchTimeoutError,
+  listPrice,
   createMistralBatchBackend,
   createOpenRouterBatchBackend,
   submitAndAwait,
@@ -54,7 +55,14 @@ export interface PreanalyzeResult {
   mode: PreanalyzeMode;
   sessions: PreanalyzeSessionResult[];
   /** Batch mode only. */
-  batch?: SubmitSummary & { costUsd: number; fellBackToQueue?: string };
+  batch?: SubmitSummary & {
+    costUsd: number;
+    /** Calls the collect phase did not foresee (e.g. the facet call after a chunked merge) or whose prompt changed; they ran synchronously. */
+    replayMisses: number;
+    /** Rows resolved synchronously after a failed job's partial output was merged. */
+    jobFailureResyncs: number;
+    fellBackToQueue?: string;
+  };
 }
 
 export interface PreanalyzeDeps {
@@ -120,9 +128,12 @@ function emptyResult(base: AnalysisRunner): RunAnalysisResult {
   return { rawJson: '', durationMs: 0, inputTokens: 0, outputTokens: 0, model: base.model ?? base.name, provider: base.provider ?? base.name };
 }
 
-/** Full-price cost of a synchronous call, so every call in a pass reports costUsd. */
-function listCost(provider: string, model: string, inputTokens: number, outputTokens: number): number {
-  return calculateAnalysisCost(provider, model, { inputTokens, outputTokens });
+/**
+ * Runner type for analysis_queue (queue-worker.ts: 'native' -> native CLI runner, anything else ->
+ * the dashboard's configured provider). A native/CLI identity must never be run by the provider.
+ */
+export function runnerTypeFor(identity: StudentIdentity): 'native' | 'provider' {
+  return identity.runner.startsWith('provider:') ? 'provider' : 'native';
 }
 
 export async function preanalyzeSessions(sessionIds: string[], deps: PreanalyzeDeps): Promise<PreanalyzeResult> {
@@ -133,7 +144,7 @@ export async function preanalyzeSessions(sessionIds: string[], deps: PreanalyzeD
   const enqueueAll = (ids: string[]): PreanalyzeSessionResult[] =>
     ids.map(sessionId => {
       try {
-        deps.enqueue(sessionId, 'provider');
+        deps.enqueue(sessionId, runnerTypeFor(deps.identity));
         return { sessionId, status: 'enqueued' as const };
       } catch (err) {
         return { sessionId, status: 'failed' as const, error: err instanceof Error ? err.message : String(err) };
@@ -151,12 +162,25 @@ export async function preanalyzeSessions(sessionIds: string[], deps: PreanalyzeD
 
   const pipeline = deps.pipeline ?? analyzeSessionPipeline;
   const base = deps.runner;
+  // The batch must be run by the same student the prompts are resolved and recorded for.
+  const expectedProvider = batchProviderOf(deps.identity);
+  if (backend.provider !== expectedProvider || backend.model !== deps.identity.model || base.model !== deps.identity.model) {
+    throw new Error(
+      `Batch backend (${backend.provider}/${backend.model}) and runner (${base.provider ?? base.name}/${base.model}) ` +
+      `do not match the configured identity ${deps.identity.runner}/${deps.identity.model}.`,
+    );
+  }
   const common = { identity: deps.identity };
 
   // ── 1. collect ────────────────────────────────────────────────────────────
   const requests = new Map<string, BatchRequest>();
+  /** Sessions that asked for each prompt: identical prompts are billed once, so cost is split. */
+  const owners = new Map<string, Set<string>>();
+  let collecting = '';
   const collector = wrapRunner(base, async (params: RunAnalysisParams) => {
     const key = promptKey(params.systemPrompt, params.userPrompt);
+    if (!owners.has(key)) owners.set(key, new Set());
+    owners.get(key)!.add(collecting);
     if (!requests.has(key)) {
       requests.set(key, {
         customId: key,
@@ -165,13 +189,14 @@ export async function preanalyzeSessions(sessionIds: string[], deps: PreanalyzeD
             { role: 'system', content: params.systemPrompt },
             { role: 'user', content: params.userPrompt },
           ],
-          temperature: 0.7, // what the sync Mistral/OpenRouter transports send
+          temperature: DEFAULT_TEMPERATURE,
         },
       });
     }
     return emptyResult(base);
   });
   for (const sessionId of unique) {
+    collecting = sessionId;
     for (const pass of ['session', 'prompt_quality'] as const) {
       // Failure is expected (empty answer); a pass that cannot even build a prompt just adds nothing.
       await pipeline(sessionId, { ...common, runner: collector, passes: [pass], persist: false, signal: deps.signal });
@@ -182,11 +207,14 @@ export async function preanalyzeSessions(sessionIds: string[], deps: PreanalyzeD
   // ── 2. submit ─────────────────────────────────────────────────────────────
   const syncCall = async (params: RunAnalysisParams): Promise<RunAnalysisResult> => {
     const r = await base.runAnalysis(params);
-    const provider = base.provider ?? r.provider;
-    return r.costUsd !== undefined ? r : { ...r, costUsd: listCost(provider, r.model, r.inputTokens, r.outputTokens) };
+    if (r.costUsd !== undefined) return r;
+    // Full price; undefined (not 0) when the model has no price.
+    const cost = listPrice(base.provider ?? r.provider, r.model, r.inputTokens, r.outputTokens);
+    return cost === undefined ? r : { ...r, costUsd: cost };
   };
 
   let rows = new Map<string, BatchRow>();
+  let jobFailureResyncs = 0;
   let summary: SubmitSummary = { submitted: 0, jobs: 0, succeeded: 0, failedRows: 0, resynced: 0, resyncFailed: 0, unknownIds: [], unparsed: 0 };
   if (requests.size > 0) {
     try {
@@ -199,30 +227,42 @@ export async function preanalyzeSessions(sessionIds: string[], deps: PreanalyzeD
         resync: async (request): Promise<BatchRowSuccess> => {
           const [system, user] = request.body.messages;
           const r = await syncCall({ systemPrompt: system.content, userPrompt: user.content });
-          return { customId: request.customId, ok: true, content: r.rawJson, inputTokens: r.inputTokens, outputTokens: r.outputTokens, costUsd: r.costUsd };
+          return { customId: request.customId, ok: true, content: r.rawJson, inputTokens: r.inputTokens, outputTokens: r.outputTokens, ...(r.costUsd !== undefined && { costUsd: r.costUsd }) };
         },
       });
       rows = outcome.rows;
       summary = outcome.summary;
     } catch (err) {
       if (deps.signal?.aborted) throw err;
-      if (err instanceof BatchJobError || err instanceof BatchTimeoutError) {
-        // The whole set is unusable: hand it to the queue worker rather than paying full price inline.
+      const salvaged = err instanceof BatchJobError ? err.partialRows.filter(r => r.ok && requests.has(r.customId)) : [];
+      if (err instanceof BatchJobError && salvaged.length > 0) {
+        // Rows the failed job already produced are billed: keep them and run only the rest synchronously.
+        log(`Batch ${err.status} with ${salvaged.length}/${requests.size} rows delivered; running the rest synchronously.`);
+        for (const r of salvaged) rows.set(r.customId, r);
+        summary = { ...summary, submitted: requests.size, jobs: 1, succeeded: salvaged.length };
+        jobFailureResyncs = requests.size - salvaged.length;
+      } else if (err instanceof BatchJobError || err instanceof BatchTimeoutError) {
+        // Nothing usable: hand the set to the queue worker rather than paying full price inline.
         log(`Batch failed (${err.message}); enqueueing ${unique.length} sessions instead.`);
         return {
           mode,
           sessions: enqueueAll(unique),
-          batch: { ...summary, submitted: requests.size, costUsd: 0, fellBackToQueue: err.message },
+          batch: { ...summary, submitted: requests.size, costUsd: 0, replayMisses: 0, jobFailureResyncs: 0, fellBackToQueue: err.message },
         };
+      } else {
+        throw err;
       }
-      throw err;
     }
   }
 
   // ── 3. replay ─────────────────────────────────────────────────────────────
+  let replayMisses = 0;
   const replay = wrapRunner(base, async (params: RunAnalysisParams) => {
-    const row = rows.get(promptKey(params.systemPrompt, params.userPrompt));
+    const key = promptKey(params.systemPrompt, params.userPrompt);
+    const row = rows.get(key);
     if (row?.ok) {
+      // One billed call can feed several sessions (identical prompts): give each its share.
+      const share = owners.get(key)?.size || 1;
       return {
         rawJson: row.content,
         durationMs: 0,
@@ -230,9 +270,10 @@ export async function preanalyzeSessions(sessionIds: string[], deps: PreanalyzeD
         outputTokens: row.outputTokens,
         model: base.model ?? base.name,
         provider: base.provider ?? base.name,
-        costUsd: row.costUsd ?? 0,
+        ...(row.costUsd !== undefined && { costUsd: row.costUsd / share }),
       };
     }
+    if (!requests.has(key)) replayMisses++;
     return syncCall(params);
   });
 
@@ -255,5 +296,5 @@ export async function preanalyzeSessions(sessionIds: string[], deps: PreanalyzeD
       sessions.push({ sessionId, status: 'failed', error: result.error, errorType: result.error_type });
     }
   }
-  return { mode, sessions, batch: { ...summary, costUsd: Math.round(totalCost * 1_000_000) / 1_000_000 } };
+  return { mode, sessions, batch: { ...summary, costUsd: Math.round(totalCost * 1_000_000) / 1_000_000, replayMisses, jobFailureResyncs } };
 }

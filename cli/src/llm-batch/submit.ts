@@ -74,24 +74,34 @@ async function runJob(
   o.onProgress?.(`${backend.provider} batch ${jobId} submitted (${requests.length} requests)`);
   const deadline = o.now() + o.timeoutMs;
   let failures = 0;
+  // A job we stop waiting for (abort, fatal poll error, timeout, sibling failure) keeps running and
+  // billing at the provider unless cancelled. A provider-reported terminal state needs no cancel.
+  let needsCancel = true;
 
-  for (;;) {
-    if (o.signal?.aborted) throw o.signal.reason;
-    let result;
-    try {
-      result = await backend.poll(jobId, o.signal);
-      failures = 0;
-    } catch (err) {
-      if (!isTransient(err) || ++failures >= MAX_POLL_FAILURES) throw err;
-      result = { state: 'pending' as const };
+  try {
+    for (;;) {
+      if (o.signal?.aborted) throw o.signal.reason;
+      let result;
+      try {
+        result = await backend.poll(jobId, o.signal);
+        failures = 0;
+      } catch (err) {
+        if (!isTransient(err) || ++failures >= MAX_POLL_FAILURES) throw err;
+        result = { state: 'pending' as const };
+      }
+      if (result.state === 'done') {
+        needsCancel = false;
+        return { rows: result.rows, unparsed: result.unparsed ?? 0 };
+      }
+      if (result.state === 'failed') {
+        needsCancel = false;
+        throw new BatchJobError(backend.provider, jobId, result.status, result.message, result.rows ?? []);
+      }
+      if (o.now() >= deadline) throw new BatchTimeoutError(backend.provider, jobId, o.timeoutMs);
+      await o.sleep(o.pollIntervalMs, o.signal);
     }
-    if (result.state === 'done') return { rows: result.rows, unparsed: result.unparsed ?? 0 };
-    if (result.state === 'failed') throw new BatchJobError(backend.provider, jobId, result.status, result.message, result.rows ?? []);
-    if (o.now() >= deadline) {
-      await backend.cancel?.(jobId).catch(() => {});
-      throw new BatchTimeoutError(backend.provider, jobId, o.timeoutMs);
-    }
-    await o.sleep(o.pollIntervalMs, o.signal);
+  } finally {
+    if (needsCancel) await backend.cancel?.(jobId).catch(() => {});
   }
 }
 
@@ -123,7 +133,25 @@ export async function submitAndAwait(
     slices.push(requests.slice(i, i + backend.maxRequestsPerJob));
   }
   summary.jobs = slices.length;
-  const outputs = await Promise.all(slices.map(slice => runJob(backend, slice, o)));
+  // allSettled semantics: when one job fails, abort the siblings (each cancels its own provider job)
+  // and wait for all of them before rethrowing the first real failure.
+  const stop = new AbortController();
+  const onCallerAbort = () => stop.abort(o.signal!.reason);
+  if (o.signal?.aborted) onCallerAbort();
+  else o.signal?.addEventListener('abort', onCallerAbort, { once: true });
+  let firstError: { error: unknown } | undefined;
+  const settled = await Promise.allSettled(slices.map(async slice => {
+    try {
+      return await runJob(backend, slice, { ...o, signal: stop.signal });
+    } catch (error) {
+      firstError ??= { error };
+      stop.abort(error);
+      throw error;
+    }
+  }));
+  o.signal?.removeEventListener('abort', onCallerAbort);
+  if (firstError) throw firstError.error;
+  const outputs = settled.map(r => (r as PromiseFulfilledResult<Awaited<ReturnType<typeof runJob>>>).value);
 
   // Reconcile by custom_id only: output order and count are not trusted.
   const first = new Map<string, BatchRow>();

@@ -10,10 +10,10 @@
  * 202, with `error` explaining it.
  */
 
-import { calculateAnalysisCost } from '../analysis/analysis-pricing.js';
 import { batchFetch, type FetchFn } from './http.js';
 import { parseResultRow } from './rows.js';
-import { BATCH_DISCOUNT, type BatchBackend, type BatchPollResult, type BatchRequest, type BatchRow } from './types.js';
+import { batchPrice } from './pricing.js';
+import type { BatchBackend, BatchPollResult, BatchRequest, BatchRow } from './types.js';
 
 const BASE = 'https://openrouter.ai/api/v1';
 
@@ -55,8 +55,7 @@ export function createOpenRouterBatchBackend(opts: OpenRouterBatchOptions): Batc
   };
   const call = (path: string, init: RequestInit) => batchFetch('openrouter', 'OpenRouter', fetchFn, `${BASE}${path}`, { headers, ...init });
   // Fallback when the batch carries no usage.cost: list price x the documented 50% batch discount.
-  const listPrice = (i: number, o: number) =>
-    Math.round(BATCH_DISCOUNT * calculateAnalysisCost('openrouter', opts.model, { inputTokens: i, outputTokens: o }) * 1_000_000) / 1_000_000;
+  const listPrice = (i: number, o: number) => batchPrice('openrouter', opts.model, i, o);
 
   return {
     provider: 'openrouter',

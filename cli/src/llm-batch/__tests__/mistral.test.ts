@@ -49,8 +49,8 @@ describe('mistral batch backend', () => {
     expect(result.state).toBe('done');
     if (result.state !== 'done') return;
     expect(result.rows).toEqual([
-      { customId: 'a', ok: true, content: '{"a":1}', inputTokens: 10, outputTokens: 5, costUsd: 0 },
-      { customId: 'b', ok: true, content: 'hello', inputTokens: 10, outputTokens: 5, costUsd: 0 },
+      { customId: 'a', ok: true, content: '{"a":1}', inputTokens: 10, outputTokens: 5 },
+      { customId: 'b', ok: true, content: 'hello', inputTokens: 10, outputTokens: 5, costUsd: undefined },
       { customId: 'c', ok: false, error: 'bad request' },
     ]);
     expect(String(fetchMock.mock.calls[0][0])).toContain('?inline=true');

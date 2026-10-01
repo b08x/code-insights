@@ -8,7 +8,8 @@ import { loadInput, loadResponse, seedSession } from '../../analysis/__tests__/f
 import type { AnalysisRunner, RunAnalysisParams, RunAnalysisResult } from '../../analysis/runner-types.js';
 import type { BatchBackend, BatchPollResult, BatchRequest, BatchRow } from '../../llm-batch/index.js';
 import { BatchJobError } from '../../llm-batch/index.js';
-import { providerIdentity } from '../identity.js';
+import { providerIdentity, type StudentIdentity } from '../identity.js';
+import type { PipelineResult } from '../../analysis/pipeline.js';
 
 let mockDb: Database.Database;
 
@@ -32,7 +33,7 @@ vi.mock('child_process', () => ({
 }));
 
 const { runMigrations } = await import('../../db/schema.js');
-const { preanalyzeSessions, chooseMode, batchProviderOf } = await import('../preanalyze.js');
+const { preanalyzeSessions, chooseMode, batchProviderOf, runnerTypeFor } = await import('../preanalyze.js');
 
 const isPQ = (text: string) => text.includes("Analyze the user's input messages");
 const mistral = providerIdentity('mistral', 'mistral-small-latest');
@@ -202,5 +203,112 @@ describe('preanalyzeSessions', () => {
     const out = await preanalyzeSessions(['nope'], { identity: mistral, runner, enqueue: vi.fn(), createBackend: () => backend, ...common });
     expect(submitted).toHaveLength(0);
     expect(out.sessions[0]).toMatchObject({ status: 'failed', errorType: 'session_not_found' });
+  });
+});
+
+describe('review fixes', () => {
+  it('queue runner type follows the identity: native/CLI never run as provider', async () => {
+    expect(runnerTypeFor(providerIdentity('openai', 'gpt'))).toBe('provider');
+    const native: StudentIdentity = { runner: 'claude-code-native', model: null, variant: null };
+    expect(runnerTypeFor(native)).toBe('native');
+    const enqueue = vi.fn();
+    await preanalyzeSessions(['a'], { identity: native, runner: syncRunner().runner, enqueue });
+    expect(enqueue).toHaveBeenCalledWith('a', 'native');
+  });
+
+  it.each([
+    ['backend provider', (b: BatchBackend) => { (b as { provider: string }).provider = 'openrouter'; }],
+    ['backend model', (b: BatchBackend) => { (b as { model: string }).model = 'other-model'; }],
+  ])('throws when the %s does not match the identity', async (_n, mutate) => {
+    const { backend } = fakeBackend();
+    mutate(backend);
+    await expect(preanalyzeSessions(['a'], { identity: mistral, runner: syncRunner().runner, enqueue: vi.fn(), createBackend: () => backend, ...common }))
+      .rejects.toThrow(/do not match the configured identity/);
+  });
+
+  it('throws when the runner model does not match the identity', async () => {
+    const { runner } = syncRunner();
+    const wrong = { ...runner, model: 'mistral-large-latest' } as AnalysisRunner;
+    await expect(preanalyzeSessions(['a'], { identity: mistral, runner: wrong, enqueue: vi.fn(), createBackend: () => fakeBackend().backend, ...common }))
+      .rejects.toThrow(/do not match/);
+  });
+
+  it('failed job with partial output: delivered rows are kept, only the rest runs synchronously', async () => {
+    const input = loadInput('prompt-quality');
+    seedSession(mockDb, input);
+    const { runner, calls } = syncRunner();
+    const { backend, submitted } = fakeBackend();
+    backend.poll = async () => {
+      const keep = submitted.find(r => !isPQ(r.body.messages[1].content))!;
+      throw new BatchJobError('mistral', 'job-1', 'TIMEOUT_EXCEEDED', 'expired', [
+        { customId: keep.customId, ok: true, content: loadResponse('analysis-ok.json'), inputTokens: 1000, outputTokens: 200, costUsd: 0.001 },
+      ]);
+    };
+    const enqueue = vi.fn();
+    const out = await preanalyzeSessions([input.session.id], { identity: mistral, runner, enqueue, createBackend: () => backend, ...common });
+
+    expect(enqueue).not.toHaveBeenCalled();
+    expect(calls).toHaveLength(1); // only the prompt-quality row
+    expect(isPQ(calls[0].userPrompt)).toBe(true);
+    expect(out.sessions[0]).toMatchObject({ status: 'analyzed' });
+    expect(out.batch).toMatchObject({ succeeded: 1, jobFailureResyncs: 1, replayMisses: 0 });
+  });
+
+  describe('replay accounting (fake pipeline)', () => {
+    /** Each session makes one call whose prompt is `promptFor(id)`; the pipeline "succeeds" with the call's cost. */
+    function fakePipeline(promptFor: (id: string) => string, extraCalls: string[] = []) {
+      const seen: Array<{ id: string; costUsd: number | undefined }> = [];
+      const pipeline = (async (id: string, opts: { runner: AnalysisRunner; persist?: boolean }): Promise<PipelineResult> => {
+        const r = await opts.runner.runAnalysis({ systemPrompt: 's', userPrompt: promptFor(id) });
+        for (const extra of opts.persist === false ? [] : extraCalls) await opts.runner.runAnalysis({ systemPrompt: 's', userPrompt: extra });
+        if (opts.persist !== false) seen.push({ id, costUsd: r.costUsd });
+        return { success: true, sessionId: id, reports: { session: { costUsd: r.costUsd ?? 0 } } } as unknown as PipelineResult;
+      }) as never;
+      return { pipeline, seen };
+    }
+    const rowsFor = (submitted: BatchRequest[], costUsd?: number): BatchPollResult => ({
+      state: 'done',
+      rows: submitted.map(r => ({ customId: r.customId, ok: true, content: '{}', inputTokens: 10, outputTokens: 5, ...(costUsd !== undefined && { costUsd }) })),
+    });
+
+    it('identical prompts across sessions: one billed row, cost split per session', async () => {
+      const { backend, submitted } = fakeBackend();
+      backend.poll = async () => rowsFor(submitted, 0.01);
+      const { pipeline, seen } = fakePipeline(() => 'shared prompt');
+      const out = await preanalyzeSessions(['s1', 's2'], { identity: mistral, runner: syncRunner().runner, enqueue: vi.fn(), createBackend: () => backend, pipeline, ...common });
+      expect(submitted).toHaveLength(1);
+      expect(seen.map(x => x.costUsd)).toEqual([0.005, 0.005]);
+      expect(out.batch?.costUsd).toBeCloseTo(0.01, 6);
+    });
+
+    it('unpriced model: costUsd stays undefined through replay (not a costed zero)', async () => {
+      const { backend, submitted } = fakeBackend();
+      backend.poll = async () => rowsFor(submitted); // no costUsd
+      const { pipeline, seen } = fakePipeline(id => `p-${id}`);
+      await preanalyzeSessions(['s1'], { identity: mistral, runner: syncRunner().runner, enqueue: vi.fn(), createBackend: () => backend, pipeline, ...common });
+      expect(seen).toEqual([{ id: 's1', costUsd: undefined }]);
+    });
+
+    it('unpriced sync fallback also leaves costUsd undefined', async () => {
+      const { backend, submitted } = fakeBackend();
+      backend.poll = async () => rowsFor(submitted);
+      const { pipeline } = fakePipeline(id => `p-${id}`, ['unforeseen']);
+      const { runner } = syncRunner();
+      const spy = vi.spyOn(runner, 'runAnalysis');
+      await preanalyzeSessions(['s1'], { identity: mistral, runner, enqueue: vi.fn(), createBackend: () => backend, pipeline, ...common });
+      expect(spy).toHaveBeenCalledTimes(1);
+      const res = await spy.mock.results[0].value;
+      expect(res.costUsd).toBeUndefined();
+    });
+
+    it('counts calls the collect phase did not foresee as replayMisses', async () => {
+      const { backend, submitted } = fakeBackend();
+      backend.poll = async () => rowsFor(submitted, 0.01);
+      const { pipeline } = fakePipeline(id => `p-${id}`, ['unforeseen-1', 'unforeseen-2']);
+      const { runner, calls } = syncRunner();
+      const out = await preanalyzeSessions(['s1'], { identity: mistral, runner, enqueue: vi.fn(), createBackend: () => backend, pipeline, ...common });
+      expect(out.batch?.replayMisses).toBe(2);
+      expect(calls).toHaveLength(2);
+    });
   });
 });

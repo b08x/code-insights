@@ -8,10 +8,10 @@
  * Inline requests are used (no file upload), so a job carries at most 9,999 requests.
  */
 
-import { calculateAnalysisCost } from '../analysis/analysis-pricing.js';
 import { batchFetch, parseJsonl, type FetchFn } from './http.js';
 import { parseResultRow } from './rows.js';
-import { BATCH_DISCOUNT, type BatchBackend, type BatchPollResult, type BatchRequest, type BatchRow } from './types.js';
+import { batchPrice } from './pricing.js';
+import type { BatchBackend, BatchPollResult, BatchRequest, BatchRow } from './types.js';
 
 const BASE = 'https://api.mistral.ai';
 /** Docs: "fewer than 10,000 requests" for inline batching (OpenAPI maxItems is 10000). */
@@ -39,8 +39,7 @@ export function createMistralBatchBackend(opts: MistralBatchOptions): BatchBacke
   const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${opts.apiKey}` };
   const call = (path: string, init: RequestInit) => batchFetch('mistral', 'Mistral', fetchFn, `${BASE}${path}`, { headers, ...init });
 
-  const price = (i: number, o: number) =>
-    Math.round(BATCH_DISCOUNT * calculateAnalysisCost('mistral', opts.model, { inputTokens: i, outputTokens: o }) * 1_000_000) / 1_000_000;
+  const price = (i: number, o: number) => batchPrice('mistral', opts.model, i, o);
 
   async function download(fileId: string, signal?: AbortSignal): Promise<BatchRow[]> {
     const res = await call(`/v1/files/${fileId}/content`, { signal });

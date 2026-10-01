@@ -55,6 +55,12 @@ describe('openrouter batch backend', () => {
     expect(c).toEqual({ customId: 'c', ok: false, error: 'invalid request' });
   });
 
+  it('unpriced model without usage.cost yields rows with no costUsd (not 0)', async () => {
+    const { backend } = backendWith(() => json({ id: 'b', status: 'completed', results: [okResult('a', 5, 5)] }));
+    const result = await backend.poll('b');
+    expect(result.state === 'done' && 'costUsd' in result.rows[0]).toBe(false);
+  });
+
   it('counts result objects without custom_id as unparsed', async () => {
     const { backend } = backendWith(() => json({ id: 'b', status: 'completed', results: [okResult('a', 1, 1), { foo: 1 }] }));
     const result = await backend.poll('b');

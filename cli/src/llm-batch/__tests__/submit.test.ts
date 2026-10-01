@@ -120,4 +120,52 @@ describe('submitAndAwait', () => {
     const sleep = async () => { controller.abort(new Error('stop')); };
     await expect(submitAndAwait(backend, [req('a')], { sleep, pollIntervalMs: 1, signal: controller.signal })).rejects.toThrow('stop');
   });
+
+  describe('cancellation', () => {
+    it('cancels the provider job when the caller aborts', async () => {
+      const controller = new AbortController();
+      const backend = fakeBackend([{ state: 'pending' }]);
+      const sleep = async () => { controller.abort(new Error('stop')); };
+      await expect(submitAndAwait(backend, [req('a')], { sleep, pollIntervalMs: 1, signal: controller.signal })).rejects.toThrow('stop');
+      expect(backend.cancel).toHaveBeenCalledWith('job-1');
+    });
+
+    it('cancels on a fatal poll error and on timeout (once)', async () => {
+      const fatal = fakeBackend([new BatchHttpError('mistral', 401, 'Invalid API key')]);
+      await expect(submitAndAwait(fatal, [req('a')], instant)).rejects.toThrow();
+      expect(fatal.cancel).toHaveBeenCalledTimes(1);
+
+      let t = 0;
+      const slow = fakeBackend([{ state: 'pending' }]);
+      await expect(submitAndAwait(slow, [req('a')], { ...instant, timeoutMs: 10, now: () => (t += 20) })).rejects.toBeInstanceOf(BatchTimeoutError);
+      expect(slow.cancel).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not cancel a job the provider already reported terminal, nor a finished one', async () => {
+      const failed = fakeBackend([{ state: 'failed', status: 'FAILED', message: 'x' }]);
+      await expect(submitAndAwait(failed, [req('a')], instant)).rejects.toBeInstanceOf(BatchJobError);
+      const done = fakeBackend([{ state: 'done', rows: [ok('a')] }]);
+      await submitAndAwait(done, [req('a')], instant);
+      expect(failed.cancel).not.toHaveBeenCalled();
+      expect(done.cancel).not.toHaveBeenCalled();
+    });
+
+    it('a failing slice aborts and cancels its siblings, then rethrows the real failure', async () => {
+      const fatal = new BatchHttpError('mistral', 401, 'Invalid API key');
+      const cancel = vi.fn(async () => {});
+      const backend = fakeBackend([{ state: 'pending' }], {
+        maxRequestsPerJob: 1,
+        cancel,
+        // job-1 fails fast; job-2 keeps pending until aborted
+        poll: vi.fn(async (jobId: string, signal?: AbortSignal) => {
+          if (jobId === 'job-1') throw fatal;
+          await new Promise<void>((_, reject) => signal?.addEventListener('abort', () => reject(signal.reason), { once: true }));
+          return { state: 'pending' as const };
+        }),
+      });
+      await expect(submitAndAwait(backend, [req('a'), req('b')], instant)).rejects.toBe(fatal);
+      expect(cancel).toHaveBeenCalledWith('job-2');
+      expect(cancel).toHaveBeenCalledWith('job-1');
+    });
+  });
 });
