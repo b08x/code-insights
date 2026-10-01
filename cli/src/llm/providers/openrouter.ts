@@ -1,7 +1,7 @@
 // OpenRouter provider implementation (server-side)
 
 import type { LLMClient, LLMMessage, LLMResponse, ChatOptions } from '../types.js';
-import { flattenContent } from '../types.js';
+import { flattenContent, DEFAULT_TEMPERATURE } from '../types.js';
 
 export function createOpenRouterClient(apiKey: string, model: string): LLMClient {
   return {
@@ -21,7 +21,7 @@ export function createOpenRouterClient(apiKey: string, model: string): LLMClient
         body: JSON.stringify({
           model,
           messages: messages.map(m => ({ role: m.role, content: flattenContent(m.content) })),
-          temperature: 0.7,
+          temperature: DEFAULT_TEMPERATURE,
         }),
       });
 

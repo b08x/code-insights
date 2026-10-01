@@ -201,9 +201,8 @@ describe('chat routes', () => {
     const events = parseSSE(await (await send(app, id, { content: 'draft a label' })).text());
     const draft = events.find(e => e.event === 'draft')!.data;
     expect(draft).toEqual({ kind: 'label', title: 'Outcome label', content: 'success', sessionId: 's1' });
-    const tables = (testDb.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as Array<{ name: string }>).map(t => t.name);
-    // Only chat tables are written to by the chat route.
-    expect(tables.filter(t => /label|optimization|prompt_version/.test(t))).toEqual([]);
+    // Drafts are proposals only: the agent never writes labels (decision Q9).
+    expect(testDb.prepare('SELECT COUNT(*) AS n FROM session_labels').get()).toEqual({ n: 0 });
     const got = await (await app.request(`/api/chat/conversations/${id}`)).json() as any;
     expect(got.messages[1].toolCalls.drafts).toHaveLength(1);
   });

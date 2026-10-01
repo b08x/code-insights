@@ -12,6 +12,7 @@ import {
   Sparkles,
   Search,
   Bot,
+  Tags,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -35,6 +36,7 @@ const NAV_ITEMS = [
   { href: '/insights', label: 'Insights', icon: Lightbulb, exact: false },
   { href: '/analytics', label: 'Analytics', icon: BarChart3, exact: false },
   { href: '/patterns', label: 'Patterns', icon: Sparkles, exact: false },
+  { href: '/label', label: 'Label', icon: Tags, exact: false },
   { href: '/export', label: 'Export', icon: Download, exact: false },
   { href: '/settings', label: 'Settings', icon: Settings, exact: false },
 ];

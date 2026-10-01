@@ -1,5 +1,5 @@
 import { useParams, Link } from 'react-router';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Tags } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { SessionDetailPanel } from '@/components/sessions/SessionDetailPanel';
 import { useInsights } from '@/hooks/useInsights';
@@ -28,6 +28,13 @@ export default function SessionDetailPage() {
           <Link to="/sessions">
             <ArrowLeft className="h-3.5 w-3.5" />
             Back to Sessions
+          </Link>
+        </Button>
+        {/* label-9: manual entry point into the labeling page for this session. */}
+        <Button variant="outline" size="sm" asChild className="ml-auto gap-1.5 text-xs">
+          <Link to={`/label/${id}`}>
+            <Tags className="h-3.5 w-3.5" aria-hidden />
+            Label this session
           </Link>
         </Button>
       </div>
