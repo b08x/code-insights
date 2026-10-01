@@ -91,4 +91,19 @@ describe('SQLite Migration v19: session_labels', () => {
     db.prepare(`UPDATE session_labels SET deleted_at = datetime('now') WHERE session_id = 's1'`).run();
     expect(db.prepare('SELECT split FROM session_labels').get()).toEqual({ split: 'test' });
   });
+  it('repairs a database that applied the pre-release v19 (no deleted_at, no delete trigger)', () => {
+    runMigrations(db);
+    // Recreate the earlier v19 shape: table without deleted_at, no no-delete trigger, still marked v19.
+    db.exec(`DROP TRIGGER session_labels_no_delete`);
+    db.exec(`ALTER TABLE session_labels DROP COLUMN deleted_at`);
+    insertLabel(db, 's-old', 'test');
+    expect(cols(db, 'session_labels').some(c => c.name === 'deleted_at')).toBe(false);
+
+    const result = runMigrations(db);
+    expect(result.v19Applied).toBe(false);
+    expect(cols(db, 'session_labels').some(c => c.name === 'deleted_at')).toBe(true);
+    const row = db.prepare(`SELECT split, deleted_at FROM session_labels WHERE session_id = 's-old'`).get() as { split: string; deleted_at: string | null };
+    expect(row).toEqual({ split: 'test', deleted_at: null });
+    expect(() => db.prepare(`DELETE FROM session_labels WHERE session_id = 's-old'`).run()).toThrow(/soft-deleted/);
+  });
 });

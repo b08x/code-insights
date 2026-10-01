@@ -152,6 +152,8 @@ export function runMigrations(db: Database.Database): MigrationResult {
   if (currentVersion < 19) {
     applyV19(db);
     v19Applied = true;
+  } else {
+    repairV19(db);
   }
 
   return { v6Applied, v7Applied, v8Applied, v9Applied, v10Applied, v11Applied, v12Applied, v13Applied, v14Applied, v15Applied, v16Applied, v17Applied, v18Applied, v19Applied };
@@ -513,6 +515,26 @@ function applyV18(db: Database.Database): void {
     }
   }
   db.prepare('INSERT OR IGNORE INTO schema_version (version) VALUES (?)').run(18);
+}
+
+/**
+ * v19 was revised before release to add soft deletes (deleted_at + no-hard-delete trigger).
+ * Databases that applied the earlier v19 (development builds) lack both, so bring them up to shape.
+ * Idempotent: a no-op on a database created with the current v19.
+ */
+function repairV19(db: Database.Database): void {
+  const cols = db.prepare(`PRAGMA table_info(session_labels)`).all() as Array<{ name: string }>;
+  if (cols.length === 0) return;
+  if (!cols.some(c => c.name === 'deleted_at')) {
+    db.exec(`ALTER TABLE session_labels ADD COLUMN deleted_at TEXT`);
+  }
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS session_labels_no_delete
+    BEFORE DELETE ON session_labels
+    BEGIN
+      SELECT RAISE(ABORT, 'session_labels rows are soft-deleted (set deleted_at); hard DELETE would let a split be re-rolled');
+    END;
+  `);
 }
 
 function applyV19(db: Database.Database): void {
