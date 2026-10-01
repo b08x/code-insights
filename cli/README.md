@@ -231,12 +231,49 @@ Generate AI-powered insights for individual sessions. Requires an LLM provider t
 # Analyze a specific session using configured LLM provider
 code-insights insights <session_id>
 
-# Analyze using Claude native (no API key needed)
-code-insights insights <session_id> --native
+# Analyze using explicit runners (no API key needed for native runners)
+code-insights insights <session_id> --opencode
+code-insights insights <session_id> --vibe
+code-insights insights <session_id> --antigravity
+code-insights insights <session_id> --claude
+code-insights insights <session_id> --codex
+code-insights insights <session_id> --native  # Uses fallback chain: Codex -> Claude
 
-# Check for unanalyzed sessions (last 7 days)
+# Check for unanalyzed sessions (last 7 days) and analyze them
 code-insights insights check
+code-insights insights check --opencode
 ```
+
+#### Runner Precedence Hierarchy & Configuration
+
+When analyzing sessions, Code Insights determines which runner to use based on the following precedence hierarchy:
+1. **Explicit CLI flag** (`--opencode`, `--vibe`, `--antigravity`, `--claude`, `--codex`, `--native`)
+2. **Saved runner in config.json** (`dashboard.analysis.runner`)
+3. **Default native fallback chain** (Codex -> Claude, if `--native` is used without specifying a runner name)
+4. **Configured background provider** (`dashboard.llm`)
+
+You can configure the saved runner in `~/.code-insights/config.json` via the `dashboard.analysis.runner` object:
+```json
+{
+  "dashboard": {
+    "analysis": {
+      "runner": {
+        "name": "opencode",
+        "model": "gpt-4o",
+        "variant": "experimental"
+      }
+    }
+  }
+}
+```
+
+**Scoped Model/Variant Rule**: The saved `model` and `variant` apply ONLY when the active runner matches the saved `runner.name`. If a different explicit runner flag is passed (e.g., you configured `opencode` but pass `--claude`), it runs with that CLI's defaults to prevent cross-tool argument errors.
+
+#### OpenCode Strict Opt-In & Queue Retries
+
+OpenCode has strict opt-in / non-fallback behavior. It is excluded from the standard `FallbackNativeRunner` chain. A missing or failing OpenCode CLI will not silently switch to Claude or Codex.
+
+**`IdentityMismatchError` Retry Semantics**: When using GEPA-optimized prompts, if a tuned prompt version is requested but a fallback runner answers (identity mismatch), the queue worker halts and leaves the job in the queue to retry when the correct student model becomes available, preventing lower-quality analyses from saving.
 
 #### Retrieval-Augmented Analysis
 
@@ -281,6 +318,7 @@ code-insights queue status --quiet
 
 # Process pending items in foreground
 code-insights queue process
+code-insights queue process --opencode
 
 # Retry failed analysis for a specific session
 code-insights queue retry <session_id>

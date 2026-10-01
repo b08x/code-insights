@@ -24,8 +24,8 @@
 - **Self-Optimizing Prompts (GEPA)** — Automate prompt engineering using Gradient-free Evolutionary Prompt Adaptation powered by `@ax-llm/ax`.
 - **Hybrid Semantic Memory (RAG)** — Combine local `sqlite-vec` KNN cosine similarity + FTS5 BM25 search via Reciprocal Rank Fusion (RRF) with parent/child chunking (`entity_chunks`).
 - **Interactive RAG Agent Chat** — Chat with your historical session memory and codebase context via streaming SSE.
-- **Multi-Level Native Runner Fallbacks** — Headless, zero-config local analysis supporting automatic failover chains: Codex → Claude → Antigravity → Mistral Vibe.
-- **Zero-Cost Reprocessing & Permanent Tombstoning** — Backfill schemas and attribute historical data locally ($0.00 API spend) while permanently tombstoning deleted sessions via Schema v16.
+- **Multi-Level Native Runner Fallbacks** — Headless, zero-config local analysis supporting automatic failover chains (Codex → Claude → Antigravity → Mistral Vibe) and strict opt-in OpenCode support.
+- **Zero-Cost Reprocessing & Permanent Tombstoning** — Backfill schemas and attribute historical data locally ($0.00 API spend) while permanently tombstoning deleted sessions via Schema V18.
 - **Developer Leverage Economics** — Measure ROI by comparing flat-rate subscriptions against pay-as-you-go token consumption.
 - **Privacy by Architecture** — Completely local SQLite backend with zero cloud dependencies.
 
@@ -74,7 +74,7 @@ code-insights dashboard       # Start visual dashboard at http://localhost:7890
 | `install-hook` | Zero-latency hook for tools | `--runner [codex|claude|vibe|antigravity]`, `--target [claude|vibe|opencode]` |
 | `uninstall-hook` | Remove auto-sync hooks | `--target [claude|vibe|opencode]` |
 | `sync` | Discover & import sessions | `--source [claude\|cursor\|copilot]` |
-| `insights [id]` | Run AI analysis on session | `--force`, `--claude`, `--native`, `--format [rich|json|quiet]` |
+| `insights [id]` | Run AI analysis on session | `--force`, `--opencode`, `--claude`, `--native`, `--format [rich|json|quiet]` |
 | `reflect` | Compile cross-session synthesis | `--week [YYYY-W##]` |
 | `stats` | Fast terminal analytics & comparison | `overview`, `cost`, `compare`, `today`, `projects` |
 | `config` | Configure providers & subscription plans | `plans`, `plans --set <id>.monthlyFee=<amt>` |
@@ -98,14 +98,14 @@ code-insights reprocess --dry-run
 # Run local zero-cost backfill and index rebuild ($0.00 API spend)
 code-insights reprocess
 ```
-- **Relational Step Backfill**: Extracts and normalizes 4–10 step episodes from existing `summary` insight metadata into `session_steps` (Schema v15), deriving co-occurring flags (`ran_tests`, `used_tools`, `has_course_correction`, `targets`).
+- **Relational Step Backfill**: Extracts and normalizes 4–10 step episodes from existing `summary` insight metadata into `session_steps` (Schema V18), deriving co-occurring flags (`ran_tests`, `used_tools`, `has_course_correction`, `targets`).
 - **Legacy Decision Attribution**: Analyzes evidence turn citations (`User#N` vs `Assistant#N`) in historical decision insights to classify unassigned decisions into `user`, `agent`, or `collaborative`.
 - **FTS5 Index Rebuild**: Automatically resynchronizes full-text search across messages, tool calls, and tool results.
 
 ### Permanent Session Tombstoning (Hard Deletes)
 When testing tools or cleaning up malformed or unwanted sessions, soft-deletes or simple SQLite row deletions leave raw session logs on disk—which causes standard sync tools to re-import them as new sessions.
 
-Code Insights introduces the Schema v16 `deleted_sessions` tombstone registry:
+Code Insights introduces the Schema V18 `deleted_sessions` tombstone registry:
 ```bash
 # Permanently purge all soft-deleted sessions and record tombstones
 code-insights purge -y
@@ -337,6 +337,13 @@ Settings are maintained in `~/.code-insights/config.json`:
     "llm": {
       "provider": "anthropic",
       "model": "claude-3-5-sonnet-latest"
+    },
+    "analysis": {
+      "runner": {
+        "name": "opencode",
+        "model": "gpt-4o",
+        "variant": "experimental"
+      }
     }
   }
 }
@@ -356,7 +363,7 @@ Session Sources (Claude, Cursor, Copilot, Gemini CLI, Hermes, OpenCode, Crush)
              │
              ▼
       ┌─────────────────────────────────────┐
-      │ SQLite DB (V13)                     │  ~/.code-insights/data.db
+      │ SQLite DB (V18)                     │  ~/.code-insights/data.db
       │  ┌──────────┐  ┌──────────────────┐ │
       │  ┌──────────┐  ┌──────────────────┐ │
       │  │ Tables   │  │ Search Tables    │ │

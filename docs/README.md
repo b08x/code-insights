@@ -11,7 +11,7 @@ This project transforms raw AI assistant session data into actionable insights t
 
 ## Key Concepts (God Nodes)
 
-The knowledge graph identifies 10 core abstractions that form the backbone of this system:
+The knowledge graph identifies 12 core abstractions that form the backbone of this system:
 
 | Rank | Node | Degree | Role | Community |
 |------|------|--------|------|-----------|
@@ -24,7 +24,9 @@ The knowledge graph identifies 10 core abstractions that form the backbone of th
 | 7 | `request()` | 29 | HTTP client function | LLM Client |
 | 8 | `runInsightsCommand()` | 28 | CLI insights processing | CLI Commands |
 | 9 | `SessionProvider` | 26 | React context provider | Session Management |
-| 10 | `runMigrations()` | 25 | Database migration runner | Database |
+| 10 | `runMigrations()` | 25 | Database migration runner (Schema V18+) | Database |
+| 11 | `OpenCodeRunner` | 24 | Headless analysis runner | Analysis Runners |
+| 12 | `StudentIdentity` | 22 | Evaluation integrity guard | Analysis Engine |
 
 ## Architecture Overview
 
@@ -45,31 +47,32 @@ flowchart TD
         jsonl.ts
     end
     
-    subgraph Analysis["Analysis Engine"]
+    subgraph Analysis["Analysis Engine & Runners"]
         llm/analysis.ts
         store.ts
         aggregation.ts
         recurring-insights.ts
+        opencode-runner.ts
     end
-    
+
     subgraph Storage["Persistence"]
         getDb
         analysis/analysis-db.ts
         sync.ts
     end
-    
+
     subgraph UI["Dashboard"]
         App.tsx
         SessionsPage.tsx
         AnalyticsPage.tsx
         MessageBubble.tsx
     end
-    
+
     subgraph Telemetry["Telemetry"]
         trackEvent
         utils/telemetry.ts
     end
-    
+
     Input --> Parsing
     Parsing --> Analysis
     Analysis --> Storage
@@ -83,15 +86,15 @@ flowchart TD
 The codebase is organized into 101 communities (modules). Top-level communities by node count:
 
 1. **aggregation.ts** (92 nodes) - Insight aggregation and statistics
-2. **Database Migration and Sync** (38 nodes) - Database operations and sync
+2. **Database Migration and Sync** (38 nodes) - Database operations and sync (V18 schema provenance)
 3. **MessageBubble.tsx** (40 nodes) - Chat message UI components (Chat Subsystem / /api/agent responses)
 4. **LlmProviderCard.tsx** (39 nodes) - LLM provider configuration UI
 5. **Agent Rules and Metadata** (33 nodes) - Agent configuration parsing
 6. **cli/src/index.ts** (29 nodes) - CLI entry point and commands
 7. **share-card-utils.ts** (41 nodes) - Social sharing functionality (WeekAtAGlanceStrip)
 8. **SessionDetailPanel.tsx** (36 nodes) - Session detail view (VitalsStrip, AnalysisCostLine)
-9. **copilot-cli.ts** (9 nodes) - Copilot CLI integration
-10. **Prompt Optimization Engine** (34 nodes) - Prompt optimization logic
+9. **Analysis Runners Layer** (24 nodes) - Extensible runner architecture (e.g., OpenCodeRunner)
+10. **Prompt Optimization Engine** (34 nodes) - Prompt optimization logic and Student Identity engine
 
 ## Surprising Connections
 
@@ -101,6 +104,7 @@ The graph reveals non-obvious dependencies:
 - `markInsightStale()` → `getDb()`: Stale marking uses database singleton
 - `getSessionAnalysisUsage()` → `getDb()`: Usage tracking via database
 - `InsightsCommandOptions` → `AnalysisRunner`: CLI options reference runner types
+- `resolveAnalysisPrompt()` → `IdentityMismatchError`: Identity mismatch aborts analysis pipeline
 - `TeammateMessageCard()` → `cn()`: UI component uses className utility
 
 ## Import Cycles
@@ -120,8 +124,8 @@ None detected. The codebase has no circular dependencies.
 - [Modules](./modules/) - Per-module documentation
   - [Dashboard Architecture](./modules/dashboard.md) - UI Components, Session Detail, and State Management
   - [Export Module](./modules/export.md) - Rails ActiveRecord JSON & FCA Incidence Matrix Exports
-  - [Analysis Engine](./modules/analysis-engine.md) - Prompt pipeline, Decision Attribution, and Step Matrix
-  - [Database Layer](./modules/database-layer.md) - SQLite Persistence, Schema Contracts, and Migrations
+  - [Analysis Engine & Runners](./modules/analysis-engine.md) - Prompt pipeline, Runners (OpenCodeRunner), Decision Attribution, and Identity Guard
+  - [Database Layer](./modules/database-layer.md) - SQLite Persistence, Schema Contracts (V18), and Migrations
 
 ---
 

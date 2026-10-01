@@ -33,6 +33,8 @@ flowchart TD
     AnalysisEngine -->|store.ts| InsightStore
     AnalysisEngine -->|aggregation.ts| Aggregator
     AnalysisEngine -->|recurring-insights.ts| RecurringDetector
+    AnalysisEngine -->|analysis/| AnalysisRunners
+    AnalysisRunners -->|opencode-runner.ts| OpenCodeRunner
     
     %% Layer 5: Parsing
     Parsing[("Parsing Layer")] -->|jsonl.ts| SessionParser
@@ -124,26 +126,31 @@ sequenceDiagram
     DB->>Analyzer: Return stored insights
 ```
 
-### Prompt Optimization Flow
+### Prompt Optimization Flow & Runner Identity
 
 ```mermaid
 sequenceDiagram
     participant User
     participant CLI
     participant Runner as queue-worker.ts
-    participant Service as Optimization Service
-    participant DB
+    participant Engine as Student Identity Engine
+    participant DB as DB (Schema V18)
     
     User->>CLI: Run optimize command
     CLI->>Runner: enqueue()
-    Runner->>Service: createGEPARunner()
-    Service->>DB: Load training data
-    Service->>Service: buildStudentPrompt()
-    Service->>Service: buildTeacherPrompt()
-    Service->>Service: Run GEPA optimization
-    Service->>DB: saveArtifact()
-    Service->>DB: saveScores()
-    DB->>User: Persist results
+    Runner->>Engine: resolveAnalysisPrompt()
+    Engine-->>Engine: check (target, identityKey)
+    alt Identity Mismatch
+        Engine-->>Runner: throw IdentityMismatchError
+    else Identity Match
+        Engine->>DB: Load training data
+        Engine->>Engine: buildStudentPrompt()
+        Engine->>Engine: buildTeacherPrompt()
+        Engine->>Engine: Run GEPA optimization (e.g., OpenCodeRunner)
+        Engine->>DB: saveArtifact()
+        Engine->>DB: saveScores() & save provenance (V18)
+        DB->>User: Persist results
+    end
 ```
 
 ## Design Rationale
@@ -209,7 +216,8 @@ This bridge pattern enables the system to handle diverse session formats from mu
 | **Server** | HTTP API | server/src/index.ts, routes/*.ts |
 | **Parsing** | Session file parsing | jsonl.ts, registry.ts, parsers/*.ts |
 | **Analysis** | Insight extraction | llm/analysis.ts, store.ts, aggregation.ts |
-| **Database** | Data persistence | analysis-db.ts, sync.ts, migrate.ts, client.ts |
+| **Runners** | LLM analysis execution & identity | analysis/*runner.ts, utils/runner-setting.ts |
+| **Database** | Data persistence (Schema V18) | analysis-db.ts, sync.ts, migrate.ts, client.ts |
 | **UI** | User interface | App.tsx, SessionsPage.tsx, AnalyticsPage.tsx |
 | **LLM** | LLM integration | llm/*, providers/*.ts |
 | **Telemetry** | Usage tracking | utils/telemetry.ts |

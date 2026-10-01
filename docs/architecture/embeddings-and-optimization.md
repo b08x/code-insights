@@ -224,7 +224,7 @@ Automatically evolve insight-generation prompts to maximize quality across multi
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│ GEPA Optimization Pipeline                                   │
+│ GEPA Optimization Pipeline & Production Runtime              │
 │                                                              │
 │  Sessions DB                                                 │
 │         │                                                    │
@@ -241,26 +241,41 @@ Automatically evolve insight-generation prompts to maximize quality across multi
 │                      │       ▼               ▼         │    │
 │                      │  ┌──────────────────────────┐   │    │
 │                      │  │ Multi-Objective Metric   │   │    │
-│                      │  │ - coverage               │   │    │
-│                      │  │ - precision              │   │    │
-│                      │  │ - actionability          │   │    │
-│                      │  │ - brevity                │   │    │
 │                      │  └──────────┬───────────────┘   │    │
 │                      │             │                   │    │
 │                      │             ▼                   │    │
 │                      │  ┌──────────────────────────┐   │    │
 │                      │  │ Pareto Frontier          │   │    │
-│                      │  │ (non-dominated solutions)│   │    │
 │                      │  └──────────┬───────────────┘   │    │
 │                      └─────────────┼───────────────────┘    │
 │                                    │                        │
 │                                    ▼                        │
 │                      ┌──────────────────────────┐           │
-│                      │ Optimization Artifacts   │           │
+│                      │ Local Prompt Registry    │           │
 │                      │ ~/.code-insights/        │           │
 │                      │   optimizations/         │           │
-│                      │     <version-id>/        │           │
-│                      └──────────────────────────┘           │
+│                      └─────────────┬────────────┘           │
+│                                    │                        │
+│  ┌─────────────────────────────────┼─────────────────────┐  │
+│  │ Analysis Runner Layer           ▼                     │  │
+│  │                      ┌──────────────────────────┐     │  │
+│  │  Target Registry ───▶│ resolveAnalysisPrompt()  │     │  │
+│  │  (targets.ts)        │ (resolve-prompt.ts)      │     │  │
+│  │                      └──────────┬───────────────┘     │  │
+│  │                                 │                     │  │
+│  │                                 ▼                     │  │
+│  │                      ┌──────────────────────────┐     │  │
+│  │  Student Identity ──▶│ Pipeline / Queue Worker  │     │  │
+│  │  Engine              │ (Fallback Guard)         │     │  │
+│  │  (identity.ts)       └──────────┬───────────────┘     │  │
+│  │                                 │                     │  │
+│  │                                 ▼                     │  │
+│  │                      ┌──────────────────────────┐     │  │
+│  │                      │ Schema V18 DB Persist    │     │  │
+│  │                      │ (student_identity,       │     │  │
+│  │                      │  prompt_version_id)      │     │  │
+│  │                      └──────────────────────────┘     │  │
+│  └───────────────────────────────────────────────────────┘  │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -268,10 +283,9 @@ Automatically evolve insight-generation prompts to maximize quality across multi
 
 | Component | File | Purpose |
 |-----------|------|---------|
-| `flow.ts` | `cli/src/optimization/flow.ts` | AxFlow definition for insight generation |
-| `metric.ts` | `cli/src/optimization/metric.ts` | Multi-objective metric (coverage, precision, actionability, brevity) |
-| `runner.ts` | `cli/src/optimization/runner.ts` | GEPA optimization orchestration |
-| `prompts.ts` | `cli/src/optimization/prompts.ts` | Save/load/version tracking for optimized prompts |
+| `targets.ts` | `cli/src/optimization/targets.ts` | Target Registry defining tuning boundaries (mutable vs frozen guidance) |
+| `identity.ts` | `cli/src/optimization/identity.ts` | Student Identity Engine (`runner\|model\|variant`) for strict model provenance |
+| `resolve-prompt.ts`| `cli/src/optimization/resolve-prompt.ts` | Resolves tuned prompt version matching the target and student identity |
 | `optimize.ts` | `cli/src/commands/optimize.ts` | CLI command definitions |
 
 ### Optimization Objectives

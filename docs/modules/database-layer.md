@@ -58,7 +58,7 @@ flowchart TD
 
 ### Database Schema
 
-#### insights Table
+#### insights Table (Schema V18)
 
 ```sql
 CREATE TABLE insights (
@@ -72,10 +72,14 @@ CREATE TABLE insights (
   actionable INTEGER,        -- 0 or 1
   confidence REAL,           -- 0.0 to 1.0
   metadata TEXT,            -- Structured JSON object (see below)
+  student_identity TEXT,     -- Provenance tracking
+  prompt_version_id TEXT,    -- Prompt version used for generation
   created_at TEXT NOT NULL,  -- ISO timestamp
   updated_at TEXT NOT NULL
 );
 ```
+
+**Provenance Preservation Contract**: During deduplication (`saveInsightsToDbWithDedup`), the engine preserves provenance invariance by keeping the original `student_identity` and `prompt_version_id` of the merged insights.
 
 ##### Structured `metadata` JSON Contracts
 
@@ -132,6 +136,20 @@ CREATE TABLE sessions (
   message_count INTEGER,
   duration_seconds INTEGER,
   metadata TEXT,
+  created_at TEXT NOT NULL
+);
+```
+
+#### session_facets Table (Schema V18)
+
+```sql
+CREATE TABLE session_facets (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  facet_type TEXT NOT NULL,
+  facet_value TEXT NOT NULL,
+  student_identity TEXT,     -- Provenance tracking
+  prompt_version_id TEXT,    -- Prompt version used for generation
   created_at TEXT NOT NULL
 );
 ```

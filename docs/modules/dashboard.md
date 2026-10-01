@@ -61,6 +61,13 @@ Decision insight cards render structured attribution and architectural branching
 - **Initiating Intent**: Indigo target icon displaying the user requirement or overarching goal behind the decision.
 - **Branch Point**: Amber split icon highlighting the critical alternative design path branched away from.
 
+### Dashboard Settings UI (`SettingsPage.tsx`)
+
+The settings page features dedicated configuration components:
+- **`RunnerSettingsCard.tsx`**: Dedicated card for analysis runner selection (Codex, Claude, Antigravity, Mistral Vibe, OpenCode, Provider).
+- **Dynamic Model Discovery**: Uses API interactions to fetch available models (`GET /api/config/models?runner=`).
+- **Variant Configuration**: Dynamic configuration of variant and reasoning effort for selected runners.
+
 ### Analytics & Economics View (`AnalyticsPage.tsx` & `StatsHero.tsx`)
 
 Visualizes session activity, token consumption, and compute economics across multiple AI providers and tools:

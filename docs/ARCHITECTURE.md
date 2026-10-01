@@ -132,9 +132,9 @@ Providers are registered in `providers/registry.ts`. To add a new source tool:
 | `sessions` | Session metadata, titles, character classification, `deleted_at` soft-delete; V6 adds `compact_count INTEGER`, `auto_compact_count INTEGER`, `slash_commands TEXT`; V10 adds `parent_session_id`, `agent_type` | V1, V5, V6, V10 |
 | `messages` | Full message content (stored during sync) | V1 |
 | `messages_fts` | SQLite FTS5 virtual table for lightning-fast keyword search (BM25) across content, tool_calls, tool_results | V12, V13 |
-| `insights` | LLM-generated insights (5 types) | V1, V2, V11 |
+| `insights` | LLM-generated insights (5 types); V18 adds `student_identity` and `prompt_version_id` provenance | V1, V2, V11, V18 |
 | `usage_stats` | Global usage aggregation | V1 |
-| `session_facets` | Cross-session facet data (friction, patterns, workflow) | V3 |
+| `session_facets` | Cross-session facet data (friction, patterns, workflow); V18 adds `student_identity` and `prompt_version_id` provenance | V3, V18 |
 | `reflect_snapshots` | Cached synthesis results, composite PK `(period, project_id, source_tool)` | V4 |
 | `analysis_usage` | Per-session LLM analysis cost data, composite PK `(session_id, analysis_type)` | V7, V8 |
 | `analysis_queue` | Analysis job queue for background processing, PK `session_id`, status lifecycle: pending → processing → completed/failed with retry logic | V9 |
@@ -202,6 +202,32 @@ code-insights insights <session_id> --format rich   # Score bars, severity dots,
 code-insights insights <session_id> --format json   # Machine-readable JSON
 code-insights insights <session_id> --format quiet   # Minimal output for scripting
 ```
+
+---
+
+## Analysis Runner Layer
+
+> Added in GEPA Phase 1b (PR #25) — Extensible runner architecture for LLM analysis execution.
+
+The analysis runner layer (`cli/src/analysis/`) provides a unified interface for executing LLM analysis across different environments. It includes 6 runner implementations: `CodexRunner`, `ClaudeRunner`, `AntigravityRunner`, `MistralVibeRunner`, `OpenCodeRunner`, and `ProviderRunner`.
+
+### OpenCodeRunner Design
+
+The `OpenCodeRunner` (`cli/src/analysis/opencode-runner.ts`) enables headless execution via `opencode run --format json`. Key design choices include:
+- **Process Isolation:** Sets `cwd = os.tmpdir()` to prevent parsing host repository `AGENTS.md` or project files.
+- **Stdin Piping:** Passes system and user prompts via stdin to bypass OS ~128KB argv limits.
+- **NDJSON Stream Parsing:** Isolates the final assistant message and extracts `step_finish` token usage.
+- **Strict Opt-in Non-Fallback Policy:** Explicitly excluded from `FallbackNativeRunner` to enforce strict evaluation boundaries.
+
+### Runner Selection & Validation
+
+Runner settings are strictly validated in `cli/src/utils/runner-setting.ts`. Security rules enforced by `RUNNER_MODEL_RE` and `RUNNER_VARIANT_RE` prevent shell/argv injection (e.g., no leading dashes, no pipe `|` characters).
+
+### Student Identity Engine & Fallback Guard
+
+To maintain evaluation integrity across prompts and runners, the system includes a Student Identity engine:
+- **Identity Format:** `runner|model|variant`
+- **Fallback Guard:** `resolveAnalysisPrompt()` verifies the `(target, identityKey)`. If a tuned prompt version is answered by a fallback runner, it throws an `IdentityMismatchError`. This aborts the pipeline and allows the queue worker to retry, ensuring that optimized prompts are not evaluated by generic fallback runners.
 
 ---
 
@@ -331,9 +357,10 @@ Both friction points and effective patterns use canonical category taxonomies wi
 
 | Route | Method | Purpose |
 |-------|--------|---------|
-| `/api/config/llm` | GET | Current LLM configuration |
-| `/api/config/llm` | PUT | Update LLM configuration |
+| `/api/config/llm` | GET | Returns `runner` object (`name`, `model`, `variant`) |
+| `/api/config/llm` | PUT | Accepts `runner` object with strict validation, cleans up incompatible model/variant on runner switch |
 | `/api/config/llm/test` | POST | Test LLM credentials |
+| `/api/config/models` | GET | Dynamic model discovery (`?runner=<runner>`) via `agy models`, `opencode models` with 10s timeout (`MODEL_LIST_TIMEOUT_MS`) |
 | `/api/config/llm/ollama-models` | GET | Discover available Ollama models |
 | `/api/telemetry/identity` | GET | Telemetry identity and opt-out status |
 

@@ -5,116 +5,91 @@
 ## Transformation Contract
 
 **Input**: `ParsedSession` objects from various AI assistant providers
-**Process**: LLM-powered insight extraction with deduplication and categorization
-**Output**: `InsightRow[]` - structured, categorized, deduplicated insights
+**Process**: Unified analysis pipeline orchestrating RAG context, prompt resolution, runner execution, SFL dimension scoring, FCA step extraction, and provenance recording
+**Output**: `AnalysisResult`, `InsightRow[]`, `SessionFacets` - structured, categorized, deduplicated insights and session aggregates
 
 ## Overview
 
 The Analysis Engine is the core module responsible for transforming raw session data into actionable insights. It consists of several sub-components working together:
 
-- **llm/analysis.ts** - Core analysis logic
-- **store.ts** - Insight storage and deduplication
-- **aggregation.ts** - Aggregated statistics and metrics
-- **recurring-insights.ts** - Pattern detection across sessions
+- **pipeline.ts** - Unified analysis pipeline orchestrating RAG context, prompt resolution, and runner execution
+- **runner-selection.ts** - Precedence-based runner selection and scoped model/variant rules
+- **opencode-runner.ts** - Headless OpenCode CLI runner with stdin piping, tmpdir isolation, and token extraction
+- **native-runner.ts** - API-based model runner (also includes codex-runner.ts, antigravity-runner.ts, mistral-vibe-runner.ts, provider-runner.ts)
+- **analysis-db.ts** - Insight & facet persistence with deduplication and provenance invariance
+- **queue-worker.ts** - Background job processing with `IdentityMismatchError` retry handling
 
 ## Key Files
 
-| File | Responsibility | Degree |
-|------|---------------|--------|
-| `llm/analysis.ts` | Session analysis with LLM | 30 nodes |
-| `store.ts` | Insight storage and deduplication | 56 nodes |
-| `aggregation.ts` | Aggregated statistics | 92 nodes |
-| `recurring-insights.ts` | Cross-session pattern detection | 16 nodes |
+| File | Responsibility |
+|------|---------------|
+| `pipeline.ts` | Unified analysis pipeline |
+| `runner-selection.ts` | Runner selection rules |
+| `opencode-runner.ts` | OpenCode CLI headless runner |
+| `native-runner.ts` | API-based model runner |
+| `analysis-db.ts` | Insight persistence with provenance invariance |
+| `queue-worker.ts` | Background job processing |
 
 ## Architecture
 
 ```mermaid
 flowchart TD
     subgraph AnalysisEngine["Analysis Engine"]
-        A[llm/analysis.ts] -->|analyzeSession| B[store.ts]
-        B -->|deduplicateByTitle| C[aggregation.ts]
-        C -->|findRecurringInsights| D[recurring-insights.ts]
+        A[pipeline.ts] -->|selectRunner| B[runner-selection.ts]
+        B --> C{Runner Type}
+        C -->|OpenCode| D[opencode-runner.ts]
+        C -->|Native/API| E[native-runner.ts]
+        D --> F[analysis-db.ts]
+        E --> F
     end
     
     Input[ParsedSession] --> A
-    D --> Output[InsightRow[]]
+    F -->|deduplicate| Output[InsightRow[], SessionFacets]
 ```
 
 ## Core Functions
 
-### analyzeSession()
+### runAnalysisPipeline()
 
-**Location**: `cli/src/llm/analysis.ts`
+**Location**: `cli/src/analysis/pipeline.ts`
 
 **Transformations**:
-1. Loads historical context from database
-2. Chunks messages for LLM processing
-3. Extracts insights from each chunk
-4. Deduplicates by title
-5. Returns structured insight rows
+1. Resolves prompts and model configurations
+2. Selects appropriate runner via `runner-selection.ts`
+3. Executes LLM runner
+4. Extracts insights, SFL dimensions, and FCA steps
+5. Records provenance
 
-**Signature**:
-```typescript
-async function analyzeSession(
-  session: ParsedSession,
-  options: AnalysisOptions
-): Promise<AnalysisResult>
-```
+### deduplicateByTitle() and Provenance Invariance
 
-### deduplicateByTitle()
-
-**Location**: `cli/src/analysis/store.ts`
+**Location**: `cli/src/analysis/analysis-db.ts`
 
 **Transformations**:
 1. Normalizes titles (trim, lowercase)
 2. Compares using Levenshtein distance
 3. Merges evidence from similar insights
-4. Keeps first occurrence
+4. **Provenance Invariance**: Preserves original `student_identity` and `prompt_version_id` on merged insights.
 
-**Signature**:
-```typescript
-function deduplicateByTitle(
-  insights: InsightRow[],
-  threshold?: number
-): InsightRow[]
-```
+## Queue Worker and Error Semantics
 
-### chunkMessages()
-
-**Location**: `cli/src/llm/analysis.ts`
-
-**Transformations**:
-1. Preserves code blocks as whole units
-2. Respects user/AI message boundaries
-3. Enforces token limits (~4000 per chunk)
-4. Handles large sessions efficiently
-
-**Signature**:
-```typescript
-function chunkMessages(
-  messages: ParsedMessage[],
-  maxTokens: number = 4000
-): ParsedMessage[][]
-```
+The background job processor (`queue-worker.ts`) handles session analysis tasks. If an `IdentityMismatchError` occurs (e.g. runner/prompt changes mid-queue), the queue will safely retry the semantics, avoiding corrupted or incorrectly attributed provenance.
 
 ## Data Flow
 
 ```
 ParsedSession
     ↓
-[analyzeSession]
+[runAnalysisPipeline]
     ↓
-Message Chunks (via chunkMessages)
+Runner Selection (opencode, native, codex, etc.)
     ↓
-LLM Analysis per Chunk
+LLM Execution
     ↓
 Raw Insight Results
     ↓
-[deduplicateByTitle]
+[saveInsightsToDbWithDedup]
     ↓
-Deduplicated InsightRow[]
-    ↓
-Database Storage (via saveInsightsToDbWithDedup)
+Deduplicated InsightRow[], SessionFacets
 ```
 
 ## Dependencies

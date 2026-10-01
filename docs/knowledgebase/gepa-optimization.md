@@ -26,12 +26,64 @@ The system operates on a **Student-Teacher architecture**:
     -   **Brevity**: Is it concise enough to keep costs low and readability high?
 5.  **Pareto Selection**: The loop tracks "non-dominated" solutions—prompts that excel in one objective without being significantly worse in others.
 
+### Phase 1b Architecture: Identity & Targets
+
+In GEPA Phase 1b, the prompt optimization architecture has been enhanced to support strict tuning boundaries and precise model provenance.
+
+#### Student Identity Engine
+
+Every prompt optimization is deeply coupled to the specific model that generated it. The Student Identity Engine (`cli/src/optimization/identity.ts`) strictly enforces this linkage using a canonical format:
+
+`runner|model|variant`
+
+Examples:
+- `claude-code-native|claude-sonnet-4-6|high`
+- `opencode|anthropic/claude-3-7-sonnet|high`
+- `provider:anthropic|claude-3-5-sonnet-latest|`
+
+**Strict rules:**
+- The pipe `|` is the absolute delimiter.
+- Identity components cannot contain `|`.
+- The `identityForCall()` function evaluates the actual runner result (not just the requested model) to accurately capture provenance.
+
+#### Target Registry
+
+The Target Registry (`cli/src/optimization/targets.ts`) defines exactly what GEPA is allowed to tune (mutable) versus what must remain constant (frozen):
+
+- **`session-analysis` (Enabled):**
+  - **Mutable:** `frictionGuidance` and `patternGuidance`.
+  - **Frozen:** JSON schema, canonical categories, output format, system prompt.
+- **`prompt-quality` (Disabled - Ready for Phase 2):**
+  - **Mutable:** `promptQualityGuidance`.
+
+By freezing the JSON schema and categories, GEPA can optimize the linguistic nuance of the prompt without breaking the downstream data pipeline.
+
+#### Prompt Resolution & Fallback Guards
+
+When a background job needs to analyze a session, the system uses `resolveAnalysisPrompt(target, identityKey)` (`cli/src/optimization/resolve-prompt.ts`) to fetch the tuned prompt variant that precisely matches the current target and the available student model.
+
+**The `IdentityMismatchError` Fallback Guard:**
+If a tuned prompt (`versionId !== null`) is dispatched, but an un-tuned fallback runner answers (e.g., due to API rate limits on the primary model), the system throws an `IdentityMismatchError` in the runner pipeline. The queue worker catches this error and leaves the task to be retried when the designated student model becomes available. This critical guard ensures that prompts optimized for a specific model are never evaluated by a different, potentially incompatible model.
+
+#### Schema V18 Provenance
+
+To track the effectiveness of optimizations in production, Schema V18 introduced two new columns to the `insights` and `session_facets` tables:
+- `student_identity`: The `runner|model|variant` that produced the data.
+- `prompt_version_id`: The specific GEPA artifact version used.
+
+---
+
 ### System Architecture
 
 [View Live Architecture Diagram (Interactive HTML)](../assets/gepa-optimization-diagram.html)
 
 ```mermaid
 graph TD
+    subgraph "Target Registry"
+        TR[Targets] --> |Mutable Guidance| OP
+        TR --> |Frozen Schema/Format| OP
+    end
+
     subgraph "Optimization Loop (AxGEPA)"
         T[Teacher AI - Evaluates] --> |Feedback| S[Student AI - Generates]
         S --> |Mutated Prompt| M[Multi-Objective Metric]
@@ -40,12 +92,23 @@ graph TD
     end
 
     DB[(Sessions DB)] --> |Training Data| S
+    OP[Optimization Pipeline] --> S
     PF --> |Winning Variant| AR[(Local Registry)]
+    
+    subgraph "Production Resolution & Guard"
+        SI[Student Identity Engine] --> |identityForCall| PR[Prompt Resolution]
+        AR --> PR
+        PR --> |Tuned Prompt| AW[Analysis Worker]
+        AW --> |IdentityMismatchError?| Q[Queue Worker Retry]
+        AW --> |Success| DB18[(Schema V18 DB)]
+    end
     
     style T fill:#4c1d95,stroke:#a78bfa,color:#fff
     style S fill:#083344,stroke:#22d3ee,color:#fff
     style M fill:#064e3b,stroke:#34d399,color:#fff
     style PF fill:#78230f,stroke:#fbbf24,color:#fff
+    style SI fill:#1e40af,stroke:#3b82f6,color:#fff
+    style TR fill:#166534,stroke:#22c55e,color:#fff
 ```
 
 ---
