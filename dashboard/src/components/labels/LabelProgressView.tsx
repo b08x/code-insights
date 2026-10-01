@@ -8,7 +8,7 @@ import { Check } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ErrorCard } from '@/components/ErrorCard';
 import { useLabelProgress } from '@/hooks/useLabels';
-import { coverageRatio, splitTargets } from '@/lib/label-form';
+import { coverageRatio, coverageStatus, splitTargets } from '@/lib/label-form';
 import { cn } from '@/lib/utils';
 
 const BUCKET_LABELS: Record<string, string> = {
@@ -23,40 +23,52 @@ interface MeterRowProps {
   label: string;
   labeled: number;
   target: number;
+  /** Sessions available to label; 0 renders an empty "none available" row, never a full meter. */
+  available?: number;
   /** Extra muted context, e.g. "12 available". */
   hint?: string;
   compact?: boolean;
 }
 
-function MeterRow({ label, labeled, target, hint, compact }: MeterRowProps) {
-  const ratio = coverageRatio(labeled, target);
-  const met = labeled >= target;
+function MeterRow({ label, labeled, target, available, hint, compact }: MeterRowProps) {
+  const status = coverageStatus({ labeled, target, available });
+  const ratio = status === 'unavailable' ? 0 : coverageRatio(labeled, target);
   return (
     <div className={cn('grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3', compact ? 'gap-y-1' : 'gap-y-1.5')}>
-      <span className="truncate text-xs text-foreground" title={label}>{label}</span>
-      <span className="flex items-center gap-1 text-xs tabular-nums text-muted-foreground">
-        <span className="text-foreground font-medium">{labeled}</span>/{target}
-        {met && target > 0 && (
-          <span className="inline-flex items-center gap-0.5 text-foreground">
-            <Check className="h-3 w-3" aria-hidden />
-            <span className="sr-only">target</span> met
-          </span>
-        )}
+      <span className={cn('truncate text-xs', status === 'unavailable' ? 'text-muted-foreground' : 'text-foreground')} title={label}>
+        {label}
       </span>
-      <div
-        role="meter"
-        aria-label={`${label} labels`}
-        aria-valuemin={0}
-        aria-valuemax={target}
-        aria-valuenow={Math.min(labeled, target)}
-        aria-valuetext={`${labeled} of ${target}${hint ? `, ${hint}` : ''}`}
-        className="col-span-2 h-1.5 rounded-full bg-primary/15 overflow-hidden"
-      >
+      {status === 'unavailable' ? (
+        <span className="text-xs text-muted-foreground">none available</span>
+      ) : (
+        <span className="flex items-center gap-1 text-xs tabular-nums text-muted-foreground">
+          <span className="text-foreground font-medium">{labeled}</span>/{target}
+          {status === 'met' && (
+            <span className="inline-flex items-center gap-0.5 text-foreground">
+              <Check className="h-3 w-3" aria-hidden />
+              <span className="sr-only">target</span> met
+            </span>
+          )}
+        </span>
+      )}
+      {status === 'unavailable' ? (
+        <div className="col-span-2 h-1.5 rounded-full border border-dashed border-border" aria-hidden />
+      ) : (
         <div
-          className="h-full rounded-full bg-primary transition-[width] duration-300"
-          style={{ width: `${ratio * 100}%` }}
-        />
-      </div>
+          role="meter"
+          aria-label={`${label} labels`}
+          aria-valuemin={0}
+          aria-valuemax={target}
+          aria-valuenow={Math.min(labeled, target)}
+          aria-valuetext={`${labeled} of ${target}${hint ? `, ${hint}` : ''}`}
+          className="col-span-2 h-1.5 rounded-full bg-primary/15 overflow-hidden"
+        >
+          <div
+            className="h-full rounded-full bg-primary transition-[width] duration-300"
+            style={{ width: `${ratio * 100}%` }}
+          />
+        </div>
+      )}
       {hint && !compact && <span className="col-span-2 text-[11px] text-muted-foreground">{hint}</span>}
     </div>
   );
@@ -124,6 +136,7 @@ export function LabelProgressView({ variant = 'full', className }: LabelProgress
                   label={BUCKET_LABELS[b.bucket] ?? b.bucket}
                   labeled={b.labeled}
                   target={b.target}
+                  available={b.available}
                   hint={`${b.available} available`}
                   compact
                 />
@@ -145,6 +158,7 @@ export function LabelProgressView({ variant = 'full', className }: LabelProgress
                     label={p.projectName}
                     labeled={p.labeled}
                     target={p.target}
+                    available={p.available}
                     hint={`${p.available} sessions`}
                     compact
                   />

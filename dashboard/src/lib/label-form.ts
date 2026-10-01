@@ -24,7 +24,13 @@ export interface AnalysisItem {
 
 export interface LabelFormState {
   decisions: Record<string, ItemDecision>;
+  /** Typed key points, plus saved key points that match no current analysis item. */
   extraKeyPoints: string[];
+  /**
+   * Saved forbidden claims that match no current analysis item (the analysis changed since the
+   * label was saved). Carried into the payload so an edit never silently drops them.
+   */
+  preservedForbidden: string[];
   outcome: string | null;
   frictionCategories: string[];
   patternCategories: string[];
@@ -34,6 +40,7 @@ export interface LabelFormState {
 export const EMPTY_LABEL_FORM: LabelFormState = {
   decisions: {},
   extraKeyPoints: [],
+  preservedForbidden: [],
   outcome: null,
   frictionCategories: [],
   patternCategories: [],
@@ -44,6 +51,7 @@ export type LabelFormAction =
   | { type: 'decide'; item: AnalysisItem; decision: ItemDecision }
   | { type: 'addKeyPoint'; text: string }
   | { type: 'removeKeyPoint'; index: number }
+  | { type: 'removeForbidden'; index: number }
   | { type: 'setOutcome'; outcome: string }
   | { type: 'toggleFriction'; category: string }
   | { type: 'togglePattern'; category: string }
@@ -86,6 +94,8 @@ export function labelFormReducer(state: LabelFormState, action: LabelFormAction)
     }
     case 'removeKeyPoint':
       return { ...state, extraKeyPoints: state.extraKeyPoints.filter((_, i) => i !== action.index) };
+    case 'removeForbidden':
+      return { ...state, preservedForbidden: state.preservedForbidden.filter((_, i) => i !== action.index) };
     case 'setOutcome':
       return { ...state, outcome: action.outcome };
     case 'toggleFriction':
@@ -119,7 +129,7 @@ export function buildLabelPayload(items: AnalysisItem[], state: LabelFormState):
   const kept = items.filter((i) => state.decisions[i.id] === 'keep').map((i) => i.text);
   const wrong = items.filter((i) => state.decisions[i.id] === 'wrong').map((i) => i.text);
   const keyPoints = dedupe([...kept, ...state.extraKeyPoints]);
-  const forbiddenClaims = dedupe(wrong).filter((w) => !keyPoints.some((k) => sameText(k, w)));
+  const forbiddenClaims = dedupe([...wrong, ...state.preservedForbidden]).filter((w) => !keyPoints.some((k) => sameText(k, w)));
 
   if (keyPoints.length === 0) errors.push('Keep at least one item or add a key point');
   if (errors.length) return { ok: false, errors };
@@ -150,9 +160,13 @@ export function formStateFromLabel(items: AnalysisItem[], label: SessionLabel | 
     else if (label.forbiddenClaims.some((f) => sameText(f, item.text))) decisions[item.id] = 'wrong';
   }
   const extraKeyPoints = label.keyPoints.filter((k) => !items.some((i) => sameText(i.text, k)));
+  const preservedForbidden = label.forbiddenClaims.filter(
+    (f) => !items.some((i) => sameText(i.text, f)) && !label.keyPoints.some((k) => sameText(k, f)),
+  );
   return {
     decisions,
     extraKeyPoints,
+    preservedForbidden,
     outcome: label.outcome,
     frictionCategories: [...label.frictionCategories],
     patternCategories: [...label.patternCategories],
@@ -255,10 +269,18 @@ export function deriveAnalysisItems(
 
 // ── Progress ─────────────────────────────────────────────────────────────────
 
-/** Ratio for a meter, clamped to [0, 1]; a zero target counts as met. */
+/** Ratio for a meter, clamped to [0, 1]. A zero target (nothing to label) is an empty meter. */
 export function coverageRatio(labeled: number, target: number): number {
-  if (target <= 0) return 1;
+  if (target <= 0) return 0;
   return Math.max(0, Math.min(1, labeled / target));
+}
+
+export type CoverageStatus = 'unavailable' | 'in-progress' | 'met';
+
+/** 'unavailable' when there is nothing to label (target 0), so the row never reads as complete. */
+export function coverageStatus(row: { labeled: number; target: number; available?: number }): CoverageStatus {
+  if (row.target <= 0 || row.available === 0) return 'unavailable';
+  return row.labeled >= row.target ? 'met' : 'in-progress';
 }
 
 /** Split shares the server assigns (60/20/20); used to show per-split targets. */

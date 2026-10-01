@@ -4,6 +4,7 @@ import {
   buildLabelPayload,
   countDecisions,
   coverageRatio,
+  coverageStatus,
   deriveAnalysisItems,
   formStateFromLabel,
   isFormDirty,
@@ -146,6 +147,40 @@ describe('formStateFromLabel', () => {
     expect(r.ok && r.value.forbiddenClaims).toEqual(['Chose SQLite over Postgres: local-first']);
   });
 
+  it('keeps forbidden claims and key points that no longer match any item after the analysis changes', () => {
+    // Analysis re-run: item "b" (the forbidden claim) and the kept item "a" are gone.
+    const changed: AnalysisItem[] = [
+      { id: 'x', kind: 'summary', text: 'A brand new summary bullet' },
+      byId('c'),
+    ];
+    const s = formStateFromLabel(changed, label);
+    expect(s.decisions).toEqual({});
+    expect(s.preservedForbidden).toEqual(['Chose SQLite over Postgres: local-first']);
+    expect(s.extraKeyPoints).toEqual(['added a retry wrapper around the fetch client', 'Typed by hand']);
+
+    // Editing something unrelated and saving must not drop either list.
+    const edited = labelFormReducer(s, { type: 'decide', item: changed[0], decision: 'wrong' });
+    const r = buildLabelPayload(changed, edited);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.value.keyPoints).toEqual(['added a retry wrapper around the fetch client', 'Typed by hand']);
+    expect(r.value.forbiddenClaims).toEqual(['A brand new summary bullet', 'Chose SQLite over Postgres: local-first']);
+
+    // Round-trip: reloading the saved result restores the same payload.
+    const saved: SessionLabel = { ...label, ...r.value };
+    const again = buildLabelPayload(changed, formStateFromLabel(changed, saved));
+    expect(again).toEqual(r);
+  });
+
+  it('removes a preserved forbidden claim explicitly', () => {
+    const s = formStateFromLabel([byId('a')], label);
+    expect(s.preservedForbidden).toHaveLength(1);
+    const removed = labelFormReducer(s, { type: 'removeForbidden', index: 0 });
+    expect(removed.preservedForbidden).toEqual([]);
+    const r = buildLabelPayload([byId('a')], removed);
+    expect(r.ok && r.value.forbiddenClaims).toEqual([]);
+  });
+
   it('returns the empty form without a label and tracks dirtiness', () => {
     const s = formStateFromLabel(items, null);
     expect(s).toEqual(EMPTY_LABEL_FORM);
@@ -201,10 +236,16 @@ describe('deriveAnalysisItems', () => {
 });
 
 describe('progress helpers', () => {
-  it('clamps coverage ratio and treats zero target as met', () => {
+  it('clamps coverage ratio; a zero target (nothing available) is an empty meter, not a full one', () => {
     expect(coverageRatio(3, 6)).toBe(0.5);
     expect(coverageRatio(9, 6)).toBe(1);
-    expect(coverageRatio(0, 0)).toBe(1);
+    expect(coverageRatio(0, 0)).toBe(0);
+  });
+
+  it('classifies coverage rows', () => {
+    expect(coverageStatus({ labeled: 0, target: 0, available: 0 })).toBe('unavailable');
+    expect(coverageStatus({ labeled: 1, target: 3, available: 5 })).toBe('in-progress');
+    expect(coverageStatus({ labeled: 3, target: 3, available: 5 })).toBe('met');
   });
 
   it('derives 60/20/20 split targets', () => {

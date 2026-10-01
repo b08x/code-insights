@@ -16,7 +16,7 @@
 // n next in queue · Ctrl/Cmd+Enter save · Ctrl/Cmd+Shift+Enter save & next.
 
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
-import { Link, useNavigate, useParams } from 'react-router';
+import { Link, useBlocker, useNavigate, useParams } from 'react-router';
 import { toast } from 'sonner';
 import {
   ArrowRight,
@@ -390,14 +390,18 @@ function SessionLabeler({ sessionId }: { sessionId: string }) {
     [items],
   );
 
+  const dirtyRef = useRef(dirty);
+  dirtyRef.current = dirty;
+  const skipBlockRef = useRef(false);
+
   const goNext = useCallback(() => {
     if (!nextId) {
       toast.info('The queue is empty');
       return;
     }
-    if (dirty && !window.confirm('Discard unsaved changes to this label?')) return;
+    // The navigation blocker below asks before discarding unsaved edits.
     navigate(`/label/${nextId}`);
-  }, [dirty, navigate, nextId]);
+  }, [navigate, nextId]);
 
   const save = useCallback(
     async (andNext: boolean) => {
@@ -411,6 +415,8 @@ function SessionLabeler({ sessionId }: { sessionId: string }) {
         const saved = await saveMutation.mutateAsync({ sessionId, input: built.value });
         toast.success(`Label saved · ${saved.split} split`);
         if (andNext) {
+          // Just saved: the form is still "dirty" until the label refetch resets the baseline.
+          skipBlockRef.current = true;
           if (nextId) navigate(`/label/${nextId}`);
           else toast.info('That was the last queued session');
         }
@@ -461,7 +467,18 @@ function SessionLabeler({ sessionId }: { sessionId: string }) {
     return () => document.removeEventListener('keydown', onKey);
   }, [activeIndex, decide, focusRow, goNext, items.length, save]);
 
-  // Warn before closing the tab with unsaved edits.
+  // In-app navigation (queue links, Open session, nav, browser back) with unsaved edits asks first.
+  const blocker = useBlocker(
+    ({ currentLocation, nextLocation }) =>
+      dirtyRef.current && !skipBlockRef.current && currentLocation.pathname !== nextLocation.pathname,
+  );
+  useEffect(() => {
+    if (blocker.state !== 'blocked') return;
+    if (window.confirm('Discard unsaved changes to this label?')) blocker.proceed();
+    else blocker.reset();
+  }, [blocker]);
+
+  // Warn before closing or reloading the tab with unsaved edits.
   useEffect(() => {
     if (!dirty) return;
     const onBeforeUnload = (e: BeforeUnloadEvent) => e.preventDefault();
@@ -602,7 +619,7 @@ function SessionLabeler({ sessionId }: { sessionId: string }) {
             </Button>
           </div>
           {form.extraKeyPoints.length > 0 && (
-            <ul className="space-y-1">
+            <ul className="space-y-1" aria-label="Key points not in the current analysis">
               {form.extraKeyPoints.map((kp, i) => (
                 <li key={`${i}-${kp}`} className="flex items-start gap-2 rounded-md border border-l-4 border-l-primary bg-card px-3 py-1.5 text-sm">
                   <span className="flex-1">{kp}</span>
@@ -620,6 +637,32 @@ function SessionLabeler({ sessionId }: { sessionId: string }) {
             </ul>
           )}
         </section>
+
+        {/* Saved forbidden claims the current analysis no longer contains: kept unless removed. */}
+        {form.preservedForbidden.length > 0 && (
+          <section aria-labelledby="preserved-forbidden-heading" className="space-y-2">
+            <h2 id="preserved-forbidden-heading" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Forbidden claims not in the current analysis
+            </h2>
+            <ul className="space-y-1">
+              {form.preservedForbidden.map((fc, i) => (
+                <li key={`${i}-${fc}`} className="flex items-start gap-2 rounded-md border border-l-4 border-l-destructive bg-card px-3 py-1.5 text-sm">
+                  <X className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
+                  <span className="flex-1">{fc}</span>
+                  <Button
+                    type="button"
+                    size="icon-xs"
+                    variant="ghost"
+                    aria-label={`Remove forbidden claim: ${fc}`}
+                    onClick={() => dispatch({ type: 'removeForbidden', index: i })}
+                  >
+                    <X aria-hidden />
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
 
         {/* Outcome */}
         <fieldset className="space-y-2">
