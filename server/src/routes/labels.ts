@@ -6,7 +6,7 @@ import {
 } from '@code-insights/cli/db/labels';
 import { rankLabelQueue, noActiveLearningSignal } from '@code-insights/cli/optimization/label-queue';
 import { SPLITS, type Split } from '@code-insights/cli/optimization/splits';
-import { preanalyzeSessions, batchProviderOf, type PreanalyzeResult } from '@code-insights/cli/optimization/preanalyze';
+import { preanalyzeSessions, batchProviderOf, runnerTypeFor, type PreanalyzeResult } from '@code-insights/cli/optimization/preanalyze';
 import { providerIdentity } from '@code-insights/cli/optimization/identity';
 import { ProviderRunner } from '@code-insights/cli/analysis/provider-runner';
 import { enqueue } from '@code-insights/cli/db/queue';
@@ -146,9 +146,11 @@ app.post('/preanalyze', async (c) => {
   const apiKey = llm ? resolveApiKey(llm.provider, llm.apiKey) : undefined;
 
   if (!llm || !identity || !batchProviderOf(identity) || !apiKey) {
+    // Dashboard-triggered analysis is always the configured provider; derive the type from the identity anyway so a native identity never lands on the provider.
+    const queueRunnerType = identity ? runnerTypeFor(identity) : 'provider';
     let enqueued = 0;
     for (const id of sessionIds) {
-      try { enqueue(id, 'provider'); enqueued++; } catch { /* counted as not enqueued */ }
+      try { enqueue(id, queueRunnerType); enqueued++; } catch { /* counted as not enqueued */ }
     }
     return c.json({ mode: 'queue', submitted: sessionIds.length, enqueued });
   }
