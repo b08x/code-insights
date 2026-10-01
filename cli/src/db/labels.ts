@@ -135,28 +135,35 @@ function toLabel(row: LabelRow): SessionLabel {
 }
 
 export function getLabel(db: Database.Database = getDb(), sessionId: string): SessionLabel | null {
-  const row = db.prepare('SELECT * FROM session_labels WHERE session_id = ?').get(sessionId) as LabelRow | undefined;
+  const row = db.prepare('SELECT * FROM session_labels WHERE session_id = ? AND deleted_at IS NULL').get(sessionId) as LabelRow | undefined;
   return row ? toLabel(row) : null;
 }
 
 export function listLabels(
   db: Database.Database = getDb(),
-  opts: { split?: Split; projectId?: string } = {},
+  opts: { split?: Split; projectId?: string; usableOnly?: boolean } = {},
 ): SessionLabel[] {
-  const where: string[] = [];
+  const where: string[] = ['l.deleted_at IS NULL'];
   const params: string[] = [];
   if (opts.split) { where.push('l.split = ?'); params.push(opts.split); }
   if (opts.projectId) { where.push('s.project_id = ?'); params.push(opts.projectId); }
+  // usableOnly: the session still exists (a purge removes the row) and is not soft-deleted.
+  // Orphaned labels stay stored but are not usable for optimization or progress.
+  if (opts.usableOnly) where.push('s.id IS NOT NULL AND s.deleted_at IS NULL');
   const rows = db.prepare(
     `SELECT l.* FROM session_labels l LEFT JOIN sessions s ON s.id = l.session_id
-     ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
-     ORDER BY l.updated_at DESC, l.session_id`
+     WHERE ${where.join(' AND ')}
+     ORDER BY ${opts.usableOnly ? 'l.session_id' : 'l.updated_at DESC, l.session_id'}`
   ).all(...params) as LabelRow[];
   return rows.map(toLabel);
 }
 
+/** Soft delete: the row (and its split) is kept so a later re-label restores the same split. */
 export function deleteLabel(db: Database.Database = getDb(), sessionId: string): boolean {
-  return db.prepare('DELETE FROM session_labels WHERE session_id = ?').run(sessionId).changes > 0;
+  return db.prepare(
+    `UPDATE session_labels SET deleted_at = datetime('now'), updated_at = datetime('now')
+     WHERE session_id = ? AND deleted_at IS NULL`
+  ).run(sessionId).changes > 0;
 }
 
 /**
@@ -181,6 +188,8 @@ export function upsertLabel(
     const split = assignSplit({
       sessionId, projectId: session.project_id, seed: opts.seed ?? DEFAULT_SPLIT_SEED, existing: existingRows,
     });
+    // existingRows deliberately includes soft-deleted labels: their splits still count and a
+    // re-label of the same session keeps its original split.
     // split is deliberately absent from the DO UPDATE list: it is write-once.
     db.prepare(
       `INSERT INTO session_labels
@@ -194,7 +203,8 @@ export function upsertLabel(
          key_points_json = excluded.key_points_json,
          forbidden_claims_json = excluded.forbidden_claims_json,
          note = excluded.note,
-         updated_at = datetime('now')`
+         updated_at = datetime('now'),
+         deleted_at = NULL`
     ).run(
       sessionId, LABEL_TARGET, input.outcome,
       JSON.stringify(input.frictionCategories), JSON.stringify(input.patternCategories),
@@ -214,7 +224,7 @@ function loadSessionRows(db: Database.Database): QueueRow[] {
     `SELECT s.id AS sessionId, s.project_id AS projectId, s.source_tool AS sourceTool,
             s.message_count AS messageCount, s.started_at AS startedAt,
             CASE WHEN l.session_id IS NULL THEN 0 ELSE 1 END AS labeled
-     FROM sessions s LEFT JOIN session_labels l ON l.session_id = s.id
+     FROM sessions s LEFT JOIN session_labels l ON l.session_id = s.id AND l.deleted_at IS NULL
      WHERE s.deleted_at IS NULL`
   ).all() as QueueRow[];
 }
@@ -241,7 +251,12 @@ export interface LabelProgress {
 
 export function getLabelProgress(db: Database.Database = getDb()): LabelProgress {
   const splits: Record<Split, number> = { train: 0, validation: 0, test: 0 };
-  for (const r of db.prepare('SELECT split, COUNT(*) AS n FROM session_labels GROUP BY split').all() as Array<{ split: Split; n: number }>) {
+  // Same usable set as the project/bucket counts below: live label on a live session.
+  for (const r of db.prepare(
+    `SELECT l.split AS split, COUNT(*) AS n FROM session_labels l
+     JOIN sessions s ON s.id = l.session_id AND s.deleted_at IS NULL
+     WHERE l.deleted_at IS NULL GROUP BY l.split`
+  ).all() as Array<{ split: Split; n: number }>) {
     splits[r.split] = r.n;
   }
 
@@ -272,7 +287,8 @@ export function getLabelProgress(db: Database.Database = getDb()): LabelProgress
       .sort((a, b) => b.available - a.available || a.projectId.localeCompare(b.projectId)),
     byLengthBucket: LENGTH_BUCKETS.map(bucket => {
       const v = buckets.get(bucket)!;
-      return { bucket, ...v, target: Math.min(COVERAGE_TARGETS.perLengthBucket, v.available) };
+      // Uncapped: a bucket with no sessions shows 0/target (a coverage gap), never 0/0.
+      return { bucket, ...v, target: COVERAGE_TARGETS.perLengthBucket };
     }),
   };
 }

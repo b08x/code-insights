@@ -26,7 +26,7 @@ describe('SQLite Migration v19: session_labels', () => {
     const names = cols(db, 'session_labels').map(c => c.name);
     expect(names).toEqual([
       'session_id', 'target', 'outcome', 'friction_categories_json', 'pattern_categories_json',
-      'key_points_json', 'forbidden_claims_json', 'note', 'split', 'created_at', 'updated_at',
+      'key_points_json', 'forbidden_claims_json', 'note', 'split', 'created_at', 'updated_at', 'deleted_at',
     ]);
   });
 
@@ -34,6 +34,7 @@ describe('SQLite Migration v19: session_labels', () => {
     runMigrations(db);
     db.exec(`
       DROP TRIGGER IF EXISTS session_labels_split_immutable;
+      DROP TRIGGER IF EXISTS session_labels_no_delete;
       DROP TABLE session_labels;
       INSERT INTO projects (id, name, path, last_activity) VALUES ('p1','P','/p','2026-01-01');
       INSERT INTO sessions (id, project_id, project_name, project_path, started_at, ended_at)
@@ -65,6 +66,7 @@ describe('SQLite Migration v19: session_labels', () => {
     expect(row.key_points_json).toBe('[]');
     expect(row.forbidden_claims_json).toBe('[]');
     expect(row.note).toBeNull();
+    expect(row.deleted_at).toBeNull();
     expect(typeof row.created_at).toBe('string');
   });
 
@@ -80,5 +82,13 @@ describe('SQLite Migration v19: session_labels', () => {
     db.prepare(`UPDATE session_labels SET outcome = 'low', split = 'validation' WHERE session_id = 's1'`).run();
     const row = db.prepare('SELECT outcome, split FROM session_labels').get();
     expect(row).toEqual({ outcome: 'low', split: 'validation' });
+  });
+
+  it('aborts hard DELETE so a split can never be re-rolled (labels are soft-deleted)', () => {
+    runMigrations(db);
+    insertLabel(db, 's1', 'test');
+    expect(() => db.prepare(`DELETE FROM session_labels WHERE session_id = 's1'`).run()).toThrow(/soft-delete/);
+    db.prepare(`UPDATE session_labels SET deleted_at = datetime('now') WHERE session_id = 's1'`).run();
+    expect(db.prepare('SELECT split FROM session_labels').get()).toEqual({ split: 'test' });
   });
 });

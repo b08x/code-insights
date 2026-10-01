@@ -112,6 +112,59 @@ describe('label storage', () => {
     expect(getLabel(db, 's1')).toBeNull();
   });
 
+  it('delete then re-label restores the original split', () => {
+    seed(db, Array.from({ length: 12 }, (_, i) => ({ id: `s${i}`, project: 'a' })));
+    for (let i = 0; i < 12; i++) upsertLabel(db, `s${i}`, validate(valid));
+    const before = getLabel(db, 's3')!;
+    expect(deleteLabel(db, 's3')).toBe(true);
+    expect(getLabel(db, 's3')).toBeNull();
+    expect(listLabels(db).map(l => l.sessionId)).not.toContain('s3');
+    expect(deleteLabel(db, 's3')).toBe(false);
+    const relabeled = upsertLabel(db, 's3', validate({ ...valid, outcome: 'low' }), { seed: 'different-seed' });
+    expect(relabeled.split).toBe(before.split);
+    expect(relabeled.outcome).toBe('low');
+    expect(getLabel(db, 's3')).not.toBeNull();
+  });
+
+  it('a soft-deleted label is excluded from queue labeled set and progress', () => {
+    seed(db, [{ id: 's1', project: 'a' }, { id: 's2', project: 'a' }]);
+    upsertLabel(db, 's1', validate(valid));
+    deleteLabel(db, 's1');
+    const q = getLabelQueueInputs(db);
+    expect(q.labeled).toEqual([]);
+    expect(q.candidates.map(x => x.sessionId).sort()).toEqual(['s1', 's2']);
+    expect(getLabelProgress(db).total).toBe(0);
+  });
+
+  it('usableOnly excludes labels whose session was purged or soft-deleted, orders by session_id', () => {
+    seed(db, [{ id: 'c', project: 'a' }, { id: 'a', project: 'a' }, { id: 'b', project: 'a' }, { id: 'd', project: 'a' }]);
+    for (const id of ['c', 'a', 'b', 'd']) upsertLabel(db, id, validate(valid));
+    db.prepare('DELETE FROM sessions WHERE id = ?').run('b');                       // purged: row gone
+    db.prepare(`UPDATE sessions SET deleted_at = datetime('now') WHERE id = 'd'`).run(); // soft-deleted
+    expect(listLabels(db).map(l => l.sessionId).sort()).toEqual(['a', 'b', 'c', 'd']); // orphans stay stored
+    expect(listLabels(db, { usableOnly: true }).map(l => l.sessionId)).toEqual(['a', 'c']);
+    const bySplit = (['train', 'validation', 'test'] as const).flatMap(split => listLabels(db, { split, usableOnly: true }));
+    expect(bySplit.map(l => l.sessionId).sort()).toEqual(['a', 'c']);
+  });
+
+  it('progress split counts use the usable set, consistent with project and bucket counts', () => {
+    seed(db, [{ id: 's1', project: 'a', msgs: 5 }, { id: 's2', project: 'a', msgs: 5 }, { id: 's3', project: 'a', msgs: 5 }]);
+    for (const id of ['s1', 's2', 's3']) upsertLabel(db, id, validate(valid));
+    db.prepare('DELETE FROM sessions WHERE id = ?').run('s1');
+    const p = getLabelProgress(db);
+    expect(p.total).toBe(2);
+    expect(p.splits.train + p.splits.validation + p.splits.test).toBe(2);
+    expect(p.byProject.reduce((n, x) => n + x.labeled, 0)).toBe(2);
+    expect(p.byLengthBucket.reduce((n, x) => n + x.labeled, 0)).toBe(2);
+  });
+
+  it('empty buckets are not reported as complete (0/0)', () => {
+    seed(db, [{ id: 's1', project: 'a', msgs: 5 }]);
+    const long = getLabelProgress(db).byLengthBucket.find(b => b.bucket === 'long')!;
+    expect(long.available).toBe(0);
+    expect(long.target).toBeGreaterThan(long.labeled);
+  });
+
   it('queue inputs split sessions into labeled and unlabeled, excluding deleted', () => {
     seed(db, [{ id: 's1', project: 'a' }, { id: 's2', project: 'a' }, { id: 's3', project: 'b', deleted: true }]);
     upsertLabel(db, 's1', validate(valid));

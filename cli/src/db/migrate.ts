@@ -520,7 +520,8 @@ function applyV19(db: Database.Database): void {
   // ground truth and must not block (or be silently cascaded by) session purges.
   // `split` (train/validation/test) is assigned once at first label time. The trigger enforces
   // it at the storage layer; the write path (db/labels.ts) also never includes split in its
-  // ON CONFLICT update. The one thing the trigger cannot stop is DELETE + re-INSERT.
+  // ON CONFLICT update. Labels are soft-deleted (deleted_at) and a BEFORE DELETE trigger aborts hard deletes, so a
+  // re-label restores the original split instead of re-rolling it.
   db.exec(`
     CREATE TABLE IF NOT EXISTS session_labels (
       session_id               TEXT PRIMARY KEY,
@@ -533,7 +534,8 @@ function applyV19(db: Database.Database): void {
       note                     TEXT,
       split                    TEXT NOT NULL CHECK (split IN ('train', 'validation', 'test')),
       created_at               TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at               TEXT NOT NULL DEFAULT (datetime('now'))
+      updated_at               TEXT NOT NULL DEFAULT (datetime('now')),
+      deleted_at               TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_session_labels_split ON session_labels(split);
 
@@ -542,6 +544,12 @@ function applyV19(db: Database.Database): void {
     WHEN NEW.split IS NOT OLD.split
     BEGIN
       SELECT RAISE(ABORT, 'session_labels.split is immutable');
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS session_labels_no_delete
+    BEFORE DELETE ON session_labels
+    BEGIN
+      SELECT RAISE(ABORT, 'session_labels rows are soft-deleted (set deleted_at); hard DELETE would let a split be re-rolled');
     END;
   `);
   db.prepare('INSERT OR IGNORE INTO schema_version (version) VALUES (?)').run(19);
