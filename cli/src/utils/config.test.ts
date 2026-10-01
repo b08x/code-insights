@@ -25,6 +25,8 @@ const {
   getConfigDir,
   getClaudeDir,
   getSyncStatePath,
+  resolveOptimizationConfig,
+  DEFAULT_MAX_METRIC_CALLS,
 } = await import('./config.js');
 
 // ──────────────────────────────────────────────────────
@@ -233,6 +235,19 @@ describe('config utilities', () => {
       expect(parsed.dashboard.analysis.retrieval).toEqual({ enabled: true });
     });
 
+    it('preserves the optimization block (teacher, judge, weights, caps)', () => {
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      const optimization = {
+        teacher: { provider: 'anthropic' as const, model: 'claude-sonnet-4-5' },
+        judge: { provider: 'openai' as const, model: 'gpt-4o-mini' },
+        weights: { outcome: 0.5, friction_f1: 0.5 },
+        caps: { maxMetricCalls: 80, maxTokens: 1_000_000, maxCostUsd: 2 },
+      };
+      saveConfig({ sync: { claudeDir: '/test/.claude/projects', excludeProjects: [] }, optimization });
+      const [, writtenContent] = vi.mocked(fs.writeFileSync).mock.calls[0];
+      expect(JSON.parse(writtenContent as string).optimization).toEqual(optimization);
+    });
+
     it('preserves partial retrieval config (defaults for omitted fields)', () => {
       vi.mocked(fs.existsSync).mockReturnValue(true);
 
@@ -358,5 +373,39 @@ describe('config utilities', () => {
 
       expect(isConfigured()).toBe(true);
     });
+  });
+});
+
+describe('resolveOptimizationConfig', () => {
+  const base = { sync: { claudeDir: '/c', excludeProjects: [] } };
+
+  it('applies defaults when the block is absent', () => {
+    const r = resolveOptimizationConfig(base);
+    expect(r.teacher).toBeNull();
+    expect(r.judge).toBeNull();
+    expect(r.caps).toEqual({ maxMetricCalls: DEFAULT_MAX_METRIC_CALLS });
+    expect(Object.keys(r.weights).sort()).toEqual(['faithfulness', 'friction_f1', 'keypoint_recall', 'outcome', 'pattern_f1', 'schema_valid']);
+    expect(resolveOptimizationConfig(null).caps.maxMetricCalls).toBe(DEFAULT_MAX_METRIC_CALLS);
+  });
+
+  it('keeps valid settings and drops malformed pieces', () => {
+    const r = resolveOptimizationConfig({
+      ...base,
+      optimization: {
+        teacher: { provider: 'openai', model: 'gpt-4o' },
+        judge: { provider: 'openai' } as never,
+        weights: { outcome: 2, friction_f1: -1, junk: Number.NaN } as never,
+        caps: { maxMetricCalls: 45.7, maxTokens: -5, maxCostUsd: 3 },
+      },
+    });
+    expect(r.teacher).toEqual({ provider: 'openai', model: 'gpt-4o' });
+    expect(r.judge).toBeNull();
+    expect(r.weights).toEqual({ outcome: 2 });
+    expect(r.caps).toEqual({ maxMetricCalls: 45, maxCostUsd: 3 });
+  });
+
+  it('falls back to default weights when none are positive', () => {
+    const r = resolveOptimizationConfig({ ...base, optimization: { weights: { outcome: 0 } } });
+    expect(r.weights.outcome).toBeGreaterThan(0);
   });
 });

@@ -161,6 +161,8 @@ export function runMigrations(db: Database.Database): MigrationResult {
   if (currentVersion < 20) {
     applyV20(db);
     v20Applied = true;
+  } else {
+    repairV20(db);
   }
 
   return { v6Applied, v7Applied, v8Applied, v9Applied, v10Applied, v11Applied, v12Applied, v13Applied, v14Applied, v15Applied, v16Applied, v17Applied, v18Applied, v19Applied, v20Applied };
@@ -584,6 +586,37 @@ function applyV19(db: Database.Database): void {
   db.prepare('INSERT OR IGNORE INTO schema_version (version) VALUES (?)').run(19);
 }
 
+/**
+ * Per-session test-gate results (plan step 25). Shared by applyV20 and repairV20 so a database
+ * that applied the earlier v20 (development builds, before the gate existed) gets the same table.
+ *
+ * Keyed (version_id, subject, session_id): re-gating a version replaces its rows (db/optimization.ts
+ * replaceGateScores). `subject` is the candidate version itself or the baseline it was compared
+ * with; baseline_version_id is NULL when the baseline is the built-in prompt. No FK: gate history
+ * must survive pruning, like prompt_versions itself.
+ */
+const GATE_SESSION_SCORES_SQL = `
+  CREATE TABLE IF NOT EXISTS gate_session_scores (
+    version_id          TEXT NOT NULL,
+    subject             TEXT NOT NULL CHECK (subject IN ('candidate', 'baseline')),
+    session_id          TEXT NOT NULL,
+    baseline_version_id TEXT,
+    scores_json         TEXT NOT NULL,
+    scalar              REAL,
+    analysis_json       TEXT,
+    error               TEXT,
+    created_at          TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (version_id, subject, session_id)
+  );
+`;
+
+/** v20 gained gate_session_scores before release; bring earlier v20 databases up to shape. Idempotent. */
+function repairV20(db: Database.Database): void {
+  // Guard: a database that is at v20 always has the other v20 tables; only add what is missing.
+  const hasV20 = db.prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'prompt_versions'`).get();
+  if (hasV20) db.exec(GATE_SESSION_SCORES_SQL);
+}
+
 function applyV20(db: Database.Database): void {
   // Prompt optimization engine (plan step 20). All tables are new, so nothing existing changes.
   //
@@ -699,5 +732,6 @@ function applyV20(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_insights_prompt_version
       ON insights(prompt_version_id) WHERE prompt_version_id IS NOT NULL;
   `);
+  db.exec(GATE_SESSION_SCORES_SQL);
   db.prepare('INSERT OR IGNORE INTO schema_version (version) VALUES (?)').run(20);
 }

@@ -1,7 +1,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import type { ClaudeInsightConfig, SyncState } from '../types.js';
+import type { ClaudeInsightConfig, OptimizationConfig, OptimizationModelRef, SyncState } from '../types.js';
+import { DEFAULT_WEIGHTS } from '../optimization/metric.js';
 
 const CONFIG_DIR = path.join(os.homedir(), '.code-insights');
 const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
@@ -72,6 +73,16 @@ export function saveConfig(config: ClaudeInsightConfig): void {
       };
     }
   }
+  if (config.optimization !== undefined) {
+    // Nested copies so a caller mutating its config later cannot change what was just saved.
+    const { teacher, judge, weights, caps } = config.optimization;
+    clean.optimization = {
+      ...(teacher ? { teacher: { ...teacher } } : {}),
+      ...(judge ? { judge: { ...judge } } : {}),
+      ...(weights ? { weights: { ...weights } } : {}),
+      ...(caps ? { caps: { ...caps } } : {}),
+    };
+  }
   if (config.plans !== undefined) {
     clean.plans = config.plans;
   }
@@ -79,6 +90,48 @@ export function saveConfig(config: ClaudeInsightConfig): void {
     clean.telemetry = config.telemetry;
   }
   fs.writeFileSync(CONFIG_FILE, JSON.stringify(clean, null, 2), { mode: 0o600 });
+}
+
+/** Optimization settings with defaults applied; `teacher`/`judge` stay undefined until chosen in Settings. */
+export interface ResolvedOptimizationConfig {
+  teacher: OptimizationModelRef | null;
+  judge: OptimizationModelRef | null;
+  weights: Record<string, number>;
+  caps: { maxMetricCalls: number; maxTokens?: number; maxCostUsd?: number };
+}
+
+/** GEPA budget when neither the run request nor config sets one (about a light run). */
+export const DEFAULT_MAX_METRIC_CALLS = 120;
+
+const isModelRef = (v: unknown): v is OptimizationModelRef =>
+  !!v && typeof v === 'object'
+  && typeof (v as OptimizationModelRef).provider === 'string'
+  && typeof (v as OptimizationModelRef).model === 'string'
+  && (v as OptimizationModelRef).model !== '';
+
+const positive = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : undefined);
+
+/**
+ * config.json is hand-editable: malformed pieces fall back to the default instead of failing a
+ * run. Weights keep only finite non-negative numbers; if none survive the defaults are used.
+ */
+export function resolveOptimizationConfig(config: ClaudeInsightConfig | null | undefined): ResolvedOptimizationConfig {
+  const raw: OptimizationConfig = config?.optimization ?? {};
+  const weights = Object.fromEntries(
+    Object.entries(raw.weights ?? {}).filter(([, w]) => typeof w === 'number' && Number.isFinite(w) && w >= 0),
+  );
+  const maxTokens = positive(raw.caps?.maxTokens);
+  const maxCostUsd = positive(raw.caps?.maxCostUsd);
+  return {
+    teacher: isModelRef(raw.teacher) ? { ...raw.teacher } : null,
+    judge: isModelRef(raw.judge) ? { ...raw.judge } : null,
+    weights: Object.values(weights).some(w => w > 0) ? weights : { ...DEFAULT_WEIGHTS },
+    caps: {
+      maxMetricCalls: Math.floor(positive(raw.caps?.maxMetricCalls) ?? DEFAULT_MAX_METRIC_CALLS),
+      ...(maxTokens !== undefined ? { maxTokens } : {}),
+      ...(maxCostUsd !== undefined ? { maxCostUsd } : {}),
+    },
+  };
 }
 
 /**

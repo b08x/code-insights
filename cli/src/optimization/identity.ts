@@ -128,3 +128,13 @@ export function currentIdentity(
   if (identity) identityKey(identity);
   return identity;
 }
+
+/**
+ * True when the identity names a concrete model. A native CLI that picks its own default reports
+ * a legacy label (`claude-native`, `opencode-default`, ...): the model behind it can change
+ * silently, so a prompt promoted for it would be applied to whatever the CLI resolves later
+ * (plan carry-forward 2). Such identities can be optimized and gated but not promoted.
+ */
+export function isPromotableIdentity(identity: StudentIdentity): boolean {
+  return !!identity.model && !/-(native|default)$/.test(identity.model);
+}

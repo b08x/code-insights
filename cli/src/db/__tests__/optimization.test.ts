@@ -10,6 +10,7 @@ import {
   addJudgeAudit, setHumanDecision, listJudgeAudits, judgeAgreement,
   createBatchJob, getBatchJob, updateBatchJob, listBatchJobs, deleteBatchJob,
   labelsHash, labelsHashes, OptimizationError,
+  setVersionTestScores, replaceGateScores, listGateScores,
 } from '../optimization.js';
 import { ANALYSIS_VERSION } from '../../analysis/analysis-db.js';
 import { upsertLabel } from '../labels.js';
@@ -298,6 +299,26 @@ describe('db/optimization', () => {
       const old = new Database(':memory:');
       expect(createDbPromptLookup(() => old)(T, key)).toBeNull();
       old.close();
+    });
+  });
+
+  describe('gate scores', () => {
+    const row = (subject: 'candidate' | 'baseline', sessionId: string, scalar: number) => ({
+      subject, sessionId, baselineVersionId: null, scores: { outcome: scalar }, scalar, analysis: { summary: sessionId }, error: null,
+    });
+
+    it('stores a version summary and replaces gate rows as a complete snapshot', () => {
+      const v = createVersion(db, { target: T, identityKey: K, components: {} });
+      expect(setVersionTestScores(db, v.id, { candidate: { scalar: 0.5 } }).testScores).toEqual({ candidate: { scalar: 0.5 } });
+      expect(() => setVersionTestScores(db, 'nope', {})).toThrow(OptimizationError);
+
+      replaceGateScores(db, v.id, [row('candidate', 's1', 0.9), row('baseline', 's1', 0.4), row('candidate', 's2', 0.5)]);
+      expect(listGateScores(db, v.id)).toHaveLength(3);
+      expect(listGateScores(db, v.id, { subject: 'baseline' }).map(r => r.sessionId)).toEqual(['s1']);
+      expect(listGateScores(db, v.id)[0].analysis).toEqual({ summary: 's1' });
+
+      replaceGateScores(db, v.id, [row('candidate', 's9', 1)]);
+      expect(listGateScores(db, v.id).map(r => r.sessionId)).toEqual(['s9']);
     });
   });
 });

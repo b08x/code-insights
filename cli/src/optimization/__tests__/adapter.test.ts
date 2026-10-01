@@ -410,3 +410,36 @@ describe('evaluate (batch)', () => {
     expect(out.scores).toEqual([0]);
   });
 });
+
+describe('batch wave pre-submit cap check', () => {
+  const make = (caps: { maxTokens?: number; maxCostUsd?: number }) => {
+    const fb = fakeBackend();
+    const adapter = createAdapter({ identity: mistral, runner: student().runner, judge: fakeJudge().judge, mode: 'batch', batch: fb.backend, caps, pollIntervalMs: 1, sleep: noSleep });
+    return { adapter, ...fb };
+  };
+
+  it('refuses a wave whose estimated tokens exceed the token cap, before submitting anything', async () => {
+    const a = seed('short');
+    const { adapter, submitted } = make({ maxTokens: 500 });
+    const out = await adapter.evaluate([example(a)], builtIn());
+    expect(submitted).toHaveLength(0);
+    expect(adapter.stopReason).toBe('cap');
+    expect(out.scores).toEqual([0]);
+  });
+
+  it('cannot hold an unpriced model to a USD cap before submit (only the token cap applies)', async () => {
+    // No mistral/openrouter model is in the price table today, so the USD estimate is unavailable.
+    const a = seed('short');
+    const { adapter, submitted } = make({ maxCostUsd: 1e-9 });
+    await adapter.evaluate([example(a)], builtIn());
+    expect(submitted.length).toBeGreaterThan(0);
+  });
+
+  it('submits when the estimate fits', async () => {
+    const a = seed('short');
+    const { adapter, submitted } = make({ maxTokens: 10_000_000, maxCostUsd: 100 });
+    await adapter.evaluate([example(a)], builtIn());
+    expect(submitted.length).toBeGreaterThan(0);
+    expect(adapter.stopReason).toBeNull();
+  });
+});

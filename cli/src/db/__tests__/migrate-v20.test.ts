@@ -121,4 +121,27 @@ describe('SQLite Migration v20: optimization tables', () => {
     expect(round.tokens).toBe(0);
     expect(round.cost_usd).toBeNull();
   });
+
+  it('creates gate_session_scores keyed (version_id, subject, session_id)', () => {
+    runMigrations(db);
+    expect(cols(db, 'gate_session_scores')).toEqual([
+      'version_id', 'subject', 'session_id', 'baseline_version_id', 'scores_json', 'scalar',
+      'analysis_json', 'error', 'created_at',
+    ]);
+    const ins = db.prepare(`INSERT INTO gate_session_scores (version_id, subject, session_id, scores_json) VALUES ('v1', ?, 's1', '{}')`);
+    ins.run('candidate');
+    ins.run('baseline');
+    expect(() => ins.run('candidate')).toThrow(/UNIQUE|PRIMARY/);
+    expect(() => ins.run('other')).toThrow(/CHECK/);
+  });
+
+  it('repairs a database that applied the pre-gate v20 (no gate_session_scores)', () => {
+    runMigrations(db);
+    db.exec('DROP TABLE gate_session_scores');
+    const result = runMigrations(db);
+    expect(result.v20Applied).toBe(false);
+    expect(cols(db, 'gate_session_scores')).toContain('analysis_json');
+    // and a second run changes nothing
+    expect(() => runMigrations(db)).not.toThrow();
+  });
 });

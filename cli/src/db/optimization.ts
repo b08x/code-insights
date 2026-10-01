@@ -326,6 +326,13 @@ export function getVersion(db: Database.Database = getDb(), id: string): PromptV
   return row ? toVersion(row) : null;
 }
 
+/** Replaces a version's stored test-gate summary (the gate re-runs overwrite it). */
+export function setVersionTestScores(db: Database.Database = getDb(), versionId: string, testScores: Record<string, unknown> | null): PromptVersion {
+  const res = db.prepare('UPDATE prompt_versions SET test_scores_json = ? WHERE id = ?').run(toJsonOrNull(testScores), versionId);
+  if (res.changes === 0) throw new OptimizationError('not_found', `Prompt version not found: ${versionId}`);
+  return getVersion(db, versionId)!;
+}
+
 /** Newest first. */
 export function listVersions(
   db: Database.Database = getDb(),
@@ -353,6 +360,54 @@ export function getLineage(db: Database.Database = getDb(), versionId: string): 
     next = v.parentVersionId;
   }
   return chain;
+}
+
+// ── Test-gate session scores ────────────────────────────────────────────────
+
+export type GateSubject = 'candidate' | 'baseline';
+
+export interface GateSessionScore {
+  versionId: string;
+  subject: GateSubject;
+  sessionId: string;
+  /** The baseline this row was compared against; null = built-in prompt. */
+  baselineVersionId: string | null;
+  scores: Record<string, number>;
+  scalar: number | null;
+  /** The compact analysis the judge saw (side-by-side view); null when the pipeline failed. */
+  analysis: unknown;
+  error: string | null;
+  createdAt: string;
+}
+
+export type GateSessionScoreInput = Omit<GateSessionScore, 'versionId' | 'createdAt'>;
+
+/** Replaces every gate row of a version in one transaction: a gate is a complete snapshot, never a merge. */
+export function replaceGateScores(db: Database.Database = getDb(), versionId: string, rows: GateSessionScoreInput[]): void {
+  db.transaction(() => {
+    db.prepare('DELETE FROM gate_session_scores WHERE version_id = ?').run(versionId);
+    const ins = db.prepare(
+      `INSERT INTO gate_session_scores (version_id, subject, session_id, baseline_version_id, scores_json, scalar, analysis_json, error, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    );
+    const ts = now();
+    for (const r of rows) {
+      ins.run(versionId, r.subject, r.sessionId, r.baselineVersionId, toJson(r.scores), r.scalar, toJsonOrNull(r.analysis), r.error, ts);
+    }
+  })();
+}
+
+export function listGateScores(db: Database.Database = getDb(), versionId: string, opts: { subject?: GateSubject } = {}): GateSessionScore[] {
+  const rows = db.prepare(
+    `SELECT * FROM gate_session_scores WHERE version_id = ? ${opts.subject ? 'AND subject = ?' : ''} ORDER BY session_id, subject`
+  ).all(...(opts.subject ? [versionId, opts.subject] : [versionId])) as Array<{
+    version_id: string; subject: GateSubject; session_id: string; baseline_version_id: string | null;
+    scores_json: string; scalar: number | null; analysis_json: string | null; error: string | null; created_at: string;
+  }>;
+  return rows.map(r => ({
+    versionId: r.version_id, subject: r.subject, sessionId: r.session_id, baselineVersionId: r.baseline_version_id,
+    scores: fromJson(r.scores_json) ?? {}, scalar: r.scalar, analysis: fromJson(r.analysis_json), error: r.error, createdAt: r.created_at,
+  }));
 }
 
 // ── Active versions ─────────────────────────────────────────────────────────

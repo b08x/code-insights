@@ -31,7 +31,7 @@ import type { AnalysisRunner, RunAnalysisParams, RunAnalysisResult } from '../an
 import { normalizeFrictionCategory } from '../analysis/friction-normalize.js';
 import { normalizePatternCategory } from '../analysis/pattern-normalize.js';
 import type { SessionLabel } from '../db/labels.js';
-import { listPrice, type BatchBackend, type BatchRow } from '../llm-batch/index.js';
+import { batchPrice, listPrice, type BatchBackend, type BatchRequest, type BatchRow } from '../llm-batch/index.js';
 import type { AxGEPAAdapter, AxGEPAEvaluationBatch } from '@ax-llm/ax';
 import { collectWaves, makeSyncCall, ReplayTable, submitCollected, wrapRunner, BatchUnusableError, type PromptCollector } from './batch-replay.js';
 import { identityFromRunner, identityKey, type StudentIdentity } from './identity.js';
@@ -55,6 +55,9 @@ import { retryCall, defaultSleep, type RetryOptions } from './retry.js';
 import { TARGETS, type AnalysisTarget, type TargetRegistry } from './targets.js';
 
 export type EvalMode = 'sync' | 'cli' | 'batch';
+
+/** Output tokens assumed per batch request when checking a cap before submitting (a full analysis JSON). */
+export const WAVE_OUTPUT_TOKENS_GUESS = 1500;
 
 /** One labeled session as GEPA's datum. Plain data: GEPA JSON-serializes examples to dedupe them. */
 export interface EvalExample extends LabelExpectation {
@@ -251,6 +254,27 @@ export function createAdapter(config: AdapterConfig): EvalAdapter {
     return stopReason !== null;
   };
 
+  /**
+   * Pre-submit cap check (carry-forward 3): a batch wave is paid for before any of it is seen, so
+   * the cap is checked against the wave's estimated tokens x discounted price, not only against
+   * what earlier waves cost. Input tokens come from the runner's estimator (chars/4 otherwise);
+   * output uses WAVE_OUTPUT_TOKENS_GUESS per request. An unpriced model can only be held to a
+   * token cap, which is why the engine refuses unpriced batch runs without one.
+   */
+  const waveExceedsCap = (requests: readonly BatchRequest[]): boolean => {
+    const caps = config.caps;
+    if (!caps) return false;
+    const estimate = runner.estimateTokens?.bind(runner) ?? ((t: string) => Math.ceil(t.length / 4));
+    const inputTokens = requests.reduce((n, r) => n + r.body.messages.reduce((m, msg) => m + estimate(msg.content), 0), 0);
+    const outputTokens = requests.length * WAVE_OUTPUT_TOKENS_GUESS;
+    if (caps.maxTokens !== undefined && usage.inputTokens + usage.outputTokens + inputTokens + outputTokens > caps.maxTokens) return true;
+    if (caps.maxCostUsd !== undefined) {
+      const cost = batchPrice(runner.provider ?? '', runner.model ?? '', inputTokens, outputTokens);
+      if (cost !== undefined && usage.costUsd + cost > caps.maxCostUsd) return true;
+    }
+    return false;
+  };
+
   const account = (r: RunAnalysisResult): void => {
     usage.calls++;
     usage.inputTokens += r.inputTokens;
@@ -351,6 +375,11 @@ export function createAdapter(config: AdapterConfig): EvalAdapter {
         },
         submit: async requests => {
           if (shouldStop()) throw new StopSignal();
+          if (waveExceedsCap(requests)) {
+            log(`Batch wave of ${requests.length} requests would exceed the cap; stopping before submit.`);
+            stop('cap');
+            throw new StopSignal();
+          }
           usage.waves++;
           const out = await submitCollected({
             backend, requests, syncCall: resyncCall,

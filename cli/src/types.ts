@@ -413,6 +413,35 @@ export interface AnalysisRunnerSetting {
   variant?: string;
 }
 
+/** A model reference for the optimizer's teacher and judge: provider id + model id. */
+export interface OptimizationModelRef {
+  provider: LLMProvider;
+  model: string;
+}
+
+/**
+ * Prompt optimization settings (`optimization` in config.json). Everything is optional; defaults
+ * come from resolveOptimizationConfig (utils/config.ts). The student is never configured here:
+ * it is always the production student identity (engine-14).
+ */
+export interface OptimizationConfig {
+  /** Default teacher (reflection) model for new runs; a run request can override it. */
+  teacher?: OptimizationModelRef;
+  /** Fixed judge model for keypoint_recall and faithfulness. Changing it makes scores incomparable. */
+  judge?: OptimizationModelRef;
+  /** Objective weights; drives both GEPA's paretoScalarize and version selection (engine-7). */
+  weights?: Record<string, number>;
+  /** Default run caps; a run request can override each field. */
+  caps?: {
+    /** GEPA budget: one unit per example per evaluation. */
+    maxMetricCalls?: number;
+    /** Student tokens (input + output) a run may spend. */
+    maxTokens?: number;
+    /** Student USD a run may spend; unpriced models are not counted. */
+    maxCostUsd?: number;
+  };
+}
+
 export interface ClaudeInsightConfig {
   sync: {
     claudeDir: string;
@@ -441,6 +470,7 @@ export interface ClaudeInsightConfig {
       };
     };
   };
+  optimization?: OptimizationConfig;
   telemetry?: boolean;              // default true (opt-out)
 }
 
