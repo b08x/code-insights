@@ -16,6 +16,7 @@ export interface MigrationResult {
   v17Applied: boolean;
   v18Applied: boolean;
   v19Applied: boolean;
+  v20Applied: boolean;
 }
 
 /**
@@ -156,7 +157,13 @@ export function runMigrations(db: Database.Database): MigrationResult {
     repairV19(db);
   }
 
-  return { v6Applied, v7Applied, v8Applied, v9Applied, v10Applied, v11Applied, v12Applied, v13Applied, v14Applied, v15Applied, v16Applied, v17Applied, v18Applied, v19Applied };
+  let v20Applied = false;
+  if (currentVersion < 20) {
+    applyV20(db);
+    v20Applied = true;
+  }
+
+  return { v6Applied, v7Applied, v8Applied, v9Applied, v10Applied, v11Applied, v12Applied, v13Applied, v14Applied, v15Applied, v16Applied, v17Applied, v18Applied, v19Applied, v20Applied };
 }
 
 function getCurrentVersion(db: Database.Database): number {
@@ -575,4 +582,122 @@ function applyV19(db: Database.Database): void {
     END;
   `);
   db.prepare('INSERT OR IGNORE INTO schema_version (version) VALUES (?)').run(19);
+}
+
+function applyV20(db: Database.Database): void {
+  // Prompt optimization engine (plan step 20). All tables are new, so nothing existing changes.
+  //
+  // FKs only where deletion should cascade (run -> rounds -> per-session scores). prompt_versions
+  // has no FK to runs or parents: versions outlive the runs that produced them (and manifest
+  // imports have no run), and lineage must survive pruning old runs.
+  // judge_cache includes judge_model in its key so changing the judge never serves stale verdicts.
+  // prompt_versions.analysis_version records the ANALYSIS_VERSION it was tuned against so the
+  // production-impact view can ignore versions tuned for a different frozen pipeline.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS prompt_versions (
+      id                TEXT PRIMARY KEY,
+      target            TEXT NOT NULL,
+      identity_key      TEXT NOT NULL,
+      components_json   TEXT NOT NULL,
+      parent_version_id TEXT,
+      source_run_id     TEXT,
+      judge_model       TEXT,
+      weights_json      TEXT,
+      test_scores_json  TEXT,
+      analysis_version  TEXT,
+      created_at        TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_prompt_versions_target_identity
+      ON prompt_versions(target, identity_key, created_at);
+
+    CREATE TABLE IF NOT EXISTS active_prompt_versions (
+      target       TEXT NOT NULL,
+      identity_key TEXT NOT NULL,
+      version_id   TEXT NOT NULL REFERENCES prompt_versions(id),
+      promoted_at  TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (target, identity_key)
+    );
+
+    CREATE TABLE IF NOT EXISTS optimization_runs (
+      id               TEXT PRIMARY KEY,
+      target           TEXT NOT NULL,
+      identity_key     TEXT NOT NULL,
+      teacher          TEXT NOT NULL,
+      judge_model      TEXT NOT NULL,
+      mode             TEXT NOT NULL,
+      status           TEXT NOT NULL DEFAULT 'queued',
+      caps_json        TEXT NOT NULL DEFAULT '{}',
+      estimate_json    TEXT,
+      best_candidate_id TEXT,
+      labels_hash_json TEXT,
+      error            TEXT,
+      started_at       TEXT NOT NULL DEFAULT (datetime('now')),
+      finished_at      TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_optimization_runs_status ON optimization_runs(status);
+
+    CREATE TABLE IF NOT EXISTS optimization_rounds (
+      id                  TEXT PRIMARY KEY,
+      run_id              TEXT NOT NULL REFERENCES optimization_runs(id) ON DELETE CASCADE,
+      round               INTEGER NOT NULL,
+      candidate_id        TEXT NOT NULL,
+      parent_candidate_id TEXT,
+      components_json     TEXT NOT NULL,
+      scores_json         TEXT NOT NULL,
+      scalar              REAL,
+      accepted            INTEGER NOT NULL DEFAULT 0,
+      rationales_json     TEXT,
+      tokens              INTEGER NOT NULL DEFAULT 0,
+      cost_usd            REAL,
+      created_at          TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_optimization_rounds_run ON optimization_rounds(run_id, round);
+
+    CREATE TABLE IF NOT EXISTS candidate_session_scores (
+      round_id     TEXT NOT NULL REFERENCES optimization_rounds(id) ON DELETE CASCADE,
+      candidate_id TEXT NOT NULL,
+      session_id   TEXT NOT NULL,
+      scores_json  TEXT NOT NULL,
+      scalar       REAL,
+      created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (round_id, session_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS judge_cache (
+      output_hash     TEXT NOT NULL,
+      key_points_hash TEXT NOT NULL,
+      judge_model     TEXT NOT NULL DEFAULT '',
+      result_json     TEXT NOT NULL,
+      created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (output_hash, key_points_hash, judge_model)
+    );
+
+    CREATE TABLE IF NOT EXISTS judge_audits (
+      id             TEXT PRIMARY KEY,
+      round_id       TEXT,
+      session_id     TEXT NOT NULL,
+      item           TEXT NOT NULL,
+      judge_decision TEXT NOT NULL,
+      human_decision TEXT,
+      created_at     TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_judge_audits_round ON judge_audits(round_id);
+
+    CREATE TABLE IF NOT EXISTS batch_jobs (
+      job_id         TEXT PRIMARY KEY,
+      provider       TEXT NOT NULL,
+      model          TEXT NOT NULL,
+      owner_kind     TEXT NOT NULL,
+      owner_id       TEXT NOT NULL,
+      custom_ids_json TEXT NOT NULL DEFAULT '[]',
+      status         TEXT NOT NULL DEFAULT 'submitted',
+      submitted_at   TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at     TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_batch_jobs_owner ON batch_jobs(owner_kind, owner_id);
+
+    CREATE INDEX IF NOT EXISTS idx_insights_prompt_version
+      ON insights(prompt_version_id) WHERE prompt_version_id IS NOT NULL;
+  `);
+  db.prepare('INSERT OR IGNORE INTO schema_version (version) VALUES (?)').run(20);
 }

@@ -7,13 +7,15 @@
  * prompt: empty components (the builders default each field to the built-in constant, so text is
  * byte-identical to before) and `versionId: null`.
  *
- * The prompt_versions / active_prompt_versions tables arrive with the optimization engine
- * (migration v20). Until then the default lookup returns null; the engine installs a real one
- * with setActivePromptLookup. A version stored for another identity is never consulted because
- * the lookup is keyed by identityKey(identity).
+ * The default lookup reads active_prompt_versions (v20) from the process's already-open
+ * database (peekDb: it never opens one, so unit tests stay inert). setActivePromptLookup and
+ * deps.lookup override it for tests. A version stored for another identity is never consulted
+ * because the lookup is keyed by identityKey(identity).
  */
 
 import type { GuidanceComponents } from '../analysis/prompts.js';
+import { peekDb } from '../db/client.js';
+import { createDbPromptLookup } from './db-lookup.js';
 import { identityKey, type StudentIdentity } from './identity.js';
 import { TARGETS, type AnalysisTarget, type TargetRegistry } from './targets.js';
 
@@ -28,6 +30,9 @@ export interface ResolvedPrompt {
 /** A caller-supplied prompt (GEPA candidate evaluation); bypasses resolution. */
 export type PromptOverride = ResolvedPrompt;
 
+/** Per-target overrides: a target without an entry still resolves normally. */
+export type PromptOverrides = Partial<Record<AnalysisTarget, PromptOverride>>;
+
 export interface ActivePromptVersion {
   versionId: string;
   /** Identity the version was tuned for; the resolver re-checks it against the caller's. */
@@ -38,11 +43,12 @@ export interface ActivePromptVersion {
 /** Returns the active version for exactly this (target, identity key), or null. */
 export type ActivePromptLookup = (target: AnalysisTarget, key: string) => ActivePromptVersion | null;
 
-const noActiveVersions: ActivePromptLookup = () => null;
-let defaultLookup: ActivePromptLookup = noActiveVersions;
+const dbLookup: ActivePromptLookup = createDbPromptLookup(() => peekDb());
+let defaultLookup: ActivePromptLookup = dbLookup;
 
+/** Override the default lookup (tests); null restores the DB-backed default. */
 export function setActivePromptLookup(lookup: ActivePromptLookup | null): void {
-  defaultLookup = lookup ?? noActiveVersions;
+  defaultLookup = lookup ?? dbLookup;
 }
 
 export interface ResolveDeps {
@@ -66,9 +72,11 @@ export function resolveAnalysisPrompt(
 
   // Only mutable keys survive: a stored version can never override frozen parts.
   const components: GuidanceComponents = {};
-  for (const { key } of def.mutable) {
+  // An over-long component is ignored (built-in text for that component) rather than clipped:
+  // clipping would cut guidance mid-sentence.
+  for (const { key, maxChars } of def.mutable) {
     const text = version.components[key];
-    if (typeof text === 'string') components[key] = text;
+    if (typeof text === 'string' && text.length <= maxChars) components[key] = text;
   }
   return { components, versionId: version.versionId };
 }

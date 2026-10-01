@@ -46,6 +46,15 @@ export function getDb(): Database.Database {
 }
 
 /**
+ * Return the open singleton or null; never opens (or creates) the database.
+ * For read-only hooks that must stay inert until the process has opened the DB itself
+ * (prompt resolution, which tests run without a real ~/.code-insights).
+ */
+export function peekDb(): Database.Database | null {
+  return _db;
+}
+
+/**
  * Get the migration result from the last getDb() call.
  * Returns null if the DB has not been initialized yet.
  * Used by sync.ts to detect V6 migration and trigger auto force-sync.
