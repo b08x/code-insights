@@ -19,7 +19,7 @@ export {
   multiObjectiveMetric,
   scalarizeScores,
   type MetricInput,
-} from './metric.js';
+} from './legacy-metric.js';
 
 export {
   createGEPARunner,

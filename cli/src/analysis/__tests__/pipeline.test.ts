@@ -214,11 +214,36 @@ describe('analyzeSessionPipeline — persistence and usage', () => {
     await analyzeSessionPipeline(id, { runner: baseline.runner, passes: ['session'] });
     const result = await analyzeSessionPipeline(id, {
       runner, passes: ['session'],
-      promptOverride: { components: { frictionGuidance: 'CUSTOM-FRICTION-GUIDANCE' }, versionId: 'v7' },
+      promptOverride: { 'session-analysis': { components: { frictionGuidance: 'CUSTOM-FRICTION-GUIDANCE' }, versionId: 'v7' } },
     });
     expect(calls[0].userPrompt).toContain('CUSTOM-FRICTION-GUIDANCE');
     expect(baseline.calls[0].userPrompt).not.toContain('CUSTOM-FRICTION-GUIDANCE');
     expect(result.success && result.promptVersionId).toBe('v7');
+  });
+
+  it('promptOverride is per target: a session override does not touch the prompt-quality prompt', async () => {
+    const id = seed('prompt-quality');
+    const { runner, calls } = makeRunner();
+    await analyzeSessionPipeline(id, {
+      runner, persist: false,
+      promptOverride: { 'session-analysis': { components: { frictionGuidance: 'CUSTOM-FRICTION-GUIDANCE' }, versionId: null } },
+    });
+    expect(calls).toHaveLength(2);
+    expect(calls[0].userPrompt).toContain('CUSTOM-FRICTION-GUIDANCE');
+    expect(calls[1].userPrompt).not.toContain('CUSTOM-FRICTION-GUIDANCE');
+  });
+
+  it('targets scopes a dry run to the passes of those targets (no unscored prompt-quality call)', async () => {
+    const id = seed('prompt-quality');
+    const { runner, calls } = makeRunner();
+    const result = await analyzeSessionPipeline(id, { runner, persist: false, targets: ['session-analysis'] });
+    expect(result.success && result.passes).toEqual(['session']);
+    expect(calls).toHaveLength(1);
+
+    const pq = makeRunner();
+    await analyzeSessionPipeline(id, { runner: pq.runner, persist: false, targets: ['prompt-quality'] });
+    expect(pq.calls).toHaveLength(1);
+    expect(pq.calls[0].userPrompt).toContain("Analyze the user's input messages");
   });
 });
 
@@ -260,7 +285,7 @@ describe('analyzeSessionPipeline — provenance (v18 columns)', () => {
     const id = seed('short');
     const { runner } = makeRunner();
     await analyzeSessionPipeline(id, {
-      runner, passes: ['session'], promptOverride: { components: {}, versionId: 'pv-9' },
+      runner, passes: ['session'], promptOverride: { 'session-analysis': { components: {}, versionId: 'pv-9' } },
     });
     const rows = provenanceRows(id);
     expect(rows.facets).toEqual([{ student_identity: 'native|native-model|', prompt_version_id: 'pv-9' }]);
@@ -285,7 +310,7 @@ describe('analyzeSessionPipeline — provenance (v18 columns)', () => {
     const id = seed('short');
     const { runner } = makeRunner({ answeredBy: () => ({ provider: 'antigravity-native', model: 'antigravity-native' }) });
     const result = await analyzeSessionPipeline(id, {
-      runner, passes: ['session'], promptOverride: { components: {}, versionId: 'pv-9' },
+      runner, passes: ['session'], promptOverride: { 'session-analysis': { components: {}, versionId: 'pv-9' } },
     });
     expect(result.success).toBe(false);
     expect(!result.success && result.error).toMatch(/pv-9.*tuned for native\|native-model\|/);

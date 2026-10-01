@@ -12,7 +12,7 @@
 import { ai, AxGEPA, axSerializeOptimizedProgram } from '@ax-llm/ax';
 import type { AxParetoResult, AxOptimizationProgress } from '@ax-llm/ax';
 import { createInsightProgram, INSIGHT_INSTRUCTION, INSIGHT_OUTPUT_FORMAT } from './flow.js';
-import { multiObjectiveMetric, scalarizeScores, type MetricInput } from './metric.js';
+import { multiObjectiveMetric, scalarizeScores, type MetricInput } from './legacy-metric.js';
 import {
   registerVersion,
   saveArtifact,

@@ -18,26 +18,27 @@
  * changed because earlier sessions' new insights altered retrieval) miss the result table and fall
  * back to the synchronous transport. Correct, just full price; such calls are priced at list price.
  * Costs: every call reports `costUsd` (batch rows discounted), so the pipeline records the sum.
+ *
+ * The collect / submit / replay machinery is shared with the GEPA adapter: see batch-replay.ts.
  */
 
-import { createHash } from 'node:crypto';
 import { analyzeSessionPipeline, type PipelineResult } from '../analysis/pipeline.js';
-import type { AnalysisRunner, RunAnalysisParams, RunAnalysisResult } from '../analysis/runner-types.js';
+import type { AnalysisRunner } from '../analysis/runner-types.js';
 import { loadLLMConfig, resolveApiKey } from '../llm/client.js';
-import { DEFAULT_TEMPERATURE } from '../llm/types.js';
 import {
-  BatchJobError,
-  BatchTimeoutError,
-  listPrice,
   createMistralBatchBackend,
   createOpenRouterBatchBackend,
-  submitAndAwait,
   type BatchBackend,
-  type BatchRequest,
-  type BatchRow,
-  type BatchRowSuccess,
   type SubmitSummary,
 } from '../llm-batch/index.js';
+import {
+  BatchUnusableError,
+  EMPTY_SUMMARY,
+  PromptCollector,
+  ReplayTable,
+  makeSyncCall,
+  submitCollected,
+} from './batch-replay.js';
 import type { StudentIdentity } from './identity.js';
 
 export type PreanalyzeMode = 'batch' | 'queue';
@@ -106,28 +107,6 @@ function defaultCreateBackend(identity: StudentIdentity): BatchBackend | null {
     : createOpenRouterBatchBackend({ apiKey, model: identity.model });
 }
 
-const promptKey = (systemPrompt: string, userPrompt: string): string =>
-  createHash('sha256').update(`${systemPrompt}\n---\n${userPrompt}`).digest('hex');
-
-/** Same metadata as `base` so the pipeline makes identical budgeting/identity decisions. */
-function wrapRunner(base: AnalysisRunner, runAnalysis: AnalysisRunner['runAnalysis']): AnalysisRunner {
-  return {
-    name: base.name,
-    provider: base.provider,
-    model: base.model,
-    variant: base.variant,
-    maxInputTokens: base.maxInputTokens,
-    estimateTokens: base.estimateTokens?.bind(base),
-    // No PQ timeout: the collecting call is instant and the replay call never waits on the network.
-    timeoutMs: undefined,
-    runAnalysis,
-  };
-}
-
-function emptyResult(base: AnalysisRunner): RunAnalysisResult {
-  return { rawJson: '', durationMs: 0, inputTokens: 0, outputTokens: 0, model: base.model ?? base.name, provider: base.provider ?? base.name };
-}
-
 /**
  * Runner type for analysis_queue (queue-worker.ts: 'native' -> native CLI runner, anything else ->
  * the dashboard's configured provider). A native/CLI identity must never be run by the provider.
@@ -173,109 +152,44 @@ export async function preanalyzeSessions(sessionIds: string[], deps: PreanalyzeD
   const common = { identity: deps.identity };
 
   // ── 1. collect ────────────────────────────────────────────────────────────
-  const requests = new Map<string, BatchRequest>();
-  /** Sessions that asked for each prompt: identical prompts are billed once, so cost is split. */
-  const owners = new Map<string, Set<string>>();
-  let collecting = '';
-  const collector = wrapRunner(base, async (params: RunAnalysisParams) => {
-    const key = promptKey(params.systemPrompt, params.userPrompt);
-    if (!owners.has(key)) owners.set(key, new Set());
-    owners.get(key)!.add(collecting);
-    if (!requests.has(key)) {
-      requests.set(key, {
-        customId: key,
-        body: {
-          messages: [
-            { role: 'system', content: params.systemPrompt },
-            { role: 'user', content: params.userPrompt },
-          ],
-          temperature: DEFAULT_TEMPERATURE,
-        },
-      });
-    }
-    return emptyResult(base);
-  });
+  const collected = new PromptCollector(base);
+  const collector = collected.runner();
   for (const sessionId of unique) {
-    collecting = sessionId;
+    collected.owner = sessionId;
     for (const pass of ['session', 'prompt_quality'] as const) {
       // Failure is expected (empty answer); a pass that cannot even build a prompt just adds nothing.
       await pipeline(sessionId, { ...common, runner: collector, passes: [pass], persist: false, signal: deps.signal });
     }
   }
-  log(`Collected ${requests.size} unique prompts for ${unique.length} sessions.`);
+  const requests = [...collected.requests.values()];
+  log(`Collected ${requests.length} unique prompts for ${unique.length} sessions.`);
 
   // ── 2. submit ─────────────────────────────────────────────────────────────
-  const syncCall = async (params: RunAnalysisParams): Promise<RunAnalysisResult> => {
-    const r = await base.runAnalysis(params);
-    if (r.costUsd !== undefined) return r;
-    // Full price; undefined (not 0) when the model has no price.
-    const cost = listPrice(base.provider ?? r.provider, r.model, r.inputTokens, r.outputTokens);
-    return cost === undefined ? r : { ...r, costUsd: cost };
-  };
-
-  let rows = new Map<string, BatchRow>();
+  const syncCall = makeSyncCall(base);
+  const table = new ReplayTable();
   let jobFailureResyncs = 0;
-  let summary: SubmitSummary = { submitted: 0, jobs: 0, succeeded: 0, failedRows: 0, resynced: 0, resyncFailed: 0, unknownIds: [], unparsed: 0 };
-  if (requests.size > 0) {
-    try {
-      const outcome = await submitAndAwait(backend, [...requests.values()], {
-        pollIntervalMs: deps.pollIntervalMs,
-        timeoutMs: deps.timeoutMs,
-        sleep: deps.sleep,
-        signal: deps.signal,
-        onProgress: log,
-        resync: async (request): Promise<BatchRowSuccess> => {
-          const [system, user] = request.body.messages;
-          const r = await syncCall({ systemPrompt: system.content, userPrompt: user.content });
-          return { customId: request.customId, ok: true, content: r.rawJson, inputTokens: r.inputTokens, outputTokens: r.outputTokens, ...(r.costUsd !== undefined && { costUsd: r.costUsd }) };
-        },
-      });
-      rows = outcome.rows;
-      summary = outcome.summary;
-    } catch (err) {
-      if (deps.signal?.aborted) throw err;
-      const salvaged = err instanceof BatchJobError ? err.partialRows.filter(r => r.ok && requests.has(r.customId)) : [];
-      if (err instanceof BatchJobError && salvaged.length > 0) {
-        // Rows the failed job already produced are billed: keep them and run only the rest synchronously.
-        log(`Batch ${err.status} with ${salvaged.length}/${requests.size} rows delivered; running the rest synchronously.`);
-        for (const r of salvaged) rows.set(r.customId, r);
-        summary = { ...summary, submitted: requests.size, jobs: 1, succeeded: salvaged.length };
-        jobFailureResyncs = requests.size - salvaged.length;
-      } else if (err instanceof BatchJobError || err instanceof BatchTimeoutError) {
-        // Nothing usable: hand the set to the queue worker rather than paying full price inline.
-        log(`Batch failed (${err.message}); enqueueing ${unique.length} sessions instead.`);
-        return {
-          mode,
-          sessions: enqueueAll(unique),
-          batch: { ...summary, submitted: requests.size, costUsd: 0, replayMisses: 0, jobFailureResyncs: 0, fellBackToQueue: err.message },
-        };
-      } else {
-        throw err;
-      }
-    }
+  let summary: SubmitSummary = EMPTY_SUMMARY;
+  try {
+    const outcome = await submitCollected({
+      backend, requests, syncCall,
+      pollIntervalMs: deps.pollIntervalMs, timeoutMs: deps.timeoutMs, sleep: deps.sleep, signal: deps.signal, log,
+    });
+    table.add(outcome.rows.values());
+    summary = outcome.summary;
+    jobFailureResyncs = outcome.jobFailureResyncs;
+  } catch (err) {
+    if (!(err instanceof BatchUnusableError)) throw err;
+    // Nothing usable: hand the set to the queue worker rather than paying full price inline.
+    log(`Batch failed (${err.message}); enqueueing ${unique.length} sessions instead.`);
+    return {
+      mode,
+      sessions: enqueueAll(unique),
+      batch: { ...summary, submitted: err.submitted, costUsd: 0, replayMisses: 0, jobFailureResyncs: 0, fellBackToQueue: err.message },
+    };
   }
 
   // ── 3. replay ─────────────────────────────────────────────────────────────
-  let replayMisses = 0;
-  const replay = wrapRunner(base, async (params: RunAnalysisParams) => {
-    const key = promptKey(params.systemPrompt, params.userPrompt);
-    const row = rows.get(key);
-    if (row?.ok) {
-      // One billed call can feed several sessions (identical prompts): give each its share.
-      const share = owners.get(key)?.size || 1;
-      return {
-        rawJson: row.content,
-        durationMs: 0,
-        inputTokens: row.inputTokens,
-        outputTokens: row.outputTokens,
-        model: base.model ?? base.name,
-        provider: base.provider ?? base.name,
-        ...(row.costUsd !== undefined && { costUsd: row.costUsd / share }),
-      };
-    }
-    if (!requests.has(key)) replayMisses++;
-    return syncCall(params);
-  });
+  const replay = table.runner(base, { collected, syncCall });
 
   const sessions: PreanalyzeSessionResult[] = [];
   let totalCost = 0;
@@ -296,5 +210,5 @@ export async function preanalyzeSessions(sessionIds: string[], deps: PreanalyzeD
       sessions.push({ sessionId, status: 'failed', error: result.error, errorType: result.error_type });
     }
   }
-  return { mode, sessions, batch: { ...summary, costUsd: Math.round(totalCost * 1_000_000) / 1_000_000, replayMisses, jobFailureResyncs } };
+  return { mode, sessions, batch: { ...summary, costUsd: Math.round(totalCost * 1_000_000) / 1_000_000, replayMisses: table.replayMisses, jobFailureResyncs } };
 }

@@ -2,7 +2,7 @@
  * label-11: embeddings are labeling aids only (duplicate key-point detection, item-to-key-point
  * suggestions), never part of scoring. Static text check: scoring modules must not import from
  * the embeddings layer (relative or via the package export). Modules that do not exist yet are
- * skipped, so the guard is in place before phase 3 adds metric/judge/gate.
+ * skipped, so the guard is in place before phase 3 adds gate.
  *
  * Direct imports only: the adapter legitimately reaches embeddings transitively through
  * analyzeSessionPipeline (student-side retrieval), which is not scoring.
@@ -15,7 +15,8 @@ import { describe, it, expect } from 'vitest';
 
 const OPT_DIR = join(dirname(fileURLToPath(import.meta.url)), '..');
 
-const SCORING_MODULES = ['metric.ts', 'judge.ts', 'gate.ts', 'splits.ts', 'label-queue.ts'];
+// gate.ts arrives with step 25; its case is skipped until the file exists.
+const SCORING_MODULES = ['metric.ts', 'judge.ts', 'adapter.ts', 'gate.ts', 'splits.ts', 'label-queue.ts'];
 
 const EMBEDDING_IMPORT = /(?:from|import)\s*\(?\s*['"][^'"]*(?:\/embeddings\/|\/embeddings['"]|@code-insights\/cli\/embeddings)[^'"]*['"]/;
 
@@ -34,8 +35,9 @@ describe('scoring modules do not import embeddings (label-11)', () => {
     expect("import { x } from './label-queue.js';").not.toMatch(EMBEDDING_IMPORT);
   });
 
-  it('at least splits.ts and label-queue.ts are covered', () => {
-    expect(existsSync(join(OPT_DIR, 'splits.ts'))).toBe(true);
-    expect(existsSync(join(OPT_DIR, 'label-queue.ts'))).toBe(true);
+  it('the scoring modules that exist are covered (metric, judge, adapter, splits, label-queue)', () => {
+    for (const file of ['metric.ts', 'judge.ts', 'adapter.ts', 'splits.ts', 'label-queue.ts']) {
+      expect(existsSync(join(OPT_DIR, file)), file).toBe(true);
+    }
   });
 });

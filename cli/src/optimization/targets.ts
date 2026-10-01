@@ -37,6 +37,13 @@ export interface MutableComponent {
   description: string;
   /** Built-in text; the optimizer's seed candidate. */
   builtIn: string;
+  /**
+   * Hard length cap (characters) for any stored or candidate text. Guards the prompt budget: an
+   * unbounded reflective rewrite could otherwise push every analysis past the chunking threshold.
+   * Candidates over the cap are rejected by the adapter; stored versions over it are ignored by
+   * resolveAnalysisPrompt (that component falls back to the built-in text).
+   */
+  maxChars: number;
 }
 
 export interface TargetDefinition {
@@ -64,11 +71,13 @@ export const TARGETS: TargetRegistry = {
         key: 'frictionGuidance',
         description: 'Analyst guidance for classifying friction points.',
         builtIn: FRICTION_CLASSIFICATION_GUIDANCE,
+        maxChars: 8000,
       },
       {
         key: 'patternGuidance',
         description: 'Analyst guidance for classifying effective workflow patterns.',
         builtIn: EFFECTIVE_PATTERN_CLASSIFICATION_GUIDANCE,
+        maxChars: 6000,
       },
     ],
     frozen: ['json-schema', 'canonical-categories', 'output-format', 'task-instructions', 'system-prompt'],
@@ -86,6 +95,7 @@ export const TARGETS: TargetRegistry = {
         key: 'promptQualityGuidance',
         description: 'Analyst guidance for classifying prompt-quality findings.',
         builtIn: PROMPT_QUALITY_CLASSIFICATION_GUIDANCE,
+        maxChars: 6000,
       },
     ],
     frozen: ['json-schema', 'canonical-categories', 'output-format', 'task-instructions', 'system-prompt'],

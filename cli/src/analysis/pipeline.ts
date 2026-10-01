@@ -56,7 +56,8 @@ import {
 } from './analysis-db.js';
 import { saveAnalysisUsage } from './analysis-usage-db.js';
 import { calculateAnalysisCost } from './analysis-pricing.js';
-import { resolveAnalysisPrompt, type PromptOverride } from '../optimization/resolve-prompt.js';
+import { resolveAnalysisPrompt, type PromptOverrides } from '../optimization/resolve-prompt.js';
+import type { AnalysisTarget } from '../optimization/targets.js';
 import { identityForCall, identityFromRunner, identityKey, type StudentIdentity } from '../optimization/identity.js';
 
 // Re-exported so there is exactly one definition of the budget (cli/src/llm/types.ts).
@@ -126,8 +127,17 @@ export interface PipelineOptions {
    * uses the runner's own metadata and provenance is derived from what the first call reported.
    */
   identity?: StudentIdentity;
-  /** Caller-supplied prompt components (GEPA candidates). Absent: resolveAnalysisPrompt decides. */
-  promptOverride?: PromptOverride;
+  /**
+   * Caller-supplied prompt components per target (GEPA candidates). A target without an entry
+   * resolves through resolveAnalysisPrompt, so evaluating one target never changes the other.
+   */
+  promptOverride?: PromptOverrides;
+  /**
+   * Dry-run scoping: run only the passes that belong to these targets (session-analysis owns the
+   * 'session' and 'facets' passes, prompt-quality owns 'prompt_quality'). Lets GEPA skip calls for
+   * targets it does not score instead of paying for them. Absent: every requested pass runs.
+   */
+  targets?: AnalysisTarget[];
   /**
    * Default true. When false, NOTHING is written: no insights, facets, steps, title, usage rows
    * and no embeddings. The result still carries what would have been saved (dry runs / GEPA).
@@ -679,7 +689,12 @@ export async function analyzeSessionPipeline(
   const log = options.log ?? (() => {});
   const persist = options.persist ?? true;
   const live = (options.contexts ?? 'live') === 'live';
-  const requested = options.passes ?? ['session', 'prompt_quality'];
+  const targetPasses: Record<AnalysisTarget, AnalysisPass[]> = {
+    'session-analysis': ['session', 'facets'],
+    'prompt-quality': ['prompt_quality'],
+  };
+  const inScope = options.targets ? new Set(options.targets.flatMap(t => targetPasses[t])) : null;
+  const requested = (options.passes ?? ['session', 'prompt_quality']).filter(p => !inScope || inScope.has(p));
   const completed: AnalysisPass[] = [];
   const insights: InsightRow[] = [];
   const prompts: PromptRecord[] = [];
@@ -733,8 +748,8 @@ export async function analyzeSessionPipeline(
     // Resolution happens before any call, so it can only use the caller's identity or the
     // runner's declared metadata. Provenance is recorded later from the actual call result.
     const resolveIdentity = options.identity ?? identityFromRunner(runner);
-    const sessionPrompt = options.promptOverride ?? resolveAnalysisPrompt('session-analysis', resolveIdentity);
-    const pqPrompt = options.promptOverride ?? resolveAnalysisPrompt('prompt-quality', resolveIdentity);
+    const sessionPrompt = options.promptOverride?.['session-analysis'] ?? resolveAnalysisPrompt('session-analysis', resolveIdentity);
+    const pqPrompt = options.promptOverride?.['prompt-quality'] ?? resolveAnalysisPrompt('prompt-quality', resolveIdentity);
     const resolveKey = identityKey(resolveIdentity);
     /**
      * Identity that produced a call: the caller's if given, else what the call reported

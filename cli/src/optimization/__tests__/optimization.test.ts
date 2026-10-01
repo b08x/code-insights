@@ -12,7 +12,7 @@ import {
   multiObjectiveMetric,
   scalarizeScores,
   type MetricInput,
-} from '../../optimization/metric.js';
+} from '../../optimization/legacy-metric.js';
 
 describe('multiObjectiveMetric', () => {
   it('returns scores for all four objectives', () => {
