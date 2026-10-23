@@ -80,6 +80,7 @@ export interface ParsedSession {
   sourceTool?: string;
   parentSessionId?: string | null;  // For subagent sessions (e.g., Mistral Vibe nested agents)
   agentType?: string | null;        // Type of agent for subagent sessions
+  activePlugins?: string[];         // Active plugins detected for the session
   usage?: SessionUsage;
   messages: ParsedMessage[];
 }

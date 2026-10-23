@@ -104,7 +104,16 @@ interface SessionProvider {
 }
 ```
 
-**Sub-Agent Model:** Providers for multi-agent tools (Gemini CLI, Hermes Agent) implement recursive discovery to bundle sub-agent interactions into the parent session. This ensures the analysis pipeline sees the full collaborative context rather than fragmented sub-sessions.
+**Sub-Agent Model:** Providers for multi-agent tools (Gemini CLI, Hermes Agent, Mistral Vibe) discover sub-agent interactions and maintain hierarchy. For Mistral Vibe, child sessions are ingested as distinct session records linked via `parentSessionId` and attributed to their parent orchestrator and originating plugin.
+
+### Mistral Vibe Provider (Modern Unified Store & Plugins)
+
+The `MistralVibeProvider` (`cli/src/providers/mistral-vibe.ts`) supports both modern Mistral Vibe 3.0+ unified session store architecture (`mistral.vibe.unified-session-store/v1` in `~/.vibe/logs/session/unified/`) and legacy flat sessions (`session_*` with `meta.json` and `messages.jsonl`):
+- **Unified Store Structure:** Ingests generation manifests (`manifest.json`), projection states (`projection-state.json`), and chunked history (`chunks/*.json`), tracking exact token usage (`totalInputTokens`, `totalOutputTokens`, `cachedInputTokens`, `estimatedCostUsd`).
+- **Active Session Filtering:** Skips sessions that hold an active lockfile in `~/.vibe/logs/session/active/${sessionId}.lock` or whose latest manifest `execution_state !== 'quiescent'`.
+- **Subagent Hierarchy & Plugin Attribution:** Ingests child sessions (`child-*` directories) as distinct sessions with `parentSessionId` populated from `projection-state.json` and parent checkpoint notifications. Subagent runs spawned by plugins (such as `ruby-dev`) are attributed with namespaced `agentType` (e.g. `ruby-dev:verifier`, `ruby-dev:implementer`).
+- **Plugin Metadata:** Active plugins loaded during the session are detected from session data, `runtime-state.json` (`core_plugins`), and plugin packages, and recorded in session metadata (`activePlugins`).
+- **Backward Compatibility:** Seamlessly continues to discover and parse legacy flat sessions containing `meta.json` and `messages.jsonl`.
 
 Providers are registered in `providers/registry.ts`. To add a new source tool:
 1. Create `providers/<name>.ts` implementing `SessionProvider`

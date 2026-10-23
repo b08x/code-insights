@@ -201,6 +201,7 @@ export interface DashboardStats {
   cache_read_tokens: number | null;
   estimated_cost_usd: number | null;
   actual_cost_usd?: number | null;
+  total_cost_usd?: number | null;
   token_value_usd?: number | null;
   total_savings_usd?: number | null;
   plans?: PlanCostSummary[];

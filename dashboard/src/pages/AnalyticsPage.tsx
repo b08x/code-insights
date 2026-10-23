@@ -278,7 +278,7 @@ export default function AnalyticsPage() {
             {dashStats?.total_savings_usd != null && dashStats.total_savings_usd > 0 && (
               <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1 font-medium">
                 {dashStats.actual_cost_usd && dashStats.actual_cost_usd > 0
-                  ? `${((dashStats.total_cost_usd ?? (dashStats.actual_cost_usd + dashStats.total_savings_usd)) / dashStats.actual_cost_usd).toFixed(1)}x compute leverage ($${dashStats.total_savings_usd.toFixed(2)} absorbed)`
+                  ? `${(((dashStats.token_value_usd ?? (dashStats.actual_cost_usd + dashStats.total_savings_usd))) / dashStats.actual_cost_usd).toFixed(1)}x compute leverage ($${dashStats.total_savings_usd.toFixed(2)} absorbed)`
                   : `+$${dashStats.total_savings_usd.toFixed(2)} absorbed compute`}
               </p>
             )}

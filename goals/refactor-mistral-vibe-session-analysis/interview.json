@@ -1,0 +1,91 @@
+{
+  "stage": "interview",
+  "title": "Refactor Mistral Vibe Session Analysis & Plugin Logs",
+  "goalSlug": "refactor-mistral-vibe-session-analysis",
+  "questions": [
+    {
+      "id": "format-scope",
+      "prompt": "Which Mistral Vibe storage formats should the provider support?",
+      "description": "Mistral Vibe 3.0+ uses a unified chunk-based store format (`~/.vibe/logs/session/unified/`), while older versions used flat folders (`session_YYYYMMDD_...`) with `meta.json` and `messages.jsonl`.",
+      "answerMode": "single",
+      "recommendedAnswer": "both-unified-and-legacy",
+      "recommendedOptionIds": ["both-unified-and-legacy"],
+      "options": [
+        {
+          "id": "both-unified-and-legacy",
+          "label": "Dual support: Auto-detect both modern unified store (v1) and legacy messages.jsonl formats"
+        },
+        {
+          "id": "unified-only",
+          "label": "Modern unified store only: Ingest only ~/.vibe/logs/session/unified/ sessions"
+        }
+      ],
+      "required": true
+    },
+    {
+      "id": "subagent-hierarchy",
+      "prompt": "How should subagent and plugin child sessions (`child-*`) be represented?",
+      "description": "Plugins (such as `ruby-dev`) execute subagents (e.g. specifier, implementer, cleaner, hardener, verifier) as separate child sessions linked via parentSessionId.",
+      "answerMode": "single",
+      "recommendedAnswer": "separate-linked-sessions",
+      "recommendedOptionIds": ["separate-linked-sessions"],
+      "options": [
+        {
+          "id": "separate-linked-sessions",
+          "label": "Separate linked sessions: Store child sessions as distinct records with parent_session_id and namespaced agent_type (e.g., ruby-dev:verifier)"
+        },
+        {
+          "id": "bundled-into-parent",
+          "label": "Bundled into parent: Merge child messages directly into parent session transcripts"
+        },
+        {
+          "id": "both-linked-and-bundled",
+          "label": "Hybrid: Ingest child sessions as separate linked records and support recursive bundling during analysis"
+        }
+      ],
+      "required": true
+    },
+    {
+      "id": "plugin-telemetry",
+      "prompt": "What plugin-specific telemetry should be extracted from ~/.vibe/logs/session/plugins/?",
+      "description": "Vibe maintains plugin state in `~/.vibe/logs/session/plugins/` (per-session data, cached packages, manifests). What should be extracted into session models?",
+      "answerMode": "multi-custom",
+      "recommendedAnswer": "Detect active plugins and attribute subagents to their parent plugin package.",
+      "recommendedOptionIds": ["plugin-identification", "subagent-attribution"],
+      "options": [
+        {
+          "id": "plugin-identification",
+          "label": "Plugin Identification: Detect and record active plugins loaded during the session in session metadata"
+        },
+        {
+          "id": "subagent-attribution",
+          "label": "Subagent Attribution: Attribute child sessions to their defining plugin in agentType (e.g. ruby-dev:implementer)"
+        },
+        {
+          "id": "plugin-data-storage",
+          "label": "Plugin Storage: Scan per-session plugin directories (~/.vibe/logs/session/plugins/data/<session_id>/) for custom logs or artifacts"
+        }
+      ],
+      "required": true
+    },
+    {
+      "id": "active-sessions",
+      "prompt": "How should active / currently running sessions in ~/.vibe/logs/session/active/ be handled?",
+      "description": "Unified sessions generate snapshot checkpoints while running, and lockfiles reside in active/. Should Code Insights sync active sessions or wait for completion?",
+      "answerMode": "single",
+      "recommendedAnswer": "sync-quiescent-only",
+      "recommendedOptionIds": ["sync-quiescent-only"],
+      "options": [
+        {
+          "id": "sync-quiescent-only",
+          "label": "Quiescent/completed only: Only sync sessions marked quiescent or whose lock has cleared"
+        },
+        {
+          "id": "sync-active-snapshots",
+          "label": "Sync active snapshots: Ingest latest snapshot even while session is active, updating on subsequent syncs"
+        }
+      ],
+      "required": true
+    }
+  ]
+}
