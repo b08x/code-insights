@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Embedding Schema</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper:  #EDE6D6;
+      --color-ink:    #2A2420;
+      --color-muted:  #5C5248;
+      --color-accent: #7C3AED;
+      --font-mono:    'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+    }
+    body {
+      font-family: var(--font-mono);
+      background: var(--color-paper);
+      color: var(--color-ink);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 2rem;
+    }
+    .frame { max-width: 1200px; width: 100%; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    .eyebrow {
+      font-size: 0.66rem;
+      font-weight: 400;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--color-muted);
+      margin-bottom: 0.5rem;
+    }
+    h1 {
+      font-size: clamp(1.4rem, 2.2vw + 0.7rem, 1.75rem);
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      color: var(--color-ink);
+      margin-bottom: 1.5rem;
+    }
+    svg { width: 100%; min-width: 960px; display: block; }
+    @media print {
+      .diagram-container { overflow-x: visible; }
+      svg { min-width: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">Database schema · v18 · code-insights</p>
+    <h1>Embedding and retrieval tables</h1>
+    <div class="diagram-container">
+<svg viewBox="0 0 960 600" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="embedding-schema-title embedding-schema-desc">
+<title id="embedding-schema-title">Embedding and retrieval tables</title>
+<desc id="embedding-schema-desc">Database schema of the embedding subsystem: sessions and messages with foreign keys, analysis_chunks with a foreign key to sessions, and logical links from entity_chunks and embedding_metadata, plus the vec0 and FTS5 virtual tables.</desc>
+<defs><marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#5C5248"/></marker><marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#7C3AED"/></marker><marker id="arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#B7410E"/></marker></defs>
+<rect width="100%" height="100%" fill="#EDE6D6"/>
+<path d="M292,100 H304 Q312,100 312,108 V376 Q312,384 304,384 H292" fill="none" stroke="#5C5248" stroke-width="1.2" marker-end="url(#arrow)"/>
+<rect x="316" y="244" width="56" height="12" rx="2" fill="#EDE6D6"/><text x="344" y="253" fill="#6B6054" font-size="8" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="middle" letter-spacing="0.06em">NO ACTION</text>
+<path d="M384,400 H292" fill="none" stroke="#5C5248" stroke-width="1.2" marker-end="url(#arrow)"/>
+<rect x="326" y="382" width="56" height="12" rx="2" fill="#EDE6D6"/><text x="354" y="391" fill="#6B6054" font-size="8" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="middle" letter-spacing="0.06em">NO ACTION</text>
+<path d="M608,244 H620 Q628,244 628,252 V368 Q628,376 620,376 H608" fill="none" stroke="#5C5248" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrow)"/>
+<rect x="633" y="300" width="46" height="12" rx="2" fill="#EDE6D6"/><text x="656" y="309" fill="#6B6054" font-size="8" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="middle" letter-spacing="0.06em">LOGICAL</text>
+<path d="M700,196 H608" fill="none" stroke="#5C5248" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrow)"/>
+<rect x="631" y="178" width="46" height="12" rx="2" fill="#EDE6D6"/><text x="654" y="187" fill="#6B6054" font-size="8" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="middle" letter-spacing="0.06em">LOGICAL</text>
+<rect x="68" y="36" width="224" height="196" rx="6" fill="#EDE6D6"/>
+<rect x="68" y="36" width="224" height="196" rx="6" fill="#F4EFE3" stroke="#2A2420" stroke-width="1"/>
+<path d="M68.5,64 V42 Q68.5,36.5 74,36.5 H286 Q291.5,36.5 291.5,42 V64 Z" fill="rgba(42,36,32,0.06)"/>
+<line x1="68" y1="64" x2="292" y2="64" stroke="rgba(42,36,32,0.35)" stroke-width="0.8"/>
+<text x="80" y="54" fill="#2A2420" font-size="12" font-weight="700" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="start">analysis_chunks</text>
+<rect x="248" y="44" width="32" height="12" rx="2" fill="none" stroke="#5C5248" stroke-opacity="0.55" stroke-width="0.8"/>
+<text x="264.0" y="53" fill="#5C5248" font-size="8" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="middle" letter-spacing="0.08em">LAZY</text>
+<text x="80" y="80" fill="#2A2420" font-size="12" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="start">id</text>
+<text x="280" y="79" fill="#5C5248" font-size="9" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="end">TEXT</text>
+<rect x="232" y="70" width="18" height="12" rx="2" fill="none" stroke="#5C5248" stroke-opacity="0.55" stroke-width="0.8"/><text x="241.0" y="79" fill="#5C5248" font-size="8" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="middle" letter-spacing="0.04em">PK</text>
+<rect x="69" y="88" width="222" height="24" fill="rgba(42,36,32,0.03)"/>
+<text x="80" y="104" fill="#2A2420" font-size="12" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="start">session_id</text>
+<text x="280" y="103" fill="#5C5248" font-size="9" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="end">TEXT</text>
+<rect x="232" y="94" width="18" height="12" rx="2" fill="none" stroke="#5C5248" stroke-opacity="0.55" stroke-width="0.8"/><text x="241.0" y="103" fill="#5C5248" font-size="8" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="middle" letter-spacing="0.04em">NN</text>
+<rect x="210" y="94" width="18" height="12" rx="2" fill="none" stroke="#5C5248" stroke-opacity="0.55" stroke-width="0.8"/><text x="219.0" y="103" fill="#5C5248" font-size="8" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="middle" letter-spacing="0.04em">FK</text>
+<text x="80" y="128" fill="#2A2420" font-size="12" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="start">chunk_index</text>
+<text x="280" y="127" fill="#5C5248" font-size="9" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="end">INTEGER</text>
+<rect x="216" y="118" width="18" height="12" rx="2" fill="none" stroke="#5C5248" stroke-opacity="0.55" stroke-width="0.8"/><text x="225.0" y="127" fill="#5C5248" font-size="8" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="middle" letter-spacing="0.04em">NN</text>
+<rect x="69" y="136" width="222" height="24" fill="rgba(42,36,32,0.03)"/>
+<text x="80" y="152" fill="#2A2420" font-size="12" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="start">phase</text>
+<text x="280" y="151" fill="#5C5248" font-size="9" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="end">TEXT</text>
+<rect x="232" y="142" width="18" height="12" rx="2" fill="none" stroke="#5C5248" stroke-opacity="0.55" stroke-width="0.8"/><text x="241.0" y="151" fill="#5C5248" font-size="8" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="middle" letter-spacing="0.04em">NN</text>
+<text x="80" y="176" fill="#2A2420" font-size="12" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="start">significance</text>
+<text x="280" y="175" fill="#5C5248" font-size="9" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="end">TEXT</text>
+<rect x="232" y="166" width="18" height="12" rx="2" fill="none" stroke="#5C5248" stroke-opacity="0.55" stroke-width="0.8"/><text x="241.0" y="175" fill="#5C5248" font-size="8" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="middle" letter-spacing="0.04em">NN</text>
+<rect x="69" y="184" width="222" height="24" fill="rgba(42,36,32,0.03)"/>
+<text x="80" y="200" fill="#2A2420" font-size="12" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="start">embedding_status</text>
+<text x="280" y="199" fill="#5C5248" font-size="9" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="end">TEXT</text>
+<text x="80" y="224" fill="#5C5248" font-size="9" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="start" font-style="italic">+ 7 more columns</text>
+<rect x="68" y="352" width="224" height="148" rx="6" fill="#EDE6D6"/>
+<rect x="68" y="352" width="224" height="148" rx="6" fill="#F4EFE3" stroke="#2A2420" stroke-width="1"/>
+<path d="M68.5,380 V358 Q68.5,352.5 74,352.5 H286 Q291.5,352.5 291.5,358 V380 Z" fill="rgba(42,36,32,0.06)"/>
+<line x1="68" y1="380" x2="292" y2="380" stroke="rgba(42,36,32,0.35)" stroke-width="0.8"/>
+<text x="80" y="370" fill="#2A2420" font-size="12" font-weight="700" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="start">sessions</text>
+<rect x="243" y="360" width="37" height="12" rx="2" fill="none" stroke="#5C5248" stroke-opacity="0.55" stroke-width="0.8"/>
+<text x="261.5" y="369" fill="#5C5248" font-size="8" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="middle" letter-spacing="0.08em">TABLE</text>
+<text x="80" y="396" fill="#2A2420" font-size="12" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="start">id</text>
+<text x="280" y="395" fill="#5C5248" font-size="9" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="end">TEXT</text>
+<rect x="232" y="386" width="18" height="12" rx="2" fill="none" stroke="#5C5248" stroke-opacity="0.55" stroke-width="0.8"/><text x="241.0" y="395" fill="#5C5248" font-size="8" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="middle" letter-spacing="0.04em">PK</text>
+<rect x="69" y="404" width="222" height="24" fill="rgba(42,36,32,0.03)"/>
+<text x="80" y="420" fill="#2A2420" font-size="12" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="start">project_id</text>
+<text x="280" y="419" fill="#5C5248" font-size="9" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="end">TEXT</text>
+<rect x="232" y="410" width="18" height="12" rx="2" fill="none" stroke="#5C5248" stroke-opacity="0.55" stroke-width="0.8"/><text x="241.0" y="419" fill="#5C5248" font-size="8" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="middle" letter-spacing="0.04em">NN</text>
+<rect x="210" y="410" width="18" height="12" rx="2" fill="none" stroke="#5C5248" stroke-opacity="0.55" stroke-width="0.8"/><text x="219.0" y="419" fill="#5C5248" font-size="8" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="middle" letter-spacing="0.04em">FK</text>
+<text x="80" y="444" fill="#2A2420" font-size="12" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="start">started_at</text>
+<text x="280" y="443" fill="#5C5248" font-size="9" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="end">TEXT</text>
+<rect x="232" y="434" width="18" height="12" rx="2" fill="none" stroke="#5C5248" stroke-opacity="0.55" stroke-width="0.8"/><text x="241.0" y="443" fill="#5C5248" font-size="8" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="middle" letter-spacing="0.04em">NN</text>
+<rect x="69" y="452" width="222" height="24" fill="rgba(42,36,32,0.03)"/>
+<text x="80" y="468" fill="#2A2420" font-size="12" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="start">ended_at</text>
+<text x="280" y="467" fill="#5C5248" font-size="9" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="end">TEXT</text>
+<rect x="232" y="458" width="18" height="12" rx="2" fill="none" stroke="#5C5248" stroke-opacity="0.55" stroke-width="0.8"/><text x="241.0" y="467" fill="#5C5248" font-size="8" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="middle" letter-spacing="0.04em">NN</text>
+<text x="80" y="492" fill="#5C5248" font-size="9" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="start" font-style="italic">+ 33 more columns</text>
+<rect x="384" y="156" width="224" height="148" rx="6" fill="#EDE6D6"/>
+<rect x="384" y="156" width="224" height="148" rx="6" fill="#F4EFE3" stroke="#2A2420" stroke-width="1"/>
+<path d="M384.5,184 V162 Q384.5,156.5 390,156.5 H602 Q607.5,156.5 607.5,162 V184 Z" fill="rgba(42,36,32,0.06)"/>
+<line x1="384" y1="184" x2="608" y2="184" stroke="rgba(42,36,32,0.35)" stroke-width="0.8"/>
+<text x="396" y="174" fill="#2A2420" font-size="12" font-weight="700" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="start">entity_chunks</text>
+<rect x="559" y="164" width="37" height="12" rx="2" fill="none" stroke="#5C5248" stroke-opacity="0.55" stroke-width="0.8"/>
+<text x="577.5" y="173" fill="#5C5248" font-size="8" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="middle" letter-spacing="0.08em">TABLE</text>
+<text x="396" y="200" fill="#2A2420" font-size="12" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="start">id</text>
+<text x="596" y="199" fill="#5C5248" font-size="9" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="end">TEXT</text>
+<rect x="548" y="190" width="18" height="12" rx="2" fill="none" stroke="#5C5248" stroke-opacity="0.55" stroke-width="0.8"/><text x="557.0" y="199" fill="#5C5248" font-size="8" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="middle" letter-spacing="0.04em">PK</text>
+<rect x="385" y="208" width="222" height="24" fill="rgba(42,36,32,0.03)"/>
+<text x="396" y="224" fill="#2A2420" font-size="12" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="start">entity_type</text>
+<text x="596" y="223" fill="#5C5248" font-size="9" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="end">TEXT</text>
+<rect x="548" y="214" width="18" height="12" rx="2" fill="none" stroke="#5C5248" stroke-opacity="0.55" stroke-width="0.8"/><text x="557.0" y="223" fill="#5C5248" font-size="8" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="middle" letter-spacing="0.04em">NN</text>
+<text x="396" y="248" fill="#2A2420" font-size="12" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="start">entity_id</text>
+<text x="596" y="247" fill="#5C5248" font-size="9" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="end">TEXT</text>
+<rect x="548" y="238" width="18" height="12" rx="2" fill="none" stroke="#5C5248" stroke-opacity="0.55" stroke-width="0.8"/><text x="557.0" y="247" fill="#5C5248" font-size="8" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="middle" letter-spacing="0.04em">NN</text>
+<rect x="385" y="256" width="222" height="24" fill="rgba(42,36,32,0.03)"/>
+<text x="396" y="272" fill="#2A2420" font-size="12" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="start">chunk_index</text>
+<text x="596" y="271" fill="#5C5248" font-size="9" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="end">INTEGER</text>
+<rect x="532" y="262" width="18" height="12" rx="2" fill="none" stroke="#5C5248" stroke-opacity="0.55" stroke-width="0.8"/><text x="541.0" y="271" fill="#5C5248" font-size="8" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="middle" letter-spacing="0.04em">NN</text>
+<text x="396" y="296" fill="#2A2420" font-size="12" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="start">content</text>
+<text x="596" y="295" fill="#5C5248" font-size="9" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="end">TEXT</text>
+<rect x="548" y="286" width="18" height="12" rx="2" fill="none" stroke="#5C5248" stroke-opacity="0.55" stroke-width="0.8"/><text x="557.0" y="295" fill="#5C5248" font-size="8" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="middle" letter-spacing="0.04em">NN</text>
+<rect x="384" y="336" width="224" height="148" rx="6" fill="#EDE6D6"/>
+<rect x="384" y="336" width="224" height="148" rx="6" fill="#F4EFE3" stroke="#2A2420" stroke-width="1"/>
+<path d="M384.5,364 V342 Q384.5,336.5 390,336.5 H602 Q607.5,336.5 607.5,342 V364 Z" fill="rgba(42,36,32,0.06)"/>
+<line x1="384" y1="364" x2="608" y2="364" stroke="rgba(42,36,32,0.35)" stroke-width="0.8"/>
+<text x="396" y="354" fill="#2A2420" font-size="12" font-weight="700" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="start">messages</text>
+<rect x="559" y="344" width="37" height="12" rx="2" fill="none" stroke="#5C5248" stroke-opacity="0.55" stroke-width="0.8"/>
+<text x="577.5" y="353" fill="#5C5248" font-size="8" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="middle" letter-spacing="0.08em">TABLE</text>
+<text x="396" y="380" fill="#2A2420" font-size="12" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="start">id</text>
+<text x="596" y="379" fill="#5C5248" font-size="9" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="end">TEXT</text>
+<rect x="548" y="370" width="18" height="12" rx="2" fill="none" stroke="#5C5248" stroke-opacity="0.55" stroke-width="0.8"/><text x="557.0" y="379" fill="#5C5248" font-size="8" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="middle" letter-spacing="0.04em">PK</text>
+<rect x="385" y="388" width="222" height="24" fill="rgba(42,36,32,0.03)"/>
+<text x="396" y="404" fill="#2A2420" font-size="12" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="start">session_id</text>
+<text x="596" y="403" fill="#5C5248" font-size="9" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="end">TEXT</text>
+<rect x="548" y="394" width="18" height="12" rx="2" fill="none" stroke="#5C5248" stroke-opacity="0.55" stroke-width="0.8"/><text x="557.0" y="403" fill="#5C5248" font-size="8" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="middle" letter-spacing="0.04em">NN</text>
+<rect x="526" y="394" width="18" height="12" rx="2" fill="none" stroke="#5C5248" stroke-opacity="0.55" stroke-width="0.8"/><text x="535.0" y="403" fill="#5C5248" font-size="8" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="middle" letter-spacing="0.04em">FK</text>
+<text x="396" y="428" fill="#2A2420" font-size="12" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="start">type</text>
+<text x="596" y="427" fill="#5C5248" font-size="9" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="end">TEXT</text>
+<rect x="548" y="418" width="18" height="12" rx="2" fill="none" stroke="#5C5248" stroke-opacity="0.55" stroke-width="0.8"/><text x="557.0" y="427" fill="#5C5248" font-size="8" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="middle" letter-spacing="0.04em">NN</text>
+<rect x="385" y="436" width="222" height="24" fill="rgba(42,36,32,0.03)"/>
+<text x="396" y="452" fill="#2A2420" font-size="12" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="start">embedding_status</text>
+<text x="596" y="451" fill="#5C5248" font-size="9" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="end">TEXT</text>
+<rect x="548" y="442" width="18" height="12" rx="2" fill="none" stroke="#5C5248" stroke-opacity="0.55" stroke-width="0.8"/><text x="557.0" y="451" fill="#5C5248" font-size="8" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="middle" letter-spacing="0.04em">NN</text>
+<text x="396" y="476" fill="#5C5248" font-size="9" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="start" font-style="italic">+ 7 more columns</text>
+<rect x="700" y="36" width="224" height="196" rx="6" fill="#EDE6D6"/>
+<rect x="700" y="36" width="224" height="196" rx="6" fill="#F4EFE3" stroke="#2A2420" stroke-width="1"/>
+<path d="M700.5,64 V42 Q700.5,36.5 706,36.5 H918 Q923.5,36.5 923.5,42 V64 Z" fill="rgba(42,36,32,0.06)"/>
+<line x1="700" y1="64" x2="924" y2="64" stroke="rgba(42,36,32,0.35)" stroke-width="0.8"/>
+<text x="712" y="54" fill="#2A2420" font-size="12" font-weight="700" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="start">embedding_metadata</text>
+<rect x="875" y="44" width="37" height="12" rx="2" fill="none" stroke="#5C5248" stroke-opacity="0.55" stroke-width="0.8"/>
+<text x="893.5" y="53" fill="#5C5248" font-size="8" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="middle" letter-spacing="0.08em">TABLE</text>
+<text x="712" y="80" fill="#2A2420" font-size="12" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="start">id</text>
+<text x="912" y="79" fill="#5C5248" font-size="9" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="end">TEXT</text>
+<rect x="864" y="70" width="18" height="12" rx="2" fill="none" stroke="#5C5248" stroke-opacity="0.55" stroke-width="0.8"/><text x="873.0" y="79" fill="#5C5248" font-size="8" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="middle" letter-spacing="0.04em">PK</text>
+<rect x="701" y="88" width="222" height="24" fill="rgba(42,36,32,0.03)"/>
+<text x="712" y="104" fill="#2A2420" font-size="12" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="start">entity_type</text>
+<text x="912" y="103" fill="#5C5248" font-size="9" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="end">TEXT</text>
+<rect x="864" y="94" width="18" height="12" rx="2" fill="none" stroke="#5C5248" stroke-opacity="0.55" stroke-width="0.8"/><text x="873.0" y="103" fill="#5C5248" font-size="8" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="middle" letter-spacing="0.04em">NN</text>
+<text x="712" y="128" fill="#2A2420" font-size="12" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="start">entity_id</text>
+<text x="912" y="127" fill="#5C5248" font-size="9" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="end">TEXT</text>
+<rect x="864" y="118" width="18" height="12" rx="2" fill="none" stroke="#5C5248" stroke-opacity="0.55" stroke-width="0.8"/><text x="873.0" y="127" fill="#5C5248" font-size="8" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="middle" letter-spacing="0.04em">NN</text>
+<rect x="701" y="136" width="222" height="24" fill="rgba(42,36,32,0.03)"/>
+<text x="712" y="152" fill="#2A2420" font-size="12" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="start">model</text>
+<text x="912" y="151" fill="#5C5248" font-size="9" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="end">TEXT</text>
+<rect x="864" y="142" width="18" height="12" rx="2" fill="none" stroke="#5C5248" stroke-opacity="0.55" stroke-width="0.8"/><text x="873.0" y="151" fill="#5C5248" font-size="8" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="middle" letter-spacing="0.04em">NN</text>
+<text x="712" y="176" fill="#2A2420" font-size="12" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="start">dim</text>
+<text x="912" y="175" fill="#5C5248" font-size="9" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="end">INTEGER</text>
+<rect x="848" y="166" width="18" height="12" rx="2" fill="none" stroke="#5C5248" stroke-opacity="0.55" stroke-width="0.8"/><text x="857.0" y="175" fill="#5C5248" font-size="8" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="middle" letter-spacing="0.04em">NN</text>
+<rect x="701" y="184" width="222" height="24" fill="rgba(42,36,32,0.03)"/>
+<text x="712" y="200" fill="#2A2420" font-size="12" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="start">parent_chunk_id</text>
+<text x="912" y="199" fill="#5C5248" font-size="9" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="end">TEXT</text>
+<text x="712" y="224" fill="#5C5248" font-size="9" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="start" font-style="italic">+ 3 more columns</text>
+<rect x="700" y="272" width="224" height="196" rx="8" fill="rgba(42,36,32,0.02)" stroke="rgba(42,36,32,0.30)" stroke-width="1" stroke-dasharray="4,3"/>
+<text x="712" y="292" fill="#6B6054" font-size="8" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="start" letter-spacing="0.14em">VIRTUAL TABLES</text>
+<text x="712" y="314" fill="#2A2420" font-size="12" font-weight="700" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="start">vec_messages</text>
+<text x="712" y="330" fill="#2A2420" font-size="12" font-weight="700" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="start">vec_insights</text>
+<text x="712" y="346" fill="#2A2420" font-size="12" font-weight="700" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="start">vec_analysis_chunks</text>
+<text x="712" y="364" fill="#5C5248" font-size="9" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="start">vec0: id TEXT PK = child id</text>
+<text x="712" y="376" fill="#5C5248" font-size="9" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="start">embedding float[768]</text>
+<line x1="712" y1="390" x2="912" y2="390" stroke="rgba(42,36,32,0.20)" stroke-width="0.8"/>
+<text x="712" y="412" fill="#2A2420" font-size="12" font-weight="700" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="start">messages_fts</text>
+<text x="712" y="430" fill="#5C5248" font-size="9" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="start">fts5(content), external</text>
+<text x="712" y="442" fill="#5C5248" font-size="9" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="start">content of messages;</text>
+<text x="712" y="454" fill="#5C5248" font-size="9" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="start">triggers messages_ai/ad/au</text>
+<line x1="36" y1="516" x2="924" y2="516" stroke="rgba(42,36,32,0.12)" stroke-width="0.8"/>
+<text x="36" y="543" fill="#6B6054" font-size="8" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="start" letter-spacing="0.14em">LEGEND</text>
+<rect x="108" y="531" width="18" height="12" rx="2" fill="none" stroke="#5C5248" stroke-opacity="0.55" stroke-width="0.8"/><text x="117.0" y="540" fill="#5C5248" font-size="8" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="middle" letter-spacing="0.04em">PK</text>
+<text x="132" y="540" fill="#5C5248" font-size="9" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="start">primary key</text>
+<rect x="214" y="531" width="18" height="12" rx="2" fill="none" stroke="#5C5248" stroke-opacity="0.55" stroke-width="0.8"/><text x="223.0" y="540" fill="#5C5248" font-size="8" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="middle" letter-spacing="0.04em">FK</text>
+<text x="238" y="540" fill="#5C5248" font-size="9" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="start">foreign key</text>
+<rect x="320" y="531" width="18" height="12" rx="2" fill="none" stroke="#5C5248" stroke-opacity="0.55" stroke-width="0.8"/><text x="329.0" y="540" fill="#5C5248" font-size="8" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="middle" letter-spacing="0.04em">NN</text>
+<text x="344" y="540" fill="#5C5248" font-size="9" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="start">not null</text>
+<path d="M410,537 H436" fill="none" stroke="#5C5248" stroke-width="1.2" marker-end="url(#arrow)"/>
+<text x="444" y="540" fill="#5C5248" font-size="9" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="start">FK (NO ACTION)</text>
+<path d="M543,537 H569" fill="none" stroke="#5C5248" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrow)"/>
+<text x="577" y="540" fill="#5C5248" font-size="9" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="start">logical link, no constraint</text>
+<rect x="747" y="531" width="32" height="12" rx="2" fill="none" stroke="#5C5248" stroke-opacity="0.55" stroke-width="0.8"/>
+<text x="763.0" y="540" fill="#5C5248" font-size="8" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="middle" letter-spacing="0.08em">LAZY</text>
+<text x="785" y="540" fill="#5C5248" font-size="9" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="start">created on 1st embed</text>
+<text x="36" y="572" fill="#6B6054" font-size="9" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="start" font-style="italic">Embedding subsystem only (schema v18). insights mirrors messages via entity_type = 'insight'.</text>
+<text x="36" y="586" fill="#6B6054" font-size="9" font-weight="400" font-family="'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" text-anchor="start" font-style="italic">No cascades here: chunk and vector rows are deleted by application code, not by the database.</text>
+</svg>
+    </div>
+  </div>
+</body>
+</html>
