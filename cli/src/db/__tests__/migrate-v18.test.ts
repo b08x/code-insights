@@ -11,8 +11,8 @@ describe('SQLite Migration v18: analysis provenance columns', () => {
   beforeEach(() => { db = new Database(':memory:'); });
   afterEach(() => { db.close(); });
 
-  it('CURRENT_SCHEMA_VERSION is 18', () => {
-    expect(CURRENT_SCHEMA_VERSION).toBe(18);
+  it('CURRENT_SCHEMA_VERSION is >= 18', () => {
+    expect(CURRENT_SCHEMA_VERSION).toBeGreaterThanOrEqual(18);
   });
 
   it('adds nullable student_identity and prompt_version_id to insights and session_facets on a fresh database', () => {
@@ -59,7 +59,7 @@ describe('SQLite Migration v18: analysis provenance columns', () => {
     expect(result.v18Applied).toBe(true);
     expect(result.v17Applied).toBe(false);
 
-    expect((db.prepare('SELECT MAX(version) AS v FROM schema_version').get() as { v: number }).v).toBe(18);
+    expect((db.prepare('SELECT MAX(version) AS v FROM schema_version').get() as { v: number }).v).toBe(CURRENT_SCHEMA_VERSION);
     expect(db.prepare('SELECT id, analysis_version, student_identity, prompt_version_id FROM insights').all())
       .toEqual([{ id: 'i1', analysis_version: '3.1.0', student_identity: null, prompt_version_id: null }]);
     expect(db.prepare('SELECT session_id, student_identity, prompt_version_id FROM session_facets').all())

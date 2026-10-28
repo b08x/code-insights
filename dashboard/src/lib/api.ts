@@ -2,7 +2,7 @@
 // Base URL is relative in production (SPA served by the same server).
 // In Vite dev mode, the proxy forwards /api -> localhost:7890.
 
-import type { Project, Session, Message, Insight, DashboardStats, LLMConfig, ExportTemplate, SemanticStep, PricingPlan, ChatConversation, ChatMessage, PageContext, AnalysisRunnerName } from '@/lib/types';
+import type { Project, Session, Message, Insight, DashboardStats, LLMConfig, ExportTemplate, SemanticStep, PricingPlan, ChatConversation, ChatMessage, PageContext, AnalysisRunnerName, SessionLabel, LabelInput, LabelCategories, LabelQueueResponse, LabelProgress } from '@/lib/types';
 
 const BASE = '/api';
 
@@ -653,4 +653,57 @@ export async function postChatMessage(
     throw err;
   }
   return res;
+}
+
+// ── Labels (phase 2 labeling) ────────────────────────────────────────────────
+
+/** Save failure carrying the server's per-field validation messages (400 `details`). */
+export class LabelSaveError extends Error {
+  constructor(message: string, public status: number, public details: string[] = []) {
+    super(message);
+    this.name = 'LabelSaveError';
+  }
+}
+
+export function fetchLabelCategories() {
+  return request<LabelCategories>('/labels/categories');
+}
+
+export function fetchLabelQueue(limit = 20) {
+  return request<LabelQueueResponse>(`/labels/queue?limit=${limit}`);
+}
+
+export function fetchLabelProgress() {
+  return request<LabelProgress>('/labels/progress');
+}
+
+/** Returns null when the session has no label yet. */
+export async function fetchLabel(sessionId: string): Promise<SessionLabel | null> {
+  const res = await request<{ label: SessionLabel | null }>(`/labels/${encodeURIComponent(sessionId)}`);
+  return res.label;
+}
+
+export async function saveLabel(sessionId: string, input: LabelInput): Promise<SessionLabel> {
+  const res = await fetch(`${BASE}/labels/${encodeURIComponent(sessionId)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    let message = res.statusText;
+    let details: string[] = [];
+    try {
+      const data = (await res.json()) as { error?: string; details?: unknown };
+      if (data.error) message = data.error;
+      if (Array.isArray(data.details)) details = data.details.filter((d): d is string => typeof d === 'string');
+    } catch {
+      // non-JSON error body
+    }
+    throw new LabelSaveError(message, res.status, details);
+  }
+  return ((await res.json()) as { label: SessionLabel }).label;
+}
+
+export function deleteLabel(sessionId: string) {
+  return request<{ success: boolean }>(`/labels/${encodeURIComponent(sessionId)}`, { method: 'DELETE' });
 }

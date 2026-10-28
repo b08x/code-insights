@@ -1,7 +1,7 @@
 // Ollama provider implementation (local models, no API key required)
 
 import type { LLMClient, LLMMessage, LLMResponse, ChatOptions } from '../types.js';
-import { flattenContent, DEFAULT_MAX_INPUT_TOKENS, RESPONSE_TOKEN_RESERVE } from '../types.js';
+import { flattenContent, DEFAULT_MAX_INPUT_TOKENS, DEFAULT_TEMPERATURE, RESPONSE_TOKEN_RESERVE } from '../types.js';
 
 const DEFAULT_OLLAMA_URL = 'http://localhost:11434';
 
@@ -25,7 +25,7 @@ export function createOllamaClient(model: string, baseUrl?: string): LLMClient {
             messages: messages.map(m => ({ role: m.role, content: flattenContent(m.content) })),
             stream: false,
             // Ollama silently truncates to its default context (2-4k tokens) unless told otherwise.
-            options: { temperature: 0.7, num_ctx: DEFAULT_MAX_INPUT_TOKENS + RESPONSE_TOKEN_RESERVE },
+            options: { temperature: DEFAULT_TEMPERATURE, num_ctx: DEFAULT_MAX_INPUT_TOKENS + RESPONSE_TOKEN_RESERVE },
           }),
         });
       } catch (err) {

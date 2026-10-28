@@ -1,7 +1,7 @@
 // Gemini provider implementation (server-side, no browser dependencies)
 
 import type { LLMClient, LLMMessage, LLMResponse, ChatOptions } from '../types.js';
-import { flattenContent } from '../types.js';
+import { flattenContent, DEFAULT_TEMPERATURE } from '../types.js';
 
 export function createGeminiClient(apiKey: string, model: string): LLMClient {
   return {
@@ -21,7 +21,7 @@ export function createGeminiClient(apiKey: string, model: string): LLMClient {
       const body: Record<string, unknown> = {
         contents,
         generationConfig: {
-          temperature: 0.7,
+          temperature: DEFAULT_TEMPERATURE,
           maxOutputTokens: 8192,
           // Force valid JSON output at the decoding level.
           // Without this, Gemini Flash often wraps JSON in markdown fences,

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useLocation, useSearchParams } from 'react-router';
+import { createBrowserRouter, createRoutesFromElements, Navigate, Outlet, Route, RouterProvider, useLocation, useRouteError, useSearchParams } from 'react-router';
 import { capturePageView, captureDashboardLoaded } from '@/lib/telemetry';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { Layout } from '@/components/layout/Layout';
@@ -13,6 +13,7 @@ import ExportPage from '@/pages/ExportPage';
 import JournalPage from '@/pages/JournalPage';
 import PatternsPage from '@/pages/PatternsPage';
 import RagChatPage from '@/pages/RagChatPage';
+import LabelPage from '@/pages/LabelPage';
 
 const ROUTE_TITLES: Record<string, string> = {
   '/dashboard': 'Dashboard',
@@ -21,6 +22,7 @@ const ROUTE_TITLES: Record<string, string> = {
   '/insights': 'Insights',
   '/analytics': 'Analytics',
   '/patterns': 'Patterns',
+  '/label': 'Labeling',
   '/export': 'Export',
   '/journal': 'Journal',
   '/settings': 'Settings',
@@ -61,28 +63,49 @@ function RouteEffects() {
   return null;
 }
 
+// Route errors bubble to the app-level ErrorBoundary, as with the previous <BrowserRouter> setup,
+// instead of the data router's built-in error screen.
+function RethrowRouteError(): never {
+  throw useRouteError();
+}
+
+function RootRoute() {
+  return (
+    <>
+      <RouteEffects />
+      <Outlet />
+    </>
+  );
+}
+
+// Data router (not <BrowserRouter>) so pages can use useBlocker for unsaved-changes prompts.
+const router = createBrowserRouter(
+  createRoutesFromElements(
+    <Route element={<RootRoute />} errorElement={<RethrowRouteError />}>
+      <Route element={<Layout />}>
+        <Route index element={<Navigate to="/dashboard" replace />} />
+        <Route path="/dashboard" element={<DashboardPage />} />
+        <Route path="/chat" element={<RagChatPage />} />
+        <Route path="/sessions" element={<SessionsPage />} />
+        <Route path="/sessions/:id" element={<SessionDetailPage />} />
+        <Route path="/insights" element={<InsightsPage />} />
+        <Route path="/analytics" element={<AnalyticsPage />} />
+        <Route path="/patterns" element={<PatternsPage />} />
+        <Route path="/label" element={<LabelPage />} />
+        <Route path="/label/:sessionId" element={<LabelPage />} />
+        <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/export" element={<ExportPage />} />
+        <Route path="/journal" element={<JournalPage />} />
+        <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      </Route>
+    </Route>,
+  ),
+);
+
 export default function App() {
   return (
     <ErrorBoundary>
-    <BrowserRouter>
-      <RouteEffects />
-      <Routes>
-        <Route element={<Layout />}>
-          <Route index element={<Navigate to="/dashboard" replace />} />
-          <Route path="/dashboard" element={<DashboardPage />} />
-          <Route path="/chat" element={<RagChatPage />} />
-          <Route path="/sessions" element={<SessionsPage />} />
-          <Route path="/sessions/:id" element={<SessionDetailPage />} />
-          <Route path="/insights" element={<InsightsPage />} />
-          <Route path="/analytics" element={<AnalyticsPage />} />
-          <Route path="/patterns" element={<PatternsPage />} />
-          <Route path="/settings" element={<SettingsPage />} />
-          <Route path="/export" element={<ExportPage />} />
-          <Route path="/journal" element={<JournalPage />} />
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
-        </Route>
-      </Routes>
-    </BrowserRouter>
+      <RouterProvider router={router} />
     </ErrorBoundary>
   );
 }
