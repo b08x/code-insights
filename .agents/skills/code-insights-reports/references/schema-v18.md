@@ -1,0 +1,478 @@
+# Code Insights SQLite Schema Reference (v18)
+
+Database location: `~/.code-insights/data.db`  
+Storage engine: SQLite 3 with Write-Ahead Logging (`PRAGMA journal_mode = WAL`)  
+Current schema version: `18`
+
+---
+
+## Table of Contents
+1. [Core Tables](#core-tables)
+   - [projects](#projects)
+   - [sessions](#sessions)
+   - [messages](#messages)
+   - [insights](#insights)
+2. [Analytical & Facet Tables](#analytical--facet-tables)
+   - [session_facets](#session_facets)
+   - [session_steps](#session_steps)
+   - [analysis_usage](#analysis_usage)
+   - [analysis_queue](#analysis_queue)
+   - [reflect_snapshots](#reflect_snapshots)
+   - [deleted_sessions](#deleted_sessions)
+3. [Search, RAG & Vector Tables](#search-rag--vector-tables)
+   - [messages_fts](#messages_fts-virtual-table)
+   - [entity_chunks](#entity_chunks)
+   - [embedding_metadata](#embedding_metadata)
+4. [Agent Chat & Utility Tables](#agent-chat--utility-tables)
+   - [chat_conversations](#chat_conversations)
+   - [chat_messages](#chat_messages)
+   - [usage_stats](#usage_stats)
+   - [schema_version](#schema_version)
+5. [JSON Payload Schemas](#json-payload-schemas)
+
+---
+
+## Core Tables
+
+### `projects`
+Tracks workspaces, repositories, and aggregated project-level metrics.
+
+| Column | Type | Constraints | Description |
+|---|---|---|---|
+| `id` | `TEXT` | `PRIMARY KEY` | Project identifier (path hash or git remote hash) |
+| `name` | `TEXT` | `NOT NULL` | Base folder or repo name |
+| `path` | `TEXT` | `NOT NULL` | Absolute filesystem path |
+| `git_remote_url` | `TEXT` | | Git remote origin URL if detected |
+| `project_id_source` | `TEXT` | `NOT NULL DEFAULT 'path-hash'` | Source of project ID (`'path-hash'` or `'git-remote'`) |
+| `session_count` | `INTEGER` | `NOT NULL DEFAULT 0` | Total imported sessions in project |
+| `last_activity` | `TEXT` | `NOT NULL` | ISO 8601 timestamp of latest activity |
+| `created_at` | `TEXT` | `NOT NULL DEFAULT (datetime('now'))` | Record creation timestamp |
+| `updated_at` | `TEXT` | `NOT NULL DEFAULT (datetime('now'))` | Record update timestamp |
+| `total_input_tokens` | `INTEGER` | `DEFAULT 0` | Cumulative input tokens |
+| `total_output_tokens` | `INTEGER` | `DEFAULT 0` | Cumulative output tokens |
+| `cache_creation_tokens` | `INTEGER` | `DEFAULT 0` | Cumulative prompt cache creation tokens |
+| `cache_read_tokens` | `INTEGER` | `DEFAULT 0` | Cumulative prompt cache read tokens |
+| `estimated_cost_usd` | `REAL` | `DEFAULT 0` | Cumulative token-based estimated API cost in USD |
+
+---
+
+### `sessions`
+Central entity representing individual AI developer coding conversations across all supported AI tools.
+
+| Column | Type | Constraints | Description |
+|---|---|---|---|
+| `id` | `TEXT` | `PRIMARY KEY` | Unique session ID (UUID or provider ID) |
+| `project_id` | `TEXT` | `NOT NULL REFERENCES projects(id)` | Foreign key to project |
+| `project_name` | `TEXT` | `NOT NULL` | Denormalized project name |
+| `project_path` | `TEXT` | `NOT NULL` | Denormalized project root path |
+| `git_remote_url` | `TEXT` | | Git remote URL if present |
+| `summary` | `TEXT` | | High-level summary of the session work |
+| `custom_title` | `TEXT` | | User-assigned custom title |
+| `generated_title` | `TEXT` | | Machine-generated concise title |
+| `title_source` | `TEXT` | | Origin of title (`'claude'`, `'user_message'`, `'insight'`, `'character'`, `'fallback'`) |
+| `session_character` | `TEXT` | | Categorization (`'deep_focus'`, `'bug_hunt'`, `'feature_build'`, `'exploration'`, `'refactor'`, `'learning'`, `'quick_task'`) |
+| `started_at` | `TEXT` | `NOT NULL` | ISO 8601 session start timestamp |
+| `ended_at` | `TEXT` | `NOT NULL` | ISO 8601 session end timestamp |
+| `message_count` | `INTEGER` | `NOT NULL DEFAULT 0` | Total message count |
+| `user_message_count` | `INTEGER` | `NOT NULL DEFAULT 0` | User message count |
+| `assistant_message_count` | `INTEGER` | `NOT NULL DEFAULT 0` | Assistant message count |
+| `tool_call_count` | `INTEGER` | `NOT NULL DEFAULT 0` | Tool call count |
+| `git_branch` | `TEXT` | | Git branch during session |
+| `claude_version` | `TEXT` | | Version of tool (e.g. Claude Code version) |
+| `source_tool` | `TEXT` | `NOT NULL DEFAULT 'claude-code'` | Source CLI / tool name (`'antigravity'`, `'claude-code'`, `'claude-desktop'`, `'codex-cli'`, `'crush'`, `'gemini-cli'`, `'hermes-agent'`, `'mistral-vibe'`, `'opencode'`, `'pi'`) |
+| `parent_session_id` | `TEXT` | | Parent session UUID for subagents / child sessions |
+| `agent_type` | `TEXT` | | Subagent role (e.g. `'code-reviewer'`, `'executor'`) |
+| `device_id` | `TEXT` | | Device fingerprint |
+| `device_hostname` | `TEXT` | | Machine hostname |
+| `device_platform` | `TEXT` | | Operating system |
+| `synced_at` | `TEXT` | `NOT NULL DEFAULT (datetime('now'))` | Import timestamp |
+| `total_input_tokens` | `INTEGER` | | Tokens sent to model |
+| `total_output_tokens` | `INTEGER` | | Tokens generated by model |
+| `cache_creation_tokens` | `INTEGER` | | Cache creation input tokens |
+| `cache_read_tokens` | `INTEGER` | | Cache read input tokens |
+| `estimated_cost_usd` | `REAL` | | Estimated API cost in USD |
+| `models_used` | `TEXT` | | JSON array of model names used |
+| `primary_model` | `TEXT` | | Main model used in session |
+| `usage_source` | `TEXT` | | Source of token telemetry (`'jsonl'`, `'session'`, `'estimated'`) |
+| `deleted_at` | `TEXT` | | ISO 8601 timestamp if soft-deleted (hidden) |
+| `compact_count` | `INTEGER` | `NOT NULL DEFAULT 0` | Number of manual `/compact` commands |
+| `auto_compact_count` | `INTEGER` | `NOT NULL DEFAULT 0` | Number of system auto-compactions |
+| `slash_commands` | `TEXT` | `NOT NULL DEFAULT '[]'` | JSON array of slash commands used in session |
+
+**Indexes on `sessions`**:
+- `idx_sessions_project_id` ON `sessions(project_id)`
+- `idx_sessions_started_at` ON `sessions(started_at DESC)`
+- `idx_sessions_source_tool` ON `sessions(source_tool)`
+- `idx_sessions_deleted_at` ON `sessions(deleted_at)`
+- `idx_sessions_parent_id` ON `sessions(parent_session_id)`
+
+---
+
+### `messages`
+Raw conversational turns between user, assistant, and tools.
+
+| Column | Type | Constraints | Description |
+|---|---|---|---|
+| `id` | `TEXT` | `PRIMARY KEY` | Message UUID |
+| `session_id` | `TEXT` | `NOT NULL REFERENCES sessions(id)` | Session reference |
+| `type` | `TEXT` | `NOT NULL` | Message type (`'user'`, `'assistant'`, `'system'`) |
+| `content` | `TEXT` | `NOT NULL DEFAULT ''` | Plain text content |
+| `thinking` | `TEXT` | | Model reasoning / chain-of-thought blocks |
+| `tool_calls` | `TEXT` | | JSON array of tool calls `[{ id, name, input }]` |
+| `tool_results` | `TEXT` | | JSON array of tool results `[{ toolUseId, output }]` |
+| `usage` | `TEXT` | | JSON object with token usage for this message |
+| `timestamp` | `TEXT` | `NOT NULL` | ISO 8601 message timestamp |
+| `parent_id` | `TEXT` | | Preceding message UUID |
+| `embedding_status` | `TEXT` | `NOT NULL DEFAULT 'pending' CHECK(embedding_status IN ('pending', 'computed', 'stale', 'failed'))` | Vector embedding pipeline state |
+
+**Indexes on `messages`**:
+- `idx_messages_session_id` ON `messages(session_id)`
+- `idx_messages_timestamp` ON `messages(session_id, timestamp ASC)`
+- `idx_messages_embedding_status` ON `messages(embedding_status)`
+
+---
+
+### `insights`
+Structured analytical findings extracted from sessions by LLM analysis pipeline.
+
+| Column | Type | Constraints | Description |
+|---|---|---|---|
+| `id` | `TEXT` | `PRIMARY KEY` | Insight UUID |
+| `session_id` | `TEXT` | `NOT NULL REFERENCES sessions(id)` | Session reference |
+| `project_id` | `TEXT` | `NOT NULL REFERENCES projects(id)` | Project reference |
+| `project_name` | `TEXT` | `NOT NULL` | Denormalized project name |
+| `type` | `TEXT` | `NOT NULL` | Insight category: `'summary'`, `'decision'`, `'learning'`, `'technique'`, `'prompt_quality'` |
+| `title` | `TEXT` | `NOT NULL` | Short descriptive title |
+| `content` | `TEXT` | `NOT NULL` | Full narrative explanation |
+| `summary` | `TEXT` | `NOT NULL` | Executive summary (1-2 sentences) |
+| `bullets` | `TEXT` | | JSON array of key takeaways / bullet points |
+| `confidence` | `REAL` | `NOT NULL` | Confidence score (0.0 to 1.0 or 0 to 100) |
+| `source` | `TEXT` | `NOT NULL DEFAULT 'llm'` | Extraction origin (`'llm'`, `'rule'`, `'user'`) |
+| `metadata` | `TEXT` | | JSON payload containing decomposed schema fields (see below) |
+| `timestamp` | `TEXT` | `NOT NULL` | Timestamp of insight event |
+| `created_at` | `TEXT` | `NOT NULL DEFAULT (datetime('now'))` | Row creation timestamp |
+| `scope` | `TEXT` | `NOT NULL DEFAULT 'session'` | Scope (`'session'`, `'project'`, `'overall'`) |
+| `analysis_version` | `TEXT` | `NOT NULL DEFAULT '1.0.0'` | Version of analysis prompt/schema (e.g. `'3.1.0'`) |
+| `linked_insight_ids` | `TEXT` | | JSON array of related insight UUIDs |
+| `embedding_status` | `TEXT` | `NOT NULL DEFAULT 'pending' CHECK(embedding_status IN ('pending', 'computed', 'stale', 'failed'))` | Embedding vector state |
+| `student_identity` | `TEXT` | | Optimization runner/model identifier (v18) |
+| `prompt_version_id` | `TEXT` | | Prompt version identifier (v18) |
+
+**Indexes on `insights`**:
+- `idx_insights_session_id` ON `insights(session_id)`
+- `idx_insights_project_id` ON `insights(project_id)`
+- `idx_insights_type` ON `insights(type)`
+- `idx_insights_timestamp` ON `insights(timestamp DESC)`
+- `idx_insights_confidence_timestamp` ON `insights(confidence DESC, timestamp DESC)`
+- `idx_insights_embedding_status` ON `insights(embedding_status)`
+
+---
+
+## Analytical & Facet Tables
+
+### `session_facets`
+Quantified session outcomes, workflow patterns, and categorized friction/patterns used for cross-session synthesis.
+
+| Column | Type | Constraints | Description |
+|---|---|---|---|
+| `session_id` | `TEXT` | `PRIMARY KEY REFERENCES sessions(id)` | Session reference |
+| `outcome_satisfaction` | `TEXT` | `NOT NULL` | Satisfaction rating: `'high'`, `'medium'`, `'low'`, `'abandoned'` |
+| `workflow_pattern` | `TEXT` | | Detected workflow pattern |
+| `had_course_correction` | `INTEGER` | `NOT NULL DEFAULT 0` | Flag: 1 if user had to redirect agent, 0 otherwise |
+| `course_correction_reason` | `TEXT` | | Explanation of why user course-corrected |
+| `iteration_count` | `INTEGER` | `NOT NULL DEFAULT 0` | Number of revision / retry cycles |
+| `friction_points` | `TEXT` | | JSON array of FrictionPoint objects |
+| `effective_patterns` | `TEXT` | | JSON array of EffectivePattern objects |
+| `extracted_at` | `TEXT` | `NOT NULL DEFAULT (datetime('now'))` | Analysis timestamp |
+| `analysis_version` | `TEXT` | `NOT NULL DEFAULT '1.0.0'` | Pipeline version |
+| `student_identity` | `TEXT` | | Optimization student model provenance (v18) |
+| `prompt_version_id` | `TEXT` | | Optimization prompt provenance (v18) |
+
+**Indexes on `session_facets`**:
+- `idx_facets_outcome` ON `session_facets(outcome_satisfaction)`
+- `idx_facets_workflow` ON `session_facets(workflow_pattern)`
+
+---
+
+### `session_steps`
+Sequential milestone events reconstructed from sessions for Formal Concept Analysis (FCA) and development trajectory tracing.
+
+| Column | Type | Constraints | Description |
+|---|---|---|---|
+| `session_id` | `TEXT` | `NOT NULL REFERENCES sessions(id) ON DELETE CASCADE` | Session reference |
+| `idx` | `INTEGER` | `NOT NULL` | Sequential step index (0, 1, 2, ...) |
+| `turn_ref` | `TEXT` | `NOT NULL` | Turn reference in session (e.g. `'Assistant#0'`, `'User#2'`) |
+| `label` | `TEXT` | `NOT NULL` | Concrete action summary |
+| `driver` | `TEXT` | `NOT NULL` | Attribution driver: `'LLM_Decide'`, `'User_Decide'`, `'Collab_Decide'` |
+| `target` | `TEXT` | `NOT NULL` | Target artifact: `'Target_SrcCode'`, `'Target_Config'`, `'Target_Test'`, `'Target_Docs'` |
+| `state` | `TEXT` | `NOT NULL` | State at step completion: `'State_Success'`, `'State_Error'`, `'State_Blocked'` |
+| `targets` | `TEXT` | | JSON array of target artifacts `["Target_SrcCode"]` |
+| `has_course_correction` | `INTEGER` | `NOT NULL DEFAULT 0` | Flag: 1 if step required course correction |
+| `ran_tests` | `INTEGER` | `NOT NULL DEFAULT 0` | Flag: 1 if tests were executed in this step |
+| `used_tools` | `INTEGER` | `NOT NULL DEFAULT 0` | Flag: 1 if agent invoked tools |
+| `created_at` | `TEXT` | `NOT NULL DEFAULT (datetime('now'))` | Step creation timestamp |
+
+`PRIMARY KEY (session_id, idx)`
+
+**Indexes on `session_steps`**:
+- `idx_session_steps_session_id` ON `session_steps(session_id)`
+- `idx_session_steps_driver` ON `session_steps(driver)`
+- `idx_session_steps_state` ON `session_steps(state)`
+
+---
+
+### `analysis_usage`
+Tracks token consumption and API costs incurred when running LLM analysis passes on sessions.
+
+| Column | Type | Constraints | Description |
+|---|---|---|---|
+| `session_id` | `TEXT` | `NOT NULL REFERENCES sessions(id)` | Session that was analyzed |
+| `analysis_type` | `TEXT` | `NOT NULL` | Analysis pass (`'session'`, `'prompt_quality'`, `'facets'`) |
+| `provider` | `TEXT` | `NOT NULL` | LLM provider used (`'mistral'`, `'codex-native'`, `'antigravity-native'`, `'gemini-native'`, etc.) |
+| `model` | `TEXT` | `NOT NULL` | Model name (e.g. `'mistral-medium-latest'`, `'gemini-2.0-flash'`) |
+| `input_tokens` | `INTEGER` | `NOT NULL DEFAULT 0` | Input tokens consumed |
+| `output_tokens` | `INTEGER` | `NOT NULL DEFAULT 0` | Output tokens generated |
+| `cache_creation_tokens` | `INTEGER` | `NOT NULL DEFAULT 0` | Cache creation input tokens |
+| `cache_read_tokens` | `INTEGER` | `NOT NULL DEFAULT 0` | Cache read input tokens |
+| `estimated_cost_usd` | `REAL` | `NOT NULL DEFAULT 0` | Analysis pass cost in USD |
+| `duration_ms` | `INTEGER` | | Execution wall-clock time in ms |
+| `chunk_count` | `INTEGER` | `NOT NULL DEFAULT 1` | Conversation chunks analyzed |
+| `analyzed_at` | `TEXT` | `NOT NULL DEFAULT (datetime('now'))` | Analysis timestamp |
+| `session_message_count` | `INTEGER` | | Session message count at time of analysis (for resume detection) |
+
+`PRIMARY KEY (session_id, analysis_type)`
+
+---
+
+### `analysis_queue`
+Asynchronous background analysis jobs dispatched by session-end hooks.
+
+| Column | Type | Constraints | Description |
+|---|---|---|---|
+| `session_id` | `TEXT` | `PRIMARY KEY REFERENCES sessions(id)` | Session to analyze |
+| `status` | `TEXT` | `NOT NULL DEFAULT 'pending'` | Job status (`'pending'`, `'processing'`, `'completed'`, `'failed'`) |
+| `runner_type` | `TEXT` | `NOT NULL DEFAULT 'native'` | Runner preference (`'native'`, `'api'`) |
+| `enqueued_at` | `TEXT` | `NOT NULL DEFAULT (datetime('now'))` | Queue entry timestamp |
+| `started_at` | `TEXT` | | Job start timestamp |
+| `completed_at` | `TEXT` | | Job finish timestamp |
+| `error_message` | `TEXT` | | Error details if failed |
+| `attempt_count` | `INTEGER` | `NOT NULL DEFAULT 0` | Retry attempts |
+| `max_attempts` | `INTEGER` | `NOT NULL DEFAULT 3` | Retry limit |
+
+---
+
+### `reflect_snapshots`
+Caches LLM-generated periodic cross-session synthesis (e.g. weekly or monthly reflections).
+
+| Column | Type | Constraints | Description |
+|---|---|---|---|
+| `period` | `TEXT` | `NOT NULL` | Time period tag (e.g. `'2026-W42'`, `'30d'`) |
+| `project_id` | `TEXT` | `NOT NULL DEFAULT '__all__'` | Target project or `'__all__'` |
+| `results_json` | `TEXT` | `NOT NULL` | JSON synthesis output (`friction-wins`, `rules-skills`, `working-style`) |
+| `generated_at` | `TEXT` | `NOT NULL` | Generation timestamp |
+| `window_start` | `TEXT` | | Period start date |
+| `window_end` | `TEXT` | `NOT NULL` | Period end date |
+| `session_count` | `INTEGER` | `NOT NULL` | Sessions covered |
+| `facet_count` | `INTEGER` | `NOT NULL` | Facets analyzed |
+
+`PRIMARY KEY (period, project_id)`
+
+---
+
+### `deleted_sessions`
+Persistent tombstone table preventing soft-deleted or pruned sessions from being re-imported during sync passes.
+
+| Column | Type | Constraints | Description |
+|---|---|---|---|
+| `id` | `TEXT` | `PRIMARY KEY` | Session ID tombstoned |
+| `deleted_at` | `TEXT` | `NOT NULL DEFAULT (datetime('now'))` | Tombstone creation timestamp |
+| `reason` | `TEXT` | | Reason for deletion (`'prune'`, `'user_delete'`) |
+
+---
+
+## Search, RAG & Vector Tables
+
+### `messages_fts` (Virtual Table)
+SQLite FTS5 virtual table indexing message content and tool activities for full-text search.
+
+```sql
+CREATE VIRTUAL TABLE messages_fts USING fts5(
+  content,
+  tool_calls,
+  tool_results,
+  content='messages',
+  content_rowid='rowid'
+);
+```
+
+### `entity_chunks`
+Stores parent and child text chunks for hierarchical RAG retrieval.
+
+| Column | Type | Constraints | Description |
+|---|---|---|---|
+| `id` | `TEXT` | `PRIMARY KEY` | Chunk UUID |
+| `entity_type` | `TEXT` | `NOT NULL CHECK(entity_type IN ('insight', 'message'))` | Source entity type |
+| `entity_id` | `TEXT` | `NOT NULL` | Parent entity UUID |
+| `chunk_index` | `INTEGER` | `NOT NULL` | Sequential chunk index |
+| `content` | `TEXT` | `NOT NULL` | Chunk text content |
+
+---
+
+### `embedding_metadata`
+Tracks model provenance and dimensional metadata for embeddings.
+
+| Column | Type | Constraints | Description |
+|---|---|---|---|
+| `id` | `TEXT` | `PRIMARY KEY` | Metadata UUID |
+| `entity_type` | `TEXT` | `NOT NULL CHECK(entity_type IN ('insight', 'message'))` | Entity type |
+| `entity_id` | `TEXT` | `NOT NULL DEFAULT ''` | Source entity UUID |
+| `parent_chunk_id` | `TEXT` | | Parent chunk UUID if chunked |
+| `model` | `TEXT` | `NOT NULL` | Embedding model used (e.g. `'embeddinggemma'`) |
+| `dim` | `INTEGER` | `NOT NULL` | Embedding vector dimensions |
+| `source_text` | `TEXT` | `NOT NULL` | Text that was embedded |
+| `created_at` | `TEXT` | `NOT NULL DEFAULT (datetime('now'))` | Timestamp |
+| `updated_at` | `TEXT` | `NOT NULL DEFAULT (datetime('now'))` | Timestamp |
+
+---
+
+## Agent Chat & Utility Tables
+
+### `chat_conversations` & `chat_messages`
+Persists interactive side-panel discussions between developers and AI coding teammates.
+
+- `chat_conversations`: `id`, `title`, `created_at`, `updated_at`
+- `chat_messages`: `id`, `conversation_id`, `role`, `content`, `context_json`, `tool_calls_json`, `created_at`
+
+### `usage_stats`
+Singleton row (`id = 1`) maintaining global cached token totals and costs.
+
+### `schema_version`
+Migration tracker storing applied version numbers (`version`, `applied_at`).
+
+---
+
+## JSON Payload Schemas
+
+### 1. `insights.metadata` (Decision Type)
+Extracted for `insights.type = 'decision'`:
+```json
+{
+  "situation": "Description of the problem, constraint, or bug requiring an architectural choice",
+  "choice": "The specific solution or design decision adopted",
+  "reasoning": "Why this solution was chosen over other viable approaches",
+  "alternatives": [
+    {
+      "option": "Alternative considered",
+      "rejected_because": "Why it was discarded"
+    }
+  ],
+  "trade_offs": "Acknowledge downsides, maintenance cost, or limitations accepted",
+  "revisit_when": "Conditions under which this decision should be re-evaluated",
+  "evidence": [
+    "Assistant#4: 'I updated the CSS rules...'",
+    "User#2: 'Let's use ScrollableContainer'"
+  ],
+  "decided_by": "user | agent | collaborative",
+  "intent": "Primary architectural intent",
+  "branch_point": "Identifier of the fork in design trajectory"
+}
+```
+
+### 2. `insights.metadata` (Learning Type)
+Extracted for `insights.type = 'learning'`:
+```json
+{
+  "symptom": "What behavior or error alerted developer/agent to the issue",
+  "root_cause": "The fundamental technical reason for the failure or inefficiency",
+  "takeaway": "Actionable rule or guideline to prevent recurrence",
+  "applies_when": "Contexts or technologies where this learning is relevant"
+}
+```
+
+### 3. `insights.metadata` (Summary Type)
+Extracted for `insights.type = 'summary'`:
+```json
+{
+  "outcome": "success | partial | abandoned | blocked",
+  "step_matrix": [
+    {
+      "step": "Step description",
+      "turn_ref": "Assistant#0",
+      "driver": "LLM_Decide | User_Decide | Collab_Decide",
+      "target": "Target_SrcCode | Target_Config | Target_Test | Target_Docs",
+      "state": "State_Success | State_Error | State_Blocked",
+      "targets": ["Target_SrcCode"],
+      "has_course_correction": false,
+      "ran_tests": true,
+      "used_tools": true
+    }
+  ]
+}
+```
+
+### 4. `insights.metadata` (Prompt Quality Type)
+Extracted for `insights.type = 'prompt_quality'`:
+```json
+{
+  "efficiency_score": 75,
+  "message_overhead": 3,
+  "dimension_scores": {
+    "context_provision": 70,
+    "request_specificity": 80,
+    "scope_management": 65,
+    "information_timing": 60,
+    "correction_quality": 85
+  },
+  "findings": [
+    {
+      "category": "late-constraint",
+      "type": "deficit | strength",
+      "description": "Explanation of deficit or strength",
+      "message_ref": "User#2",
+      "impact": "high | medium | low",
+      "confidence": 90,
+      "suggested_improvement": "Actionable way to rephrase"
+    }
+  ],
+  "takeaways": [
+    {
+      "type": "improve | reinforce",
+      "category": "precise-request",
+      "label": "Brief takeaway label",
+      "message_ref": "User#0",
+      "original": "Original prompt snippet",
+      "better_prompt": "Improved prompt snippet",
+      "why": "Why this yields higher quality agent output"
+    }
+  ]
+}
+```
+
+### 5. `session_facets.friction_points`
+Array of friction point records:
+```json
+[
+  {
+    "category": "tooling-failure | knowledge-gap | documentation-gap | context-overflow | environment",
+    "attribution": "ai-capability | user-actionable | environmental",
+    "description": "Concrete description of the friction encounter",
+    "severity": "high | medium | low",
+    "resolution": "resolved | workaround | unresolved",
+    "_reasoning": "Attribution and classification justification"
+  }
+]
+```
+
+### 6. `session_facets.effective_patterns`
+Array of effective interaction patterns:
+```json
+[
+  {
+    "category": "verification-workflow | structured-planning | context-gathering | incremental-commit",
+    "description": "Description of what pattern worked well",
+    "confidence": 90,
+    "driver": "ai-driven | user-driven | collaborative",
+    "_reasoning": "Pattern classification rationale"
+  }
+]
+```

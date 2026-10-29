@@ -1,0 +1,15 @@
+# Accepted Facts
+
+- The agent skill is installed in the global Antigravity skills directory at ~/.gemini/skills/code-insights-reports/ containing SKILL.md and executable helper scripts.
+- The agent skill is mirrored to the project repository at .agents/skills/code-insights-reports/ with identical instructions and scripts.
+- All database access is strictly read-only (using sqlite3 -readonly or SQLite URI mode=ro with PRAGMA query_only=ON) and configured with a 5000ms busy timeout to prevent write locks and table mutation.
+- The skill includes a standalone Node.js CLI helper script (scripts/ci-report.js) in the skill directory that handles parameterized query execution, multi-table aggregations, and formatting.
+- The skill supports generating cross-session reflections and developer summaries filtered by project or time window (today, 7 days, 30 days, or all-time).
+- The skill supports token economics and cost analysis, breaking down input, output, cache-read, and cache-creation tokens and USD cost by model, project, and tool.
+- The skill supports friction and failure analysis, quantifying course corrections, friction taxonomy categories, abandoned sessions, and satisfaction ratings.
+- The skill supports prompt quality scoring analysis, surfacing score distributions and SFL (Ideational, Interpersonal, Textual) breakdowns.
+- The skill supports cross-tool benchmarking, comparing session counts, message frequency, tool usage, and outcomes across Claude Code, Antigravity, OpenCode, Mistral Vibe, Hermes, and other tools.
+- The skill supports project development timeline and ADR analysis, tracing architectural decisions chronologically and mapping causal links across session steps and insight references like a graph trace.
+- The skill provides a full schema reference (v18) and SQL design guidelines enabling agents to formulate safe, optimized ad-hoc queries from natural language requests.
+- The skill produces formatted Markdown briefs with summary metrics, readable tabular breakdowns, and the capability to export deep-dive analysis reports to specified markdown files.
+- An automated verification suite tests all reporting commands and SQL templates against ~/.code-insights/data.db in read-only mode to guarantee zero errors and non-destructive execution.

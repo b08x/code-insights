@@ -1,0 +1,111 @@
+{
+  "stage": "facts",
+  "title": "Code Insights DB Reporting Agent Skill",
+  "goalSlug": "code-insights-reporting-skill",
+  "facts": [
+    {
+      "id": "fact-location-global",
+      "text": "The agent skill is installed in the global Antigravity skills directory at ~/.gemini/skills/code-insights-reports/ containing SKILL.md and executable helper scripts.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-location-repo",
+      "text": "The agent skill is mirrored to the project repository at .agents/skills/code-insights-reports/ with identical instructions and scripts.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-safety-readonly",
+      "text": "All database access is strictly read-only (using sqlite3 -readonly or SQLite URI mode=ro with PRAGMA query_only=ON) and configured with a 5000ms busy timeout to prevent write locks and table mutation.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-helper-script",
+      "text": "The skill includes a standalone Node.js CLI helper script (scripts/ci-report.js) in the skill directory that handles parameterized query execution, multi-table aggregations, and formatting.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-report-reflection",
+      "text": "The skill supports generating cross-session reflections and developer summaries filtered by project or time window (today, 7 days, 30 days, or all-time).",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-report-cost",
+      "text": "The skill supports token economics and cost analysis, breaking down input, output, cache-read, and cache-creation tokens and USD cost by model, project, and tool.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-report-friction",
+      "text": "The skill supports friction and failure analysis, quantifying course corrections, friction taxonomy categories, abandoned sessions, and satisfaction ratings.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-report-prompt-quality",
+      "text": "The skill supports prompt quality scoring analysis, surfacing score distributions and SFL (Ideational, Interpersonal, Textual) breakdowns.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-report-tool-benchmark",
+      "text": "The skill supports cross-tool benchmarking, comparing session counts, message frequency, tool usage, and outcomes across Claude Code, Antigravity, OpenCode, Mistral Vibe, Hermes, and other tools.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-report-timeline-adr",
+      "text": "The skill supports project development timeline and ADR analysis, tracing architectural decisions chronologically and mapping causal links across session steps and insight references like a graph trace.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-report-adhoc-sql",
+      "text": "The skill provides a full schema reference (v18) and SQL design guidelines enabling agents to formulate safe, optimized ad-hoc queries from natural language requests.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-output-formats",
+      "text": "The skill produces formatted Markdown briefs with summary metrics, readable tabular breakdowns, and the capability to export deep-dive analysis reports to specified markdown files.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-automated-test",
+      "text": "An automated verification suite tests all reporting commands and SQL templates against ~/.code-insights/data.db in read-only mode to guarantee zero errors and non-destructive execution.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    }
+  ]
+}

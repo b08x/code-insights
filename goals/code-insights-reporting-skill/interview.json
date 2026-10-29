@@ -1,0 +1,81 @@
+{
+  "stage": "interview",
+  "title": "Code Insights DB Reporting Agent Skill",
+  "goalSlug": "code-insights-reporting-skill",
+  "questions": [
+    {
+      "id": "target_location",
+      "prompt": "Where should the agent skill be installed and made available?",
+      "description": "Determines whether this skill is available globally across all projects in Antigravity or isolated in this repository.",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "Both global (~/.gemini/skills/) and local repo (.agents/skills/) so it can be used anywhere or committed with the repository.",
+      "recommendedOptionIds": ["both"],
+      "options": [
+        { "id": "both", "label": "Both: Install globally (~/.gemini/skills/code-insights-reports) and copy to local repo (.agents/skills/code-insights-reports)" },
+        { "id": "global", "label": "Global only: Install to ~/.gemini/skills/code-insights-reports" },
+        { "id": "repo", "label": "Repo only: Install to .agents/skills/code-insights-reports" }
+      ],
+      "required": true
+    },
+    {
+      "id": "core_reports",
+      "prompt": "Which analytical reporting dimensions should the skill specialize in?",
+      "description": "Select the core report workflows and SQL recipes to document and support.",
+      "answerMode": "multi-custom",
+      "recommendedAnswer": "All key dimensions: session reflection, cost & token economics, friction & course corrections, prompt quality trends, tool benchmarking, and ad-hoc SQL.",
+      "recommendedOptionIds": ["session_reflection", "cost_models", "friction_loops", "prompt_scoring", "tool_benchmarking", "adhoc_sql"],
+      "options": [
+        { "id": "session_reflection", "label": "Session Reflection: Cross-session summaries, key decisions, architectural learnings, and weekly/monthly digests" },
+        { "id": "cost_models", "label": "Cost & Token Economics: Model token consumption, prompt caching efficiency, cost per project, and burn rate" },
+        { "id": "friction_loops", "label": "Friction & Failure Loops: Course corrections, rage loops, abandoned sessions, and friction taxonomy" },
+        { "id": "prompt_scoring", "label": "Prompt Quality: SFL breakdown (Ideational/Interpersonal/Textual), score trends, and prompt optimization suggestions" },
+        { "id": "tool_benchmarking", "label": "Tool Comparison: Comparing session volume, efficiency, and satisfaction across Claude Code, Antigravity, OpenCode, Mistral, Hermes, etc." },
+        { "id": "adhoc_sql", "label": "Ad-Hoc SQL Querying: Answering open-ended natural language questions by synthesizing safe SQLite queries" }
+      ],
+      "required": true
+    },
+    {
+      "id": "query_mechanism",
+      "prompt": "How should the agent execute queries against ~/.code-insights/data.db?",
+      "description": "Determines whether the skill relies on sqlite3 CLI commands, dedicated Node.js helper scripts, existing CLI commands, or a hybrid approach.",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "Hybrid: Use sqlite3 CLI with strict read-only flags and pre-built helper scripts/queries for complex aggregations and formatting.",
+      "recommendedOptionIds": ["hybrid"],
+      "options": [
+        { "id": "hybrid", "label": "Hybrid: sqlite3 CLI for ad-hoc queries + dedicated helper script(s) in skill for complex multi-table aggregations" },
+        { "id": "sqlite_cli", "label": "Direct sqlite3 CLI only: Document query templates and recipes to execute directly via bash sqlite3" },
+        { "id": "helper_scripts", "label": "Node.js Helper Scripts: Self-contained Node scripts in the skill (scripts/) that handle db connection, formatting, and safety" }
+      ],
+      "required": true
+    },
+    {
+      "id": "output_formats",
+      "prompt": "What output formats should the reporting skill produce?",
+      "description": "How the agent should present findings when running reports.",
+      "answerMode": "multi-custom",
+      "recommendedAnswer": "Structured Markdown reports with summary metrics, tables, and optional artifact file generation for deep-dive reports.",
+      "recommendedOptionIds": ["markdown_brief", "data_tables", "artifact_reports"],
+      "options": [
+        { "id": "markdown_brief", "label": "Executive Markdown Briefs: Concise conversational summaries with key takeaways and actionable recommendations" },
+        { "id": "data_tables", "label": "Tabular Data: Formatted ASCII/Markdown tables with rankings, percentiles, and counts" },
+        { "id": "artifact_reports", "label": "Saved Artifact Reports: Writing detailed reports to disk (e.g. reports/ or brain artifacts) for review" },
+        { "id": "json_export", "label": "JSON Data Export: Structured JSON output for downstream tooling or pipes" }
+      ],
+      "required": true
+    },
+    {
+      "id": "safety_guards",
+      "prompt": "What database safety and concurrency guards should be enforced in the skill?",
+      "description": "code-insights runs SQLite in WAL mode with active background workers and dashboard writes.",
+      "answerMode": "multi-custom",
+      "recommendedAnswer": "Strict read-only query mode (preventing any accidental write locks or mutations) and handling WAL mode concurrency cleanly.",
+      "recommendedOptionIds": ["strict_readonly", "timeout_busy", "schema_drift_guard"],
+      "options": [
+        { "id": "strict_readonly", "label": "Strict Read-Only: Enforce URI mode=ro or PRAGMA query_only=ON so the agent cannot mutate data" },
+        { "id": "timeout_busy", "label": "Busy Timeout: Set 5000ms busy_timeout so reads don't fail when the sync hook or worker is writing" },
+        { "id": "schema_drift_guard", "label": "Schema Drift Check: Verify schema version (current v18) or table existence before complex joins" }
+      ],
+      "required": true
+    }
+  ]
+}
