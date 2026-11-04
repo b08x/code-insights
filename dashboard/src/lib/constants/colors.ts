@@ -90,6 +90,8 @@ export const SOURCE_TOOL_COLORS: Record<string, string> = {
   'hermes-agent': 'bg-fuchsia-500/10 text-fuchsia-600 border-fuchsia-500/20',
   'opencode': 'bg-amber-500/10 text-amber-600 border-amber-500/20',
   'crush': 'bg-rose-500/10 text-rose-600 border-rose-500/20',
+  'mistral-vibe': 'bg-orange-600/10 text-orange-600 border-orange-600/20',
+  'antigravity': 'bg-blue-600/10 text-blue-600 border-blue-600/20',
 };
 
 /** Border + background colors for teammate message cards, keyed by the `color` attribute from <teammate-message>. */

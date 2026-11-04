@@ -454,6 +454,17 @@ export function SessionDetailPanel({ sessionId, onDelete }: SessionDetailPanelPr
               </Badge>
             </>
           )}
+          {session.agent_type && (
+            <>
+              <span>&middot;</span>
+              <Badge
+                variant="outline"
+                className="text-xs bg-purple-500/10 text-purple-600 border-purple-500/20 font-mono"
+              >
+                {session.agent_type}
+              </Badge>
+            </>
+          )}
         </div>
       </div>
 
@@ -704,6 +715,7 @@ export function SessionDetailPanel({ sessionId, onDelete }: SessionDetailPanelPr
               hasMore={hasMore}
               onLoadMore={() => messagesQuery.fetchNextPage()}
               sourceTool={session.source_tool ?? undefined}
+              agentType={session.agent_type ?? undefined}
               highlightMessageId={searchHighlightId}
               searchQuery={searchQuery}
             />

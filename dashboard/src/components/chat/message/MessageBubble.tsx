@@ -4,8 +4,10 @@ import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { User, Bot } from 'lucide-react';
 import { ToolPanel } from '../tools/ToolPanel';
 import { cn } from '@/lib/utils';
+import { Badge } from '@/components/ui/badge';
 import type { Message, ToolCall, ToolResult } from '@/lib/types';
 import { parseJsonField } from '@/lib/types';
+import { getAssistantConfig } from '@/lib/message-attribution';
 import { ThinkingBlock } from './ThinkingBlock';
 import { AssistantMarkdown } from './markdown/AssistantMarkdown';
 import { UserMarkdown } from './markdown/UserMarkdown';
@@ -27,38 +29,17 @@ interface MessageBubbleProps {
   nextToolResults?: ToolResult[];
   /** The source tool that generated the message (e.g., 'claude-code', 'cursor'). */
   sourceTool?: string;
+  /** The specific agent type/role (e.g., 'ruby-dev:cleaner') when available. */
+  agentType?: string;
   /** Active search query to highlight in the message content. */
   searchQuery?: string;
   /** Whether to show raw, unprocessed messages (e.g., exit commands, skill loads). Defaults to false. */
   showRawMessages?: boolean;
 }
 
-function getAssistantConfig(sourceTool?: string): { name: string; avatarColor: string } {
-  switch (sourceTool) {
-    case 'claude-code':
-      return { name: 'Claude Code', avatarColor: 'bg-orange-500' };
-    case 'cursor':
-      return { name: 'Cursor', avatarColor: 'bg-blue-500' };
-    case 'codex-cli':
-      return { name: 'Codex CLI', avatarColor: 'bg-green-500' };
-    case 'copilot':
-      return { name: 'Copilot', avatarColor: 'bg-violet-500' };
-    case 'copilot-cli':
-      return { name: 'Copilot CLI', avatarColor: 'bg-cyan-500' };
-    case 'gemini-cli':
-      return { name: 'Gemini CLI', avatarColor: 'bg-teal-500' };
-    case 'hermes-agent':
-      return { name: 'Hermes Agent', avatarColor: 'bg-fuchsia-500' };
-    case 'opencode':
-      return { name: 'OpenCode', avatarColor: 'bg-amber-500' };
-    case 'crush':
-      return { name: 'Crush', avatarColor: 'bg-rose-500' };
-    default:
-      return { name: 'Claude', avatarColor: 'bg-purple-500' };
-  }
-}
+export { getAssistantConfig };
 
-export function MessageBubble({ message, showHeader = true, nextToolResults = [], sourceTool, searchQuery, showRawMessages = false }: MessageBubbleProps) {
+export function MessageBubble({ message, showHeader = true, nextToolResults = [], sourceTool, agentType, searchQuery, showRawMessages = false }: MessageBubbleProps) {
   const isUser = message.type === 'user';
   const isSystem = message.type === 'system';
   const hasContent = message.content?.trim();
@@ -160,16 +141,22 @@ export function MessageBubble({ message, showHeader = true, nextToolResults = []
   }
 
   const { name: assistantName, avatarColor } = getAssistantConfig(sourceTool);
+  const effectiveAgentType = (message as any).agent_type || agentType;
 
   return (
     <div className={cn('px-4 bg-muted/30', showHeader ? 'pt-4 pb-2' : 'pb-2')}>
       <div>
         {showHeader && (
-          <div className="flex items-center gap-2 mb-2">
+          <div className="flex items-center gap-2 mb-2 flex-wrap">
             <div className={`shrink-0 w-7 h-7 rounded-full flex items-center justify-center ${avatarColor}`}>
               <Bot className="h-3.5 w-3.5 text-white" />
             </div>
             <span className="font-medium text-sm">{assistantName}</span>
+            {effectiveAgentType && (
+              <Badge variant="outline" className="text-xs font-mono font-medium bg-purple-500/10 text-purple-600 border-purple-500/20">
+                {effectiveAgentType}
+              </Badge>
+            )}
             <span className="text-xs text-muted-foreground">{format(new Date(message.timestamp), 'h:mm a')}</span>
           </div>
         )}

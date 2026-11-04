@@ -51,6 +51,8 @@ export interface Session {
   git_branch: string | null;
   claude_version: string | null;
   source_tool: string | null;
+  parent_session_id?: string | null;
+  agent_type?: string | null;
   device_id: string | null;
   device_hostname: string | null;
   device_platform: string | null;
@@ -154,6 +156,7 @@ export interface Message {
   usage: string | null;         // JSON-encoded object from SQLite
   timestamp: string;            // ISO 8601
   parent_id: string | null;
+  agent_type?: string | null;
 }
 
 // Daily stats from /api/analytics/usage

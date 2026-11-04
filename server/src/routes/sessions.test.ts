@@ -48,15 +48,18 @@ function seedSession(
     ended_at: '2025-06-15T11:00:00Z',
     message_count: 5,
     source_tool: 'claude-code',
+    parent_session_id: null,
+    agent_type: null,
   };
   const row = { ...defaults, ...overrides };
   testDb.prepare(`
     INSERT INTO sessions (id, project_id, project_name, project_path,
-      started_at, ended_at, message_count, source_tool)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      started_at, ended_at, message_count, source_tool, parent_session_id, agent_type)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id, projectId, row.project_name, row.project_path,
     row.started_at, row.ended_at, row.message_count, row.source_tool,
+    row.parent_session_id, row.agent_type,
   );
 }
 
@@ -120,18 +123,40 @@ describe('Sessions routes', () => {
       expect(body.sessions).toHaveLength(1);
       expect(body.sessions[0].id).toBe('sess-cur');
     });
+
+    it('returns parent_session_id and agent_type in session list', async () => {
+      seedProject('proj-1', 'alpha');
+      seedSession('sess-child', 'proj-1', {
+        source_tool: 'mistral-vibe',
+        parent_session_id: 'sess-parent',
+        agent_type: 'ruby-dev:verifier',
+      });
+
+      const app = createApp();
+      const res = await app.request('/api/sessions');
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.sessions).toHaveLength(1);
+      expect(body.sessions[0].parent_session_id).toBe('sess-parent');
+      expect(body.sessions[0].agent_type).toBe('ruby-dev:verifier');
+    });
   });
 
   describe('GET /api/sessions/:id', () => {
     it('returns a session by ID', async () => {
       seedProject('proj-1', 'alpha');
-      seedSession('sess-abc', 'proj-1');
+      seedSession('sess-abc', 'proj-1', {
+        parent_session_id: 'sess-parent-1',
+        agent_type: 'cleaner',
+      });
 
       const app = createApp();
       const res = await app.request('/api/sessions/sess-abc');
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.session.id).toBe('sess-abc');
+      expect(body.session.parent_session_id).toBe('sess-parent-1');
+      expect(body.session.agent_type).toBe('cleaner');
     });
 
     it('returns 404 for unknown session ID', async () => {

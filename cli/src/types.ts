@@ -96,6 +96,7 @@ export interface ParsedMessage {
   usage: MessageUsage | null;        // per-message usage (assistant only)
   timestamp: Date;
   parentId: string | null;
+  agentType?: string | null;
 }
 
 export interface SessionUsage {

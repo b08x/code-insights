@@ -602,6 +602,157 @@ describe('MistralVibeProvider', () => {
     expect(resolvedDiscovered).toContain(path.resolve(matchedSessionDir));
     expect(resolvedDiscovered).not.toContain(path.resolve(unmatchedSessionDir));
   });
+
+  it('bundles child subagent messages chronologically into parent sessions and aggregates metrics', async () => {
+    const parentSessionDir = path.join(tempLogsDir, 'unified', 'parent-session-bundle');
+    const childSessionDir = path.join(tempLogsDir, 'unified', 'child-session-bundle');
+
+    createMockPluginPackage(tempLogsDir, {
+      name: 'ruby-dev',
+      agents: ['cleaner'],
+    });
+
+    // Parent session with 1 user and 1 assistant turn
+    createMockUnifiedSession(parentSessionDir, {
+      sessionId: 'parent-session-bundle',
+      generation: '0000000000000001',
+      executionState: 'quiescent',
+      workingDirectory: '/home/user/app',
+      startTime: '2026-04-15T10:00:00Z',
+      endTime: '2026-04-15T10:10:00Z',
+      tokenUsage: {
+        inputTokens: 500,
+        outputTokens: 200,
+        cachedInputTokens: 50,
+        totalTokens: 750,
+      },
+      cost: 0.005,
+      subagentsChildren: {
+        'cleaner-agent': {
+          agent_name: 'cleaner-agent',
+          agent_type: 'cleaner',
+          child_session_id: 'child-session-bundle',
+        },
+      },
+      chunks: [
+        {
+          hash: 'chunk-parent-001',
+          items: [
+            {
+              type: 'message',
+              role: 'user',
+              content: 'Please clean up the module complexity.',
+              createdAt: new Date('2026-04-15T10:00:10Z').getTime(),
+            },
+            {
+              type: 'message',
+              role: 'assistant',
+              content: 'I will delegate this to the cleaner subagent.',
+              createdAt: new Date('2026-04-15T10:00:20Z').getTime(),
+            },
+            {
+              type: 'effect',
+              id: 'eff-parent-spawn',
+              title: 'agents.spawn',
+              state: { output: 'Cleaner subagent finished.' },
+              createdAt: new Date('2026-04-15T10:05:00Z').getTime(),
+            },
+            {
+              type: 'message',
+              role: 'assistant',
+              content: 'Cleaner completed the task successfully.',
+              createdAt: new Date('2026-04-15T10:09:00Z').getTime(),
+            },
+          ],
+        },
+      ],
+    });
+
+    // Child subagent session with its own messages, tool execution, and token usage
+    createMockUnifiedSession(childSessionDir, {
+      sessionId: 'child-session-bundle',
+      generation: '0000000000000001',
+      executionState: 'quiescent',
+      parentSessionId: 'parent-session-bundle',
+      workingDirectory: '/home/user/app',
+      startTime: '2026-04-15T10:01:00Z',
+      endTime: '2026-04-15T10:04:00Z',
+      tokenUsage: {
+        inputTokens: 300,
+        outputTokens: 150,
+        cachedInputTokens: 20,
+        totalTokens: 470,
+      },
+      cost: 0.003,
+      chunks: [
+        {
+          hash: 'chunk-child-001',
+          items: [
+            {
+              type: 'message',
+              role: 'user',
+              content: 'Diagnose CRAP score and reduce cyclomatic complexity.',
+              createdAt: new Date('2026-04-15T10:01:10Z').getTime(),
+            },
+            {
+              type: 'effect',
+              id: 'eff-child-tool-1',
+              title: 'read_file',
+              detail: { input: { path: 'lib/user.rb' } },
+              state: { output: 'def complex_method ... end' },
+              createdAt: new Date('2026-04-15T10:02:00Z').getTime(),
+            },
+            {
+              type: 'message',
+              role: 'assistant',
+              content: 'Refactored user.rb down to CC 4.',
+              createdAt: new Date('2026-04-15T10:03:00Z').getTime(),
+            },
+          ],
+        },
+      ],
+    });
+
+    // 1. Verify parent session parses and bundles child messages
+    const parentSession = await provider.parse(parentSessionDir);
+    expect(parentSession).not.toBeNull();
+    expect(parentSession!.id).toBe('parent-session-bundle');
+
+    // Bundled message count should include both parent messages + child messages
+    expect(parentSession!.messages.length).toBeGreaterThan(4);
+
+    // Messages must be sorted chronologically
+    for (let i = 1; i < parentSession!.messages.length; i++) {
+      expect(parentSession!.messages[i].timestamp.getTime()).toBeGreaterThanOrEqual(
+        parentSession!.messages[i - 1].timestamp.getTime()
+      );
+    }
+
+    // Verify child messages exist in parent with child's agentType
+    const childMsgs = parentSession!.messages.filter(m => m.id.startsWith('child-session-bundle'));
+    expect(childMsgs.length).toBeGreaterThan(0);
+    for (const cm of childMsgs) {
+      expect(cm.sessionId).toBe('parent-session-bundle');
+      expect(cm.agentType).toBe('ruby-dev:cleaner');
+    }
+
+    // Tool call aggregation: parent effects (1) + child effects (1)
+    expect(parentSession!.toolCallCount).toBe(2);
+
+    // Token usage aggregation: 500 + 300 input tokens, 200 + 150 output tokens
+    expect(parentSession!.usage?.totalInputTokens).toBe(800);
+    expect(parentSession!.usage?.totalOutputTokens).toBe(350);
+    expect(parentSession!.usage?.estimatedCostUsd).toBeCloseTo(0.008, 4);
+
+    // 2. Verify standalone child session is still parsable and retains parentSessionId & agentType
+    const childSession = await provider.parse(childSessionDir);
+    expect(childSession).not.toBeNull();
+    expect(childSession!.id).toBe('child-session-bundle');
+    expect(childSession!.parentSessionId).toBe('parent-session-bundle');
+    expect(childSession!.agentType).toBe('ruby-dev:cleaner');
+    expect(childSession!.usage?.totalInputTokens).toBe(300);
+    expect(childSession!.usage?.totalOutputTokens).toBe(150);
+  });
 });
 
 /**

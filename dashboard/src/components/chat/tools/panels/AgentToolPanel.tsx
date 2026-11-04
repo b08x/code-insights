@@ -14,27 +14,20 @@ interface AgentToolPanelProps {
   result?: ToolResult;
 }
 
-function getAgentDisplayName(input: Record<string, any>): string {
-  return stringifySafe(input.name || input.subagent_type || 'Agent');
-}
+import { getAgentDisplayName, getAgentInitials } from '@/lib/agent-utils';
 
-function getAgentInitials(name: string): string {
-  const safeName = stringifySafe(name);
-  const parts = safeName.split(/[-_\s]/);
-  if (parts.length >= 2) {
-    return (parts[0][0] + parts[1][0]).toUpperCase();
-  }
-  return safeName.slice(0, 2).toUpperCase();
-}
+export { getAgentDisplayName, getAgentInitials };
 
 export function AgentToolPanel({ toolCall, result }: AgentToolPanelProps) {
   const [showPrompt, setShowPrompt] = useState(false);
   const input = parseToolInput(toolCall.input);
 
-  const description = stringifySafe(input.description);
-  const subagentType = stringifySafe(input.subagent_type);
+  const subagentType = stringifySafe(input.subagent_type || input.agent_type || input.agent || input.category);
+  const prompt = stringifySafe(input.prompt || input.task || input.instruction);
+  const description = stringifySafe(
+    input.description || input.summary || (typeof input.task === 'string' ? input.task.slice(0, 80) : '')
+  );
   const model = stringifySafe(input.model);
-  const prompt = stringifySafe(input.prompt);
   const agentName = getAgentDisplayName(input);
   const initials = getAgentInitials(agentName);
   const avatarColor = AGENT_PARTICIPANT_COLORS[subagentType] || AGENT_DEFAULT_COLOR;

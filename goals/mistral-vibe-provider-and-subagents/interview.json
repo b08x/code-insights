@@ -1,0 +1,82 @@
+{
+  "stage": "interview",
+  "title": "Mistral Vibe Provider Attribution & Subagent Runs",
+  "goalSlug": "mistral-vibe-provider-and-subagents",
+  "questions": [
+    {
+      "id": "subagent_model",
+      "prompt": "How should Mistral Vibe subagent runs be handled and presented?",
+      "description": "OpenCode and Hermes Agent recursively merge sub-sessions into the parent session chronologically for holistic analysis. Mistral Vibe currently saves child sessions separately with parent_session_id and agent_type.",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "Bundle into parent session like OpenCode: merge subagent messages chronologically into the parent session so the conversation view shows the full workflow, while skipping child sessions from cluttering the top-level session list.",
+      "recommendedOptionIds": ["bundle_into_parent"],
+      "options": [
+        {
+          "id": "bundle_into_parent",
+          "label": "Pure Bundling (like OpenCode/Hermes): Merge subagent messages into parent session chronologically, skipping separate child sessions"
+        },
+        {
+          "id": "hybrid_link",
+          "label": "Hierarchical Linking: Keep child sessions separate, but add visual badges, parent-child links, and child session tabs in the UI"
+        },
+        {
+          "id": "bundle_and_link",
+          "label": "Both: Bundle messages into the parent session for holistic view, but also support filtering/viewing child sessions"
+        }
+      ],
+      "required": true
+    },
+    {
+      "id": "assistant_display",
+      "prompt": "How should the assistant avatar and name be labeled in the conversation view?",
+      "description": "Currently, MessageBubble falls back to 'Claude' (purple avatar) whenever sourceTool is mistral-vibe.",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "Agent-type aware: Display specific agent role (e.g. 'ruby-dev:cleaner' or 'Architect') when an agent_type is present on the session or message, otherwise 'Mistral Vibe' with Mistral branding.",
+      "recommendedOptionIds": ["agent_type_aware"],
+      "options": [
+        {
+          "id": "agent_type_aware",
+          "label": "Agent-type aware: Show agent role (e.g., 'ruby-dev:cleaner') when available, falling back to 'Mistral Vibe' with Mistral branding"
+        },
+        {
+          "id": "provider_only",
+          "label": "Provider only: Always show 'Mistral Vibe' for all assistant messages in vibe sessions"
+        }
+      ],
+      "required": true
+    },
+    {
+      "id": "tool_panel_mapping",
+      "prompt": "How should subagent spawn and management tools be rendered in the conversation tool panels?",
+      "description": "Mistral Vibe uses `agents.spawn`, `subagent.spawn`, `agents.send_message`, etc., and OpenCode uses `task` / `delegate_task`.",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "Map all subagent tools (agents.spawn, subagent.spawn, task) to AgentToolPanel with parsed agent names, task descriptions, and collapsible inputs/outputs.",
+      "recommendedOptionIds": ["agent_tool_panel"],
+      "options": [
+        {
+          "id": "agent_tool_panel",
+          "label": "Map to AgentToolPanel: Normalize agent name, task prompt, and description for agents.spawn, subagent.spawn, and task"
+        },
+        {
+          "id": "generic",
+          "label": "Leave as GenericToolPanel: Render as raw JSON/arguments without specialized agent badges"
+        }
+      ],
+      "required": true
+    },
+    {
+      "id": "provider_fallback_scope",
+      "prompt": "Which additional providers should be added to MessageBubble to prevent defaulting to Claude?",
+      "description": "Inspect all supported providers to ensure none fall back to Claude unexpectedly.",
+      "answerMode": "multi-custom",
+      "recommendedAnswer": "Include all supported providers currently missing from MessageBubble: antigravity, claude-desktop, and pi.",
+      "recommendedOptionIds": ["antigravity", "claude_desktop", "pi"],
+      "options": [
+        { "id": "antigravity", "label": "Antigravity (agy)" },
+        { "id": "claude_desktop", "label": "Claude Desktop" },
+        { "id": "pi", "label": "Pi CLI" }
+      ],
+      "required": false
+    }
+  ]
+}

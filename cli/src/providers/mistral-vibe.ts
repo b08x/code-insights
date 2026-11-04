@@ -419,9 +419,9 @@ export class MistralVibeProvider implements SessionProvider {
     }
   }
 
-  async parse(sessionDirPath: string): Promise<ParsedSession | null> {
+  async parse(sessionDirPath: string, visited?: Set<string>): Promise<ParsedSession | null> {
     if (fs.existsSync(path.join(sessionDirPath, 'CURRENT'))) {
-      return this.parseUnifiedSession(sessionDirPath);
+      return this.parseUnifiedSession(sessionDirPath, visited);
     }
 
     if (
@@ -437,7 +437,7 @@ export class MistralVibeProvider implements SessionProvider {
   /**
    * Parse a modern unified store session (vibe 3.0+ unified store).
    */
-  private async parseUnifiedSession(sessionDirPath: string): Promise<ParsedSession | null> {
+  private async parseUnifiedSession(sessionDirPath: string, visited?: Set<string>): Promise<ParsedSession | null> {
     const currentPath = path.join(sessionDirPath, 'CURRENT');
     if (!fs.existsSync(currentPath)) return null;
 
@@ -494,6 +494,9 @@ export class MistralVibeProvider implements SessionProvider {
     }
 
     const sessionId = current.session_id || projectionState?.session_id || meta?.session_id || path.basename(sessionDirPath);
+    const visitedSet = visited || new Set<string>();
+    visitedSet.add(sessionId);
+
     const isChild = sessionId.startsWith('child-') || path.basename(sessionDirPath).startsWith('child-');
 
     // Parent session linkage (Fact 7)
@@ -858,6 +861,105 @@ export class MistralVibeProvider implements SessionProvider {
       messages,
     };
 
+    // Discover and bundle child subagent sessions chronologically
+    const childrenToBundle: Array<{ childSessionId: string; agentType: string | null; agentName: string | null }> = [];
+    const seenChildIds = new Set<string>();
+
+    if (runtimeState?.subagents?.children) {
+      for (const [key, childInfo] of Object.entries(runtimeState.subagents.children)) {
+        const childSessionId = childInfo.child_session_id || key;
+        if (childSessionId && !seenChildIds.has(childSessionId) && !visitedSet.has(childSessionId)) {
+          seenChildIds.add(childSessionId);
+          childrenToBundle.push({
+            childSessionId,
+            agentType: childInfo.agent_type || null,
+            agentName: childInfo.agent_name || null,
+          });
+        }
+      }
+    }
+
+    if (checkpoint?.notifications) {
+      for (const n of checkpoint.notifications) {
+        if (typeof n.id === 'string' && n.id.startsWith('subagent:')) {
+          const parts = n.id.split(':');
+          if (parts.length >= 2 && parts[1]) {
+            const childSessionId = parts[1];
+            if (!seenChildIds.has(childSessionId) && !visitedSet.has(childSessionId)) {
+              seenChildIds.add(childSessionId);
+              const notificationAgentType = parts.length >= 3 && parts[2] ? parts[2] : null;
+              childrenToBundle.push({
+                childSessionId,
+                agentType: notificationAgentType,
+                agentName: null,
+              });
+            }
+          }
+        }
+      }
+    }
+
+    if (childrenToBundle.length > 0) {
+      for (const childInfo of childrenToBundle) {
+        const childSessionId = childInfo.childSessionId;
+        const childDir = this.findChildSessionDir(childSessionId, sessionDirPath);
+        if (!childDir) continue;
+
+        visitedSet.add(childSessionId);
+        const childSession = await this.parse(childDir, visitedSet);
+        if (!childSession) continue;
+
+        const childAgentType = childSession.agentType || childInfo.agentType || childInfo.agentName || null;
+        for (const msg of childSession.messages) {
+          const bundledId = msg.id.startsWith(childSession.id) ? msg.id : `${childSession.id}:${msg.id}`;
+          session.messages.push({
+            ...msg,
+            id: bundledId,
+            sessionId: session.id,
+            agentType: msg.agentType || childAgentType,
+          });
+        }
+
+        session.toolCallCount += childSession.toolCallCount;
+
+        if (childSession.usage && session.usage) {
+          session.usage.totalInputTokens += childSession.usage.totalInputTokens || 0;
+          session.usage.totalOutputTokens += childSession.usage.totalOutputTokens || 0;
+          session.usage.cacheReadTokens += childSession.usage.cacheReadTokens || 0;
+          session.usage.cacheCreationTokens += childSession.usage.cacheCreationTokens || 0;
+          session.usage.estimatedCostUsd += childSession.usage.estimatedCostUsd || 0;
+
+          if (childSession.usage.modelsUsed) {
+            for (const m of childSession.usage.modelsUsed) {
+              if (!session.usage.modelsUsed.includes(m)) {
+                session.usage.modelsUsed.push(m);
+              }
+            }
+          }
+        }
+
+        if (childSession.activePlugins) {
+          for (const p of childSession.activePlugins) {
+            if (!session.activePlugins?.includes(p)) {
+              session.activePlugins?.push(p);
+            }
+          }
+        }
+
+        if (childSession.startedAt < session.startedAt) {
+          session.startedAt = childSession.startedAt;
+        }
+        if (childSession.endedAt > session.endedAt) {
+          session.endedAt = childSession.endedAt;
+        }
+      }
+
+      session.messages.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+      session.messageCount = session.messages.length;
+      session.userMessageCount = session.messages.filter((m) => m.type === 'user').length;
+      session.assistantMessageCount = session.messages.filter((m) => m.type === 'assistant').length;
+    }
+
     const titleResult = generateTitle(session);
     return {
       ...session,
@@ -1099,6 +1201,51 @@ export class MistralVibeProvider implements SessionProvider {
         msg.timestamp = new Date(startTime + i * interval);
       });
     }
+  }
+
+  /**
+   * Locate the directory of a child session.
+   */
+  private findChildSessionDir(childSessionId: string, parentSessionDirPath: string): string | null {
+    const baseDir = this.storageDir || getVibeLogsDir();
+    const candidateDirs = [
+      path.join(path.dirname(parentSessionDirPath), childSessionId),
+      path.join(parentSessionDirPath, childSessionId),
+      path.join(baseDir, 'unified', childSessionId),
+      path.join(baseDir, childSessionId),
+    ];
+
+    for (const d of candidateDirs) {
+      if (
+        fs.existsSync(path.join(d, 'CURRENT')) ||
+        (fs.existsSync(path.join(d, 'meta.json')) && fs.existsSync(path.join(d, 'messages.jsonl')))
+      ) {
+        return d;
+      }
+    }
+
+    // Check sibling directories in unified/ or parent directory
+    const searchDirs = [path.dirname(parentSessionDirPath), path.join(baseDir, 'unified'), baseDir];
+    for (const sDir of searchDirs) {
+      if (!fs.existsSync(sDir)) continue;
+      try {
+        const entries = fs.readdirSync(sDir, { withFileTypes: true });
+        for (const entry of entries) {
+          if (entry.isDirectory()) {
+            const fullPath = path.join(sDir, entry.name);
+            if (
+              entry.name === childSessionId &&
+              (fs.existsSync(path.join(fullPath, 'CURRENT')) ||
+                (fs.existsSync(path.join(fullPath, 'meta.json')) && fs.existsSync(path.join(fullPath, 'messages.jsonl'))))
+            ) {
+              return fullPath;
+            }
+          }
+        }
+      } catch {}
+    }
+
+    return null;
   }
 
   /**

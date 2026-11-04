@@ -18,6 +18,7 @@ interface ChatConversationProps {
   onLoadMore?: () => void;
   error?: string | null;
   sourceTool?: string;
+  agentType?: string;
   highlightMessageId?: string | null;
   searchQuery?: string;
 }
@@ -38,7 +39,7 @@ function shouldShowDateSeparator(messages: Message[], index: number): boolean {
 }
 
 export function ChatConversation({
-  messages, loading, loadingMore, hasMore, onLoadMore, error, sourceTool, highlightMessageId, searchQuery,
+  messages, loading, loadingMore, hasMore, onLoadMore, error, sourceTool, agentType, highlightMessageId, searchQuery,
 }: ChatConversationProps) {
   const highlightRef = useRef<HTMLDivElement>(null);
 
@@ -144,6 +145,7 @@ export function ChatConversation({
                 message={message}
                 showHeader={shouldShowHeader(index)}
                 sourceTool={sourceTool}
+                agentType={agentType}
                 searchQuery={matchingMessageIds.has(message.id) ? searchQuery : undefined}
                 showRawMessages={showRawMessages}
                 nextToolResults={
