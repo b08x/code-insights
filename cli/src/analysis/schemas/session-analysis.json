@@ -4,7 +4,7 @@
   "description": "Hand-maintained JSON schema for claude -p --json-schema. Derived from AnalysisResponse in prompt-types.ts. Keep in sync when prompt-types.ts changes.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["facets", "summary", "decisions", "learnings"],
+  "required": ["facets", "summary", "decisions", "learnings", "step_matrix"],
   "properties": {
     "facets": {
       "type": "object",
@@ -140,9 +140,39 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["title", "situation", "choice", "reasoning", "alternatives", "trade_offs", "revisit_when", "confidence", "evidence"],
+        "required": [
+          "_reasoning",
+          "title",
+          "decided_by",
+          "intent",
+          "branch_point",
+          "situation",
+          "choice",
+          "reasoning",
+          "alternatives",
+          "trade_offs",
+          "revisit_when",
+          "confidence",
+          "evidence"
+        ],
         "properties": {
+          "_reasoning": {
+            "type": "string",
+            "description": "Brief rationale grounding attribution in turn evidence"
+          },
           "title": { "type": "string" },
+          "decided_by": {
+            "type": "string",
+            "enum": ["user", "agent", "collaborative"]
+          },
+          "intent": {
+            "type": "string",
+            "description": "Initiating intent or problem triggering the decision"
+          },
+          "branch_point": {
+            "type": "string",
+            "description": "Alternative path or design branched away from"
+          },
           "situation": { "type": "string" },
           "choice": { "type": "string" },
           "reasoning": { "type": "string" },
@@ -190,7 +220,17 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["step", "turn_ref", "driver", "target", "state"],
+        "required": [
+          "step",
+          "turn_ref",
+          "driver",
+          "target",
+          "state",
+          "targets",
+          "has_course_correction",
+          "ran_tests",
+          "used_tools"
+        ],
         "properties": {
           "step": { "type": "string" },
           "turn_ref": { "type": "string" },

@@ -3,6 +3,7 @@ import { writeFileSync, readFileSync, unlinkSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import type { AnalysisRunner, RunAnalysisParams, RunAnalysisResult, RunnerConfig } from './runner-types.js';
+import { toStrictOpenAiSchema } from './openai-schema.js';
 
 /**
  * CodexNativeRunner — executes analysis via `codex exec` (non-interactive mode).
@@ -44,7 +45,8 @@ export class CodexNativeRunner implements AnalysisRunner {
 
     if (params.jsonSchema) {
       schemaFile = join(tmpdir(), `codex-schema-${fileId}.json`);
-      writeFileSync(schemaFile, JSON.stringify(params.jsonSchema), 'utf-8');
+      const strictSchema = toStrictOpenAiSchema(params.jsonSchema);
+      writeFileSync(schemaFile, JSON.stringify(strictSchema), 'utf-8');
     }
 
     try {

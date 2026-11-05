@@ -32,6 +32,7 @@ const ANALYSIS_RESPONSE_TOP_LEVEL_REQUIRED = [
   'summary',
   'decisions',
   'learnings',
+  'step_matrix',
 ] as const;
 
 // ── AnalysisResponse.facets required fields ───────────────────────────────────
@@ -114,10 +115,22 @@ describe('session-analysis.json schema sync', () => {
   });
 
   it('step_matrix enforces minItems: 4 and maxItems: 10', () => {
-    const smSchema = schema.properties?.step_matrix as { minItems?: number; maxItems?: number } | undefined;
+    const smSchema = schema.properties?.step_matrix as { minItems?: number; maxItems?: number; items?: { required?: string[] } } | undefined;
     expect(smSchema).toBeDefined();
     expect(smSchema?.minItems).toBe(4);
     expect(smSchema?.maxItems).toBe(10);
+    expect(smSchema?.items?.required).toContain('targets');
+    expect(smSchema?.items?.required).toContain('has_course_correction');
+    expect(smSchema?.items?.required).toContain('ran_tests');
+    expect(smSchema?.items?.required).toContain('used_tools');
+  });
+
+  it('decisions items have required attribution and context fields', () => {
+    const decSchema = (schema.properties?.decisions as { items?: { required?: string[]; properties?: Record<string, unknown> } })?.items;
+    expect(decSchema?.required).toContain('decided_by');
+    expect(decSchema?.required).toContain('intent');
+    expect(decSchema?.required).toContain('branch_point');
+    expect(decSchema?.required).toContain('_reasoning');
   });
 
   it('schema file is valid JSON', () => {

@@ -53,4 +53,33 @@ describe('CodexNativeRunner', () => {
     const result = await runner.runAnalysis({ systemPrompt: 's', userPrompt: 'u' });
     expect(result.rawJson).toBe(llmJson);
   });
+
+  it('normalizes jsonSchema using toStrictOpenAiSchema before writing to file', async () => {
+    const runner = new CodexNativeRunner();
+    mockedReadFileSync.mockReturnValue('{"result": 1}');
+
+    const inputSchema = {
+      type: 'object',
+      properties: {
+        step_matrix: { type: 'array' },
+      },
+      // missing step_matrix in required
+      required: [],
+    };
+
+    await runner.runAnalysis({
+      systemPrompt: 's',
+      userPrompt: 'u',
+      jsonSchema: inputSchema,
+    });
+
+    const schemaWriteCall = vi.mocked(writeFileSync).mock.calls.find(call =>
+      typeof call[0] === 'string' && (call[0] as string).includes('codex-schema-')
+    );
+    expect(schemaWriteCall).toBeDefined();
+
+    const writtenSchema = JSON.parse(schemaWriteCall![1] as string);
+    expect(writtenSchema.required).toContain('step_matrix');
+    expect(writtenSchema.additionalProperties).toBe(false);
+  });
 });
