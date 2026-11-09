@@ -15,6 +15,7 @@ export interface MigrationResult {
   v16Applied: boolean;
   v17Applied: boolean;
   v18Applied: boolean;
+  v19Applied: boolean;
 }
 
 /**
@@ -35,6 +36,7 @@ export interface MigrationResult {
  * Version 12: Create FTS5 virtual table messages_fts and triggers for full-text search
  * Version 17: Add chat_conversations / chat_messages for the persistent agent chat
  * Version 18: Add student_identity + prompt_version_id provenance columns to insights and session_facets
+ * Version 19: Add session_labels (gold labels for prompt optimization; split is write-once)
  */
 export function runMigrations(db: Database.Database): MigrationResult {
   // Create schema_version table first if it doesn't exist.
@@ -146,7 +148,15 @@ export function runMigrations(db: Database.Database): MigrationResult {
     v18Applied = true;
   }
 
-  return { v6Applied, v7Applied, v8Applied, v9Applied, v10Applied, v11Applied, v12Applied, v13Applied, v14Applied, v15Applied, v16Applied, v17Applied, v18Applied };
+  let v19Applied = false;
+  if (currentVersion < 19) {
+    applyV19(db);
+    v19Applied = true;
+  } else {
+    repairV19(db);
+  }
+
+  return { v6Applied, v7Applied, v8Applied, v9Applied, v10Applied, v11Applied, v12Applied, v13Applied, v14Applied, v15Applied, v16Applied, v17Applied, v18Applied, v19Applied };
 }
 
 function getCurrentVersion(db: Database.Database): number {
@@ -505,4 +515,64 @@ function applyV18(db: Database.Database): void {
     }
   }
   db.prepare('INSERT OR IGNORE INTO schema_version (version) VALUES (?)').run(18);
+}
+
+/**
+ * v19 was revised before release to add soft deletes (deleted_at + no-hard-delete trigger).
+ * Databases that applied the earlier v19 (development builds) lack both, so bring them up to shape.
+ * Idempotent: a no-op on a database created with the current v19.
+ */
+function repairV19(db: Database.Database): void {
+  const cols = db.prepare(`PRAGMA table_info(session_labels)`).all() as Array<{ name: string }>;
+  if (cols.length === 0) return;
+  if (!cols.some(c => c.name === 'deleted_at')) {
+    db.exec(`ALTER TABLE session_labels ADD COLUMN deleted_at TEXT`);
+  }
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS session_labels_no_delete
+    BEFORE DELETE ON session_labels
+    BEGIN
+      SELECT RAISE(ABORT, 'session_labels rows are soft-deleted (set deleted_at); hard DELETE would let a split be re-rolled');
+    END;
+  `);
+}
+
+function applyV19(db: Database.Database): void {
+  // Gold labels for prompt optimization. Deliberately no FK to sessions: labels are hand-made
+  // ground truth and must not block (or be silently cascaded by) session purges.
+  // `split` (train/validation/test) is assigned once at first label time. The trigger enforces
+  // it at the storage layer; the write path (db/labels.ts) also never includes split in its
+  // ON CONFLICT update. Labels are soft-deleted (deleted_at) and a BEFORE DELETE trigger aborts hard deletes, so a
+  // re-label restores the original split instead of re-rolling it.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS session_labels (
+      session_id               TEXT PRIMARY KEY,
+      target                   TEXT NOT NULL DEFAULT 'session-analysis',
+      outcome                  TEXT NOT NULL,
+      friction_categories_json TEXT NOT NULL DEFAULT '[]',
+      pattern_categories_json  TEXT NOT NULL DEFAULT '[]',
+      key_points_json          TEXT NOT NULL DEFAULT '[]',
+      forbidden_claims_json    TEXT NOT NULL DEFAULT '[]',
+      note                     TEXT,
+      split                    TEXT NOT NULL CHECK (split IN ('train', 'validation', 'test')),
+      created_at               TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at               TEXT NOT NULL DEFAULT (datetime('now')),
+      deleted_at               TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_session_labels_split ON session_labels(split);
+
+    CREATE TRIGGER IF NOT EXISTS session_labels_split_immutable
+    BEFORE UPDATE OF split ON session_labels
+    WHEN NEW.split IS NOT OLD.split
+    BEGIN
+      SELECT RAISE(ABORT, 'session_labels.split is immutable');
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS session_labels_no_delete
+    BEFORE DELETE ON session_labels
+    BEGIN
+      SELECT RAISE(ABORT, 'session_labels rows are soft-deleted (set deleted_at); hard DELETE would let a split be re-rolled');
+    END;
+  `);
+  db.prepare('INSERT OR IGNORE INTO schema_version (version) VALUES (?)').run(19);
 }

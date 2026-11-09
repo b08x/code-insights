@@ -1,7 +1,7 @@
 // OpenAI provider implementation (server-side, no browser dependencies)
 
 import type { LLMClient, LLMMessage, LLMResponse, ChatOptions } from '../types.js';
-import { flattenContent } from '../types.js';
+import { flattenContent, DEFAULT_TEMPERATURE } from '../types.js';
 
 export function createOpenAIClient(apiKey: string, model: string): LLMClient {
   return {
@@ -21,7 +21,7 @@ export function createOpenAIClient(apiKey: string, model: string): LLMClient {
           // flattenContent converts ContentBlock[] to string; strings pass through unchanged.
           // OpenAI gets automatic prefix caching for free when prefixes match — no extra config needed.
           messages: messages.map(m => ({ role: m.role, content: flattenContent(m.content) })),
-          temperature: 0.7,
+          temperature: DEFAULT_TEMPERATURE,
           max_tokens: 8192,
         }),
       });
