@@ -6,11 +6,17 @@ import { loadVectorExtension } from '../embeddings/store.js';
 import { embedOne, DEFAULT_EMBEDDING_CONFIG } from '../embeddings/client.js';
 import type { EmbeddingConfig } from '../embeddings/client.js';
 import { trackEvent, captureError, classifyError } from '../utils/telemetry.js';
+import { loadConfig } from '../utils/config.js';
 import type Database from 'better-sqlite3';
 
-function buildEmbeddingConfig(overrides?: { model?: string; batchSize?: string }): EmbeddingConfig {
+export function buildEmbeddingConfig(overrides?: { model?: string; batchSize?: string }): EmbeddingConfig {
+  const userConfig = loadConfig();
+  const embeddingConfig = userConfig?.dashboard?.embedding;
+
   return {
     ...DEFAULT_EMBEDDING_CONFIG,
+    ...(embeddingConfig?.baseUrl ? { baseUrl: embeddingConfig.baseUrl } : {}),
+    ...(embeddingConfig?.model ? { model: embeddingConfig.model } : {}),
     ...(overrides?.model ? { model: overrides.model } : {}),
     ...(overrides?.batchSize ? { batchSize: parseInt(overrides.batchSize, 10) } : {}),
   };

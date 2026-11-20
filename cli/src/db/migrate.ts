@@ -419,11 +419,13 @@ function applyV14(db: Database.Database): void {
   } catch (e: any) {
     if (!e.message?.includes('duplicate column')) throw e;
   }
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_embedding_metadata_entity ON embedding_metadata(entity_type, entity_id)`);
 
   // Set embedding_status of all messages back to 'pending' to force re-chunking
   db.exec(`UPDATE messages SET embedding_status = 'pending'`);
-  // And clean up existing metadata for messages (vec_messages will be orphaned/overwritten)
+  // And clean up existing pre-V14 flat metadata (vec_messages will be orphaned/overwritten)
   db.exec(`DELETE FROM embedding_metadata WHERE entity_type = 'message'`);
+  db.exec(`DELETE FROM embedding_metadata WHERE entity_type = 'insight' AND entity_id = ''`);
 
   db.prepare('INSERT OR IGNORE INTO schema_version (version) VALUES (?)').run(14);
 }

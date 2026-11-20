@@ -8,6 +8,7 @@ import type Database from 'better-sqlite3';
 import type { AnalysisResponse, PromptQualityResponse, SemanticStep } from './prompt-types.js';
 import { normalizePatternCategory } from './pattern-normalize.js';
 import { normalizePromptQualityCategory } from './prompt-quality-normalize.js';
+import { deleteEmbeddingsForEntities } from '../embeddings/store.js';
 
 export const ANALYSIS_VERSION = '3.1.0';
 
@@ -429,7 +430,13 @@ export function deleteSessionInsights(sessionId: string, opts: DeleteOptions): v
     params.push(...opts.excludeIds);
   }
 
-  db.prepare(`DELETE FROM insights WHERE ${conditions.join(' AND ')}`).run(...params);
+  const whereClause = conditions.join(' AND ');
+  const deletedRows = db.prepare(`SELECT id FROM insights WHERE ${whereClause}`).all(...params) as Array<{ id: string }>;
+  db.prepare(`DELETE FROM insights WHERE ${whereClause}`).run(...params);
+
+  if (deletedRows.length > 0) {
+    deleteEmbeddingsForEntities(db, 'insight', deletedRows.map(r => r.id));
+  }
 }
 
 /**

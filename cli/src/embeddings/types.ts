@@ -5,7 +5,7 @@
 import type { ClaudeInsightConfig } from '../types.js';
 
 export interface EmbeddingConfig {
-  model: string;              // e.g. 'embeddinggemma:latest'
+  model: string;              // e.g. 'embeddinggemma-2:440m'
   baseUrl: string;            // e.g. 'http://127.0.0.1:11434'
   dim: number;                // 768 for embeddinggemma
   batchSize: number;          // 50 — Ollama /api/embed accepts multiple inputs
@@ -19,7 +19,7 @@ export interface EmbedRequestOptions {
 }
 
 export const DEFAULT_EMBEDDING_CONFIG: EmbeddingConfig = {
-  model: 'embeddinggemma:latest',
+  model: 'embeddinggemma-2:440m',
   baseUrl: process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434',
   dim: 768,
   batchSize: 50,

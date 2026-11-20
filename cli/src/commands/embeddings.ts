@@ -25,6 +25,7 @@ import {
   loadVectorExtension,
   countVectors,
 } from '../embeddings/store.js';
+import { pruneEmbeddings } from '../embeddings/prune.js';
 import { trackEvent, captureError, classifyError } from '../utils/telemetry.js';
 import type Database from 'better-sqlite3';
 import { loadConfig } from '../utils/config.js';
@@ -82,12 +83,12 @@ export async function embeddingsBackfillCommand(opts: {
   const db = getDb();
   loadVectorExtension(db);
 
-  // Count pending before starting
+  // Count pending/stale before starting
   const pendingInsights = statusRowToInt(
-    db.prepare("SELECT COUNT(*) as n FROM insights WHERE embedding_status = 'pending'").get() as { n: number },
+    db.prepare("SELECT COUNT(*) as n FROM insights WHERE embedding_status IN ('pending', 'stale')").get() as { n: number },
   );
   const pendingMessages = statusRowToInt(
-    db.prepare("SELECT COUNT(*) as n FROM messages WHERE embedding_status = 'pending' AND type = 'user' AND content != ''").get() as { n: number },
+    db.prepare("SELECT COUNT(*) as n FROM messages WHERE embedding_status IN ('pending', 'stale') AND type = 'user' AND content != ''").get() as { n: number },
   );
 
   if (entityFilter === 'insights' && pendingInsights === 0) {
@@ -279,41 +280,35 @@ export async function embeddingsStatusCommand(opts: { quiet?: boolean }): Promis
       }
     }
 
-    // --- Analysis chunks (retrieval-augmented) ---
-    try {
-      const { countAnalysisChunks, countSessionsWithChunks } = await import('../embeddings/analysis-chunks-store.js');
-      loadVectorExtension(db);
-      const analysisChunkCount = countAnalysisChunks(db);
-      const analysisSessionCount = countSessionsWithChunks(db);
-      log(chalk.white('\n  Analysis chunks (retrieval-augmented):'));
-      log(chalk.gray(`    ${analysisChunkCount} chunks across ${analysisSessionCount} sessions`));
-    } catch {
-      // Analysis chunks not yet created
-    }
-
     // --- sqlite-vec virtual table counts ---
     log(chalk.white('\n  sqlite-vec index:'));
+    let insightVecCount: number | null = null;
+    let messageVecCount: number | null = null;
     try {
-      const insightVecCount = countVectors(db, 'insight');
+      insightVecCount = countVectors(db, 'insight');
       log(chalk.gray(`    vec_insights:  ${insightVecCount} vectors`));
     } catch {
       log(chalk.dim('    vec_insights:  not created yet'));
     }
     try {
-      const messageVecCount = countVectors(db, 'message');
+      messageVecCount = countVectors(db, 'message');
       log(chalk.gray(`    vec_messages:  ${messageVecCount} vectors`));
     } catch {
       log(chalk.dim('    vec_messages:  not created yet'));
     }
-    try {
-      const db2 = getDb();
-      loadVectorExtension(db2);
-      const analysisVecRow = db2.prepare(`SELECT COUNT(*) as n FROM vec_analysis_chunks`).get() as { n: number } | undefined;
-      if (analysisVecRow) {
-        log(chalk.gray(`    vec_analysis_chunks:  ${analysisVecRow.n} vectors`));
-      }
-    } catch {
-      log(chalk.dim('    vec_analysis_chunks:  not created yet'));
+
+    // Warn on mixed models or metadata/vector count drift
+    const insightMetaRows = metadataRows.filter(r => r.entity_type === 'insight');
+    const messageMetaRows = metadataRows.filter(r => r.entity_type === 'message');
+    const insightMetaTotal = insightMetaRows.reduce((sum, r) => sum + r.n, 0);
+    const messageMetaTotal = messageMetaRows.reduce((sum, r) => sum + r.n, 0);
+    const hasMixedModels = insightMetaRows.length > 1 || messageMetaRows.length > 1;
+    const hasInsightDrift = insightVecCount !== null && insightMetaTotal !== insightVecCount;
+    const hasMessageDrift = messageVecCount !== null && messageMetaTotal !== messageVecCount;
+
+    if (hasMixedModels || hasInsightDrift || hasMessageDrift) {
+      log(chalk.yellow('\n  Warning: mixed embedding models or metadata/vector index drift detected.'));
+      log(chalk.yellow('  Run `code-insights embeddings prune --dry-run` to inspect stale or orphaned records.'));
     }
 
     log('');
@@ -344,12 +339,12 @@ export async function embeddingsRecomputeCommand(opts: {
   let affected = 0;
 
   if (opts.all) {
-    // Mark all computed/stale rows as pending
+    // Mark all computed/stale/failed rows as pending
     const iResult = db.prepare(`
-      UPDATE insights SET embedding_status = 'pending' WHERE embedding_status IN ('computed', 'stale')
+      UPDATE insights SET embedding_status = 'pending' WHERE embedding_status IN ('computed', 'stale', 'failed')
     `).run();
     const mResult = db.prepare(`
-      UPDATE messages SET embedding_status = 'pending' WHERE embedding_status IN ('computed', 'stale')
+      UPDATE messages SET embedding_status = 'pending' WHERE embedding_status IN ('computed', 'stale', 'failed')
     `).run();
     affected = (iResult.changes ?? 0) + (mResult.changes ?? 0);
     console.log(chalk.gray(`  Marked ${affected} rows as pending (all entities).`));
@@ -400,7 +395,9 @@ export async function embeddingsRecomputeCommand(opts: {
   if (opts.rebuild && opts.all) {
     db.exec(`DROP TABLE IF EXISTS vec_insights`);
     db.exec(`DROP TABLE IF EXISTS vec_messages`);
-    console.log(chalk.gray(`  Dropped vector store tables to allow rebuilding with a new dimension.`));
+    db.exec(`DELETE FROM embedding_metadata`);
+    db.exec(`DELETE FROM entity_chunks`);
+    console.log(chalk.gray(`  Dropped vector store tables and cleared embedding metadata/chunks to allow rebuilding from scratch.`));
   } else if (opts.rebuild) {
     console.log(chalk.yellow(`  Warning: --rebuild is only supported with --all. Vector tables were not dropped.`));
   }
@@ -466,8 +463,10 @@ export async function embeddingsSearchCommand(
 
     // Load insight text for display
     const getInsight = db.prepare(`
-      SELECT id, type, project_name, title, summary, confidence
-      FROM insights WHERE id = ? AND deleted_at IS NULL
+      SELECT i.id, i.type, i.project_name, i.title, i.summary, i.confidence
+      FROM insights i
+      JOIN sessions s ON s.id = i.session_id
+      WHERE i.id = ? AND s.deleted_at IS NULL
     `);
 
     for (let i = 0; i < results.length; i++) {
@@ -524,6 +523,64 @@ export async function embeddingsSearchCommand(
   }
 }
 
+// ── embeddings prune ───────────────────────────────────────────────────────────
+
+export async function embeddingsPruneCommand(opts: {
+  dryRun?: boolean;
+  model?: string;
+  allModels?: boolean;
+  quiet?: boolean;
+}): Promise<void> {
+  const log = opts.quiet ? () => {} : console.log.bind(console);
+  const dryRun = Boolean(opts.dryRun);
+  const targetModel = opts.allModels ? undefined : buildEmbeddingConfig({ model: opts.model }).model;
+
+  try {
+    const db = getDb();
+    const report = pruneEmbeddings(db, { targetModel, dryRun });
+
+    log(chalk.cyan('\n  Code Insights — Embedding Prune\n'));
+    log(chalk.gray(`  Mode:         ${dryRun ? 'dry-run (no changes written)' : 'apply'}`));
+    log(chalk.gray(`  Target model: ${report.targetModel ?? 'any (orphans/ghosts only)'}`));
+    log('');
+    log(chalk.white('  Metadata removed:'));
+    log(chalk.gray(`    Legacy flat rows (pre-V14):  ${report.legacyFlatRemoved}`));
+    log(chalk.gray(`    Orphan entity rows:          ${report.orphanEntityRemoved}`));
+    log(chalk.gray(`    Missing-vector ghosts:       ${report.missingVectorRemoved}`));
+    log(chalk.gray(`    Off-model rows:              ${report.wrongModelRemoved}`));
+    log(chalk.gray(`    Total metadata rows:         ${report.totalMetadataRemoved}`));
+    log(chalk.white('\n  Vectors & chunks removed:'));
+    log(chalk.gray(`    vec_insights vectors:        ${report.vecInsightsRemoved} (dangling: ${report.danglingInsightVectorsRemoved})`));
+    log(chalk.gray(`    vec_messages vectors:        ${report.vecMessagesRemoved} (dangling: ${report.danglingMessageVectorsRemoved})`));
+    log(chalk.gray(`    Orphan insight chunks:       ${report.orphanInsightChunksRemoved}`));
+    log(chalk.gray(`    Orphan message chunks:       ${report.orphanMessageChunksRemoved}`));
+    log(chalk.white('\n  Re-queued entities:'));
+    log(chalk.gray(`    Insights marked pending:     ${report.requeuedInsights}`));
+    log(chalk.gray(`    Messages marked pending:     ${report.requeuedMessages}`));
+    log('');
+
+    if (!dryRun && (report.requeuedInsights > 0 || report.requeuedMessages > 0)) {
+      log(chalk.dim('  Run `code-insights embeddings backfill` to recompute re-queued entities.\n'));
+    }
+
+    trackEvent('cli_embeddings', {
+      action: 'prune',
+      dry_run: dryRun,
+      total_metadata_removed: report.totalMetadataRemoved,
+      vec_insights_removed: report.vecInsightsRemoved,
+      vec_messages_removed: report.vecMessagesRemoved,
+      requeued: report.requeuedInsights + report.requeuedMessages,
+      success: true,
+    });
+  } catch (error) {
+    const { error_type, error_message } = classifyError(error);
+    trackEvent('cli_embeddings', { action: 'prune', success: false, error_type, error_message });
+    captureError(error, { command: 'embeddings prune', error_type });
+    console.error(chalk.red(`  Prune failed: ${error instanceof Error ? error.message : String(error)}`));
+    if (!opts.quiet) process.exit(1);
+  }
+}
+
 // ── Commander command tree ─────────────────────────────────────────────────────
 
 export function buildEmbeddingsCommand(): Command {
@@ -533,7 +590,7 @@ export function buildEmbeddingsCommand(): Command {
   embeddingsCmd
     .command('backfill')
     .description('Backfill pending embeddings via Ollama')
-    .option('--model <name>', 'Embedding model (default: embeddinggemma:latest)')
+    .option('--model <name>', 'Embedding model (default: configured model or embeddinggemma-2:440m)')
     .option('--batch-size <n>', 'Batch size (default: 50)', '50')
     .option('--entity <type>', 'Entity type: insights, messages, or both (default: both)', 'both')
     .option('-q, --quiet', 'Suppress output')
@@ -571,10 +628,26 @@ export function buildEmbeddingsCommand(): Command {
     );
 
   embeddingsCmd
+    .command('prune')
+    .description('Remove orphaned, legacy, and off-model embedding metadata and vectors')
+    .option('--dry-run', 'Preview removals without modifying the database')
+    .option('--model <name>', 'Target model to keep (default: configured model or embeddinggemma-2:440m)')
+    .option('--all-models', 'Keep all models and prune only orphans, legacy flat rows, and missing-vector ghosts')
+    .option('-q, --quiet', 'Suppress output')
+    .action((opts) =>
+      embeddingsPruneCommand({
+        dryRun: opts.dryRun,
+        model: opts.model,
+        allModels: opts.allModels,
+        quiet: opts.quiet,
+      }),
+    );
+
+  embeddingsCmd
     .command('search <query>')
     .description('KNN similarity search over insight embeddings')
     .option('--top-k <n>', 'Number of results (default: 5)', '5')
-    .option('--model <name>', 'Embedding model for query (default: embeddinggemma:latest)')
+    .option('--model <name>', 'Embedding model for query (default: configured model or embeddinggemma-2:440m)')
     .option('-q, --quiet', 'Suppress output')
     .action((query: string, opts) =>
       embeddingsSearchCommand(query, {

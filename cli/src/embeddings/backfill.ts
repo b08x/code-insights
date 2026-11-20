@@ -6,9 +6,9 @@ import { embedTexts } from './ollama-client.js';
 import type { EmbeddingConfig } from './types.js';
 import {
   loadVectorExtension,
-  createAllVectorTables,
   insertEmbeddingsBatch,
   ensureVectorTableWithDim,
+  deleteEmbeddingsForEntities,
 } from './store.js';
 import type { EmbeddingEntityType, BackfillStats, EmbeddingResult } from './types.js';
 import type Database from 'better-sqlite3';
@@ -70,7 +70,7 @@ export async function backfillEmbeddings(
       .prepare(
         `SELECT id, type, project_name, title, content, summary
          FROM insights
-         WHERE embedding_status = 'pending'`,
+         WHERE embedding_status IN ('pending', 'stale')`,
       )
       .all() as Array<{ id: string; type: string; project_name: string; title: string; content: string; summary: string }>;
   } else {
@@ -78,7 +78,7 @@ export async function backfillEmbeddings(
       .prepare(
         `SELECT id, content
          FROM messages
-         WHERE embedding_status = 'pending'
+         WHERE embedding_status IN ('pending', 'stale')
            AND type = 'user'
            AND content != ''`,
       )
@@ -106,20 +106,28 @@ export async function backfillEmbeddings(
     WHERE id = ?
   `);
 
-  const updateBatch = db.transaction((entityIds: string[], childResults: Array<EmbeddingResult & { entityId: string }>) => {
-    // 1. Insert embeddings and metadata
-    for (const r of childResults) {
-      metaStmt.run(r.id, entityType, r.entityId, r.model, r.dim, r.sourceText, r.parentChunkId);
-    }
-    // 2. Mark parent entities as computed
-    for (const id of entityIds) {
-      statusStmt.run(id);
-    }
-  });
+  const updateBatch = db.transaction(
+    (
+      entityId: string,
+      parentItems: Array<{ id: string; index: number; text: string }>,
+      childResults: Array<EmbeddingResult & { entityId: string }>,
+    ) => {
+      // 1. Insert parent chunks
+      for (const p of parentItems) {
+        chunkStmt.run(p.id, entityType, entityId, p.index, p.text);
+      }
+      // 2. Insert metadata for child embeddings
+      for (const r of childResults) {
+        metaStmt.run(r.id, entityType, r.entityId, r.model, r.dim, r.sourceText, r.parentChunkId);
+      }
+      // 3. Mark parent entity as computed
+      statusStmt.run(entityId);
+    },
+  );
 
   let tableEnsured = false;
 
-  // Process each pending row
+  // Process each pending/stale row
   for (let rowIdx = 0; rowIdx < pendingRows.length; rowIdx++) {
     const row = pendingRows[rowIdx];
     const sourceTxt = entityType === 'insight'
@@ -127,35 +135,33 @@ export async function backfillEmbeddings(
       : messageSourceText(row as { content: string });
 
     try {
-      // 1. Split into parent chunks
+      // 1. Split into parent and child chunks in memory before calling Ollama
       const parentChunks = chunkText(sourceTxt, PARENT_CHUNK_MAX);
+      const parentItems: Array<{ id: string; index: number; text: string }> = [];
       const childItems: Array<{ id: string; text: string; parentId: string }> = [];
-      
-      db.transaction(() => {
-        for (let pIdx = 0; pIdx < parentChunks.length; pIdx++) {
-          const pText = parentChunks[pIdx];
-          const parentId = `${row.id}_p${pIdx}`;
-          
-          chunkStmt.run(parentId, entityType, row.id, pIdx, pText);
-          
-          // 2. Split each parent chunk into child chunks
-          const childChunks = chunkText(pText, CHILD_CHUNK_MAX);
-          for (let cIdx = 0; cIdx < childChunks.length; cIdx++) {
-            childItems.push({
-              id: `${parentId}_c${cIdx}`,
-              text: childChunks[cIdx],
-              parentId: parentId
-            });
-          }
+
+      for (let pIdx = 0; pIdx < parentChunks.length; pIdx++) {
+        const pText = parentChunks[pIdx];
+        const parentId = `${row.id}_p${pIdx}`;
+        parentItems.push({ id: parentId, index: pIdx, text: pText });
+
+        // 2. Split each parent chunk into child chunks
+        const childChunks = chunkText(pText, CHILD_CHUNK_MAX);
+        for (let cIdx = 0; cIdx < childChunks.length; cIdx++) {
+          childItems.push({
+            id: `${parentId}_c${cIdx}`,
+            text: childChunks[cIdx],
+            parentId,
+          });
         }
-      })();
+      }
 
       // 3. Embed child chunks in batches
       const allChildResults: Array<EmbeddingResult & { entityId: string }> = [];
       for (let i = 0; i < childItems.length; i += config.batchSize) {
         const batch = childItems.slice(i, i + config.batchSize);
         const results = await embedTexts(config, batch);
-        
+
         // Attach parent chunk id and entity_id
         for (let j = 0; j < results.length; j++) {
           (results[j] as any).parentChunkId = batch[j].parentId;
@@ -164,16 +170,18 @@ export async function backfillEmbeddings(
         allChildResults.push(...(results as Array<EmbeddingResult & { entityId: string }>));
       }
 
-      // 4. Save results
+      // 4. Clear any prior chunks/vectors for this entity before writing new ones
+      if (allChildResults.length > 0 && !tableEnsured) {
+        ensureVectorTableWithDim(db, entityType, allChildResults[0].dim);
+        tableEnsured = true;
+      }
+
+      deleteEmbeddingsForEntities(db, entityType, [row.id]);
       if (allChildResults.length > 0) {
-        if (!tableEnsured) {
-          ensureVectorTableWithDim(db, entityType, allChildResults[0].dim);
-          tableEnsured = true;
-        }
         insertEmbeddingsBatch(db, entityType, allChildResults);
       }
-      
-      updateBatch([row.id], allChildResults);
+
+      updateBatch(row.id, parentItems, allChildResults);
       stats.computed++;
       
     } catch (err) {

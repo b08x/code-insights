@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3';
 import { getDb } from './client.js';
 import { recalculateUsageStats } from './write.js';
+import { deleteEmbeddingsForEntities } from '../embeddings/store.js';
 
 export interface PurgeOptions {
   sessionIds?: string[];
@@ -55,6 +56,8 @@ export function purgeSessions(
       reason = excluded.reason
   `);
 
+  const getInsightIdsStmt = db.prepare('SELECT id FROM insights WHERE session_id = ?');
+  const getMessageIdsStmt = db.prepare('SELECT id FROM messages WHERE session_id = ?');
   const deleteSessionSteps = db.prepare('DELETE FROM session_steps WHERE session_id = ?');
   const deleteFacets = db.prepare('DELETE FROM session_facets WHERE session_id = ?');
   const deleteInsights = db.prepare('DELETE FROM insights WHERE session_id = ?');
@@ -68,10 +71,20 @@ export function purgeSessions(
   const getProjectStmt = db.prepare('SELECT project_id FROM sessions WHERE id = ?');
 
   const runTx = db.transaction(() => {
+    const insightIds: string[] = [];
+    const messageIds: string[] = [];
+
     for (const id of targetIds) {
       const projRow = getProjectStmt.get(id) as { project_id?: string } | undefined;
       if (projRow?.project_id) {
         projectIds.add(projRow.project_id);
+      }
+
+      for (const r of getInsightIdsStmt.all(id) as Array<{ id: string }>) {
+        insightIds.push(r.id);
+      }
+      for (const r of getMessageIdsStmt.all(id) as Array<{ id: string }>) {
+        messageIds.push(r.id);
       }
 
       insertTombstone.run(id, reason);
@@ -83,6 +96,9 @@ export function purgeSessions(
       deleteMessages.run(id);
       deleteSession.run(id);
     }
+
+    deleteEmbeddingsForEntities(db, 'insight', insightIds);
+    deleteEmbeddingsForEntities(db, 'message', messageIds);
 
     const updateProjectCount = db.prepare(`
       UPDATE projects

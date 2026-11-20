@@ -136,6 +136,7 @@ CREATE TABLE IF NOT EXISTS embedding_metadata (
 );
 CREATE INDEX IF NOT EXISTS idx_embedding_metadata_type ON embedding_metadata(entity_type);
 CREATE INDEX IF NOT EXISTS idx_embedding_metadata_model ON embedding_metadata(model);
+CREATE INDEX IF NOT EXISTS idx_embedding_metadata_entity ON embedding_metadata(entity_type, entity_id);
 
 -- ============================================================
 -- Global usage stats (singleton row, updated by CLI sync)
