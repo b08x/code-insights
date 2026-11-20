@@ -75,6 +75,37 @@ describe('chat SSE contract', () => {
     expect(turn.content).toBe('part');
   });
 
+  it('preserves tool_call detail (SQL, rowCount, runner) across SSE parsing and pending turn conversion', () => {
+    const rawEvent = parseChatStreamEvent({
+      event: 'tool_call',
+      data: JSON.stringify({
+        name: 'queryDatabase',
+        args: { question: 'last 7d sessions', timeRange: '7d' },
+        ok: true,
+        ms: 85,
+        detail: {
+          sql: 'SELECT id AS session_id FROM sessions LIMIT 10',
+          rowCount: 4,
+          truncated: false,
+          runner: 'provider (openrouter/qwen)',
+          explanation: 'Lists recent sessions.',
+        },
+      }),
+    });
+    expect(rawEvent).not.toBeNull();
+    let turn = createPendingTurn('c1', 'last week', null);
+    turn = applyChatStreamEvent(turn, rawEvent!);
+    expect(turn.toolCalls[0].detail).toEqual({
+      sql: 'SELECT id AS session_id FROM sessions LIMIT 10',
+      rowCount: 4,
+      truncated: false,
+      runner: 'provider (openrouter/qwen)',
+      explanation: 'Lists recent sessions.',
+    });
+    const [, assistant] = pendingTurnToMessages(turn);
+    expect(assistant.toolCalls?.toolCalls[0].detail?.sql).toBe('SELECT id AS session_id FROM sessions LIMIT 10');
+  });
+
   it('ignores unknown and malformed events', () => {
     expect(parseChatStreamEvent({ event: 'progress', data: '{}' })).toBeNull();
     expect(parseChatStreamEvent({ event: 'token', data: '{not json' })).toBeNull();

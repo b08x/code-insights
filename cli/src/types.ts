@@ -415,6 +415,16 @@ export interface AnalysisRunnerSetting {
   variant?: string;
 }
 
+/** Runner names selectable for the agent chat SQL sub-agent (`agent` = reuse dashboard.agent LLM). */
+export const SQL_RUNNER_NAMES = [...ANALYSIS_RUNNER_NAMES, 'agent'] as const;
+export type SqlRunnerName = (typeof SQL_RUNNER_NAMES)[number];
+
+export interface SqlRunnerSetting {
+  name: SqlRunnerName;
+  model?: string;
+  variant?: string;
+}
+
 export interface ClaudeInsightConfig {
   sync: {
     claudeDir: string;
@@ -424,9 +434,11 @@ export interface ClaudeInsightConfig {
   dashboard?: {
     port?: number;
     llm?: LLMProviderConfig; // used for background analysis
-    agent?: LLMProviderConfig & {
+    agent?: Partial<LLMProviderConfig> & {
       // Expose codebase.* graph tools to the chat agent. Off unless explicitly true (agent-4).
       codebaseTools?: boolean;
+      // Optional runner override for the chat agent's SQL sub-agent (queryDatabase).
+      sqlRunner?: SqlRunnerSetting;
     }; // used for the interactive chat agent
     embedding?: LLMProviderConfig; // used for generating embeddings
     analysis?: {

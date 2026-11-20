@@ -67,6 +67,17 @@ export function closeDb(): void {
 }
 
 /**
+ * Open a dedicated read-only SQLite connection for guarded agent queries.
+ * Caller is responsible for closing the returned database handle.
+ */
+export function openReadOnlyDb(dbPath: string = DB_PATH): Database.Database {
+  const db = new Database(dbPath, { readonly: true, fileMustExist: true });
+  db.pragma('busy_timeout = 5000');
+  db.pragma('query_only = ON');
+  return db;
+}
+
+/**
  * Get the database file path.
  */
 export function getDbPath(): string {

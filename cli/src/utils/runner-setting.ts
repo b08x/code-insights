@@ -5,15 +5,25 @@
  * model ids actually use. '|' is excluded because it separates identity-key components.
  */
 
-import { ANALYSIS_RUNNER_NAMES, type AnalysisRunnerName } from '../types.js';
+import {
+  ANALYSIS_RUNNER_NAMES,
+  SQL_RUNNER_NAMES,
+  type AnalysisRunnerName,
+  type SqlRunnerName,
+  type SqlRunnerSetting,
+} from '../types.js';
 
-export { ANALYSIS_RUNNER_NAMES, type AnalysisRunnerName };
+export { ANALYSIS_RUNNER_NAMES, SQL_RUNNER_NAMES, type AnalysisRunnerName, type SqlRunnerName, type SqlRunnerSetting };
 
 export const RUNNER_MODEL_RE = /^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,199}$/;
 export const RUNNER_VARIANT_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,49}$/;
 
 export function isRunnerName(value: unknown): value is AnalysisRunnerName {
   return typeof value === 'string' && (ANALYSIS_RUNNER_NAMES as readonly string[]).includes(value);
+}
+
+export function isSqlRunnerName(value: unknown): value is SqlRunnerName {
+  return typeof value === 'string' && (SQL_RUNNER_NAMES as readonly string[]).includes(value);
 }
 
 export function isValidRunnerModel(value: unknown): value is string {

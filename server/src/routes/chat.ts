@@ -28,6 +28,7 @@ import {
   type HistoryMessage,
   type PageContext,
   type RunChatAgentParams,
+  type ToolCallDetail,
 } from '../agent/agent.js';
 import { streamEvents, type SSEMessage } from './route-helpers.js';
 import type { DraftPayload } from '../agent/tools.js';
@@ -160,7 +161,7 @@ export function createChatRouter(deps: Partial<ChatDeps> = {}): Hono {
     return streamEvents(c, async function* (signal): AsyncGenerator<SSEMessage> {
       let reply = '';
       const citations: string[] = [];
-      const toolCalls: Array<{ name: string; args: unknown; ok: boolean; ms: number }> = [];
+      const toolCalls: Array<{ name: string; args: unknown; ok: boolean; ms: number; detail?: ToolCallDetail }> = [];
       const drafts: DraftPayload[] = [];
       let failed: string | null = null;
 

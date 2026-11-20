@@ -1,9 +1,9 @@
 // Tool registry for the chat agent.
 //
-// Tools are plain Ax function-calling definitions. Core tools are thin wrappers over the
-// shared read functions in cli/src/db/read-agent.ts. There are deliberately NO tools that
-// write labels, promote versions, or start runs (agent-10): the only "output" tool,
-// proposeDraft, returns a typed payload that the UI renders behind a Save button.
+// Tools are plain Ax function-calling definitions. Core retrieval tools back onto
+// cli/src/db/read-agent.ts and the SQL sub-agent (sql-agent.ts). There are deliberately NO
+// tools that write labels, promote versions, or start runs (agent-10): the only "output"
+// tool, proposeDraft, returns a typed payload that the UI renders behind a Save button.
 //
 // Later phases (labeling, optimization) call `toolRegistry.register(...)` to append their
 // read-only tools (listRuns, getRun, getRoundDiff, compareVersions, getLabel — agent-11).
@@ -11,27 +11,35 @@
 import { execFile } from 'child_process';
 import { fn, f } from '@ax-llm/ax';
 import type { AxFunction } from '@ax-llm/ax';
-import { getDb } from '@code-insights/cli/db/client';
-import {
-  searchSessionSnippets,
-  getSessionWindow,
-  listInsights,
-  getAnalyticsSummary,
-  type AnalyticsRange,
-} from '@code-insights/cli/db/read-agent';
-import { embedOne, DEFAULT_EMBEDDING_CONFIG } from '@code-insights/cli/embeddings/client';
+import type Database from 'better-sqlite3';
+import { getDb, openReadOnlyDb } from '@code-insights/cli/db/client';
+import { searchSessionSnippets, getSessionWindow } from '@code-insights/cli/db/read-agent';
+import { embedOne, resolveEmbeddingConfig } from '@code-insights/cli/embeddings/client';
 import { loadVectorExtension } from '@code-insights/cli/embeddings/store';
+import { loadConfig } from '@code-insights/cli/utils/config';
 import type { ClaudeInsightConfig } from '@code-insights/cli/types';
+import { runSqlSubAgent } from './sql-agent.js';
+import { resolveSqlRunner, type SqlSubAgentBackend } from './sql-runner.js';
 
 export type ToolGroup = 'core' | 'codebase' | 'optimization';
 
+export interface ToolRuntimeContext {
+  signal?: AbortSignal;
+  /** Test seam to supply a read-only handle over an in-memory DB. */
+  getReadOnlyDb?: () => { db: Database.Database; close: () => void };
+  /** Test seam to supply a mock SQL sub-agent backend. */
+  sqlBackend?: SqlSubAgentBackend;
+}
+
 export interface RegisteredTool {
-  /** Fully qualified function name as the model sees it (e.g. `searchSessions`, `codebase.listProjects`). */
+  /** Fully qualified function name as the model sees it (e.g. `queryDatabase`, `codebase.listProjects`). */
   id: string;
   group: ToolGroup;
   /** Omit for always-on tools. */
   enabled?: (config: ClaudeInsightConfig | null) => boolean;
   fn: AxFunction;
+  /** Optional per-turn factory so live AbortSignals/seams bind cleanly without ALS hazards. */
+  buildFn?: (runtime?: ToolRuntimeContext) => AxFunction;
 }
 
 /** Opt-in: only an explicit `dashboard.agent.codebaseTools === true` enables codebase.* tools (agent-4). */
@@ -57,8 +65,8 @@ export class ToolRegistry {
     return [...this.tools.values()].filter(t => !t.enabled || t.enabled(config));
   }
 
-  functions(config: ClaudeInsightConfig | null): AxFunction[] {
-    return this.list(config).map(t => t.fn);
+  functions(config: ClaudeInsightConfig | null, runtime?: ToolRuntimeContext): AxFunction[] {
+    return this.list(config).map(t => (t.buildFn ? t.buildFn(runtime) : t.fn));
   }
 }
 
@@ -90,32 +98,126 @@ export function toDraftPayload(args: Record<string, unknown>): DraftPayload {
 
 // ─── Core tools ───────────────────────────────────────────────────────────────
 
-const searchSessionsTool = fn('searchSessions')
-  .description('Search past coding sessions by keywords or meaning. Returns ranked short snippets with session IDs (never full transcripts). Use getSession to read more of a session.')
-  .arg('query', f.string('Search query'))
-  .arg('projectId', f.string('Restrict to one project ID').optional())
-  .arg('sourceTool', f.string('Restrict to a source tool, e.g. claude-code').optional())
-  .arg('limit', f.number('Max sessions (default 5, max 10)').optional())
-  .returns(f.json('Ranked session snippets'))
-  .handler(async (args: { query: string; projectId?: string; sourceTool?: string; limit?: number }) => {
-    const db = getDb();
-    let queryVector: Float32Array | null = null;
-    try {
-      loadVectorExtension(db);
-      const emb = await embedOne(DEFAULT_EMBEDDING_CONFIG, 'query', args.query);
-      queryVector = emb?.vector ?? null;
-    } catch {
-      // Embeddings are optional; keyword search still works.
-    }
-    const limit = Math.min(Math.max(Math.floor(args.limit ?? 5), 1), 10);
-    return {
-      results: searchSessionSnippets(db, args.query, { projectId: args.projectId, sourceTool: args.sourceTool }, limit, { queryVector }),
-    };
-  })
-  .build();
+function makeQueryDatabaseTool(runtime?: ToolRuntimeContext): AxFunction {
+  return fn('queryDatabase')
+    .description(
+      'Run a schema-aware read-only SQL query via the SQL sub-agent to list sessions by date/project/tool, compute analytics/token/cost stats, query insights (decisions, learnings, summaries, prompt_quality), inspect session_facets (friction points, effective patterns, outcomes), or inspect session_steps. Prefer this over searchSessions for any date-range listing, counting, or structured filtering.',
+    )
+    .arg('question', f.string('Natural-language analytical or session-listing question'))
+    .arg('timeRange', f.string('Optional time window hint, e.g. 24h, 48h, 7d, 30d, or 2026-11-01..2026-11-20').optional())
+    .arg('project', f.string('Optional project name or ID to scope the query').optional())
+    .arg('includeSubagents', f.boolean('Set true only when explicitly asking about child subagent runs').optional())
+    .returns(f.json('Query result rows, generated SQL metadata, and verified parent session IDs'))
+    .handler(async (args: {
+      question: string;
+      timeRange?: string;
+      project?: string;
+      includeSubagents?: boolean;
+    }) => {
+      const resolved = runtime?.sqlBackend
+        ? { backend: runtime.sqlBackend }
+        : resolveSqlRunner(loadConfig());
+
+      if ('error' in resolved) {
+        return {
+          ok: false,
+          sql: '',
+          explanation: '',
+          runner: '',
+          columns: [],
+          rows: [],
+          rowCount: 0,
+          truncated: false,
+          referencedSessionIds: [],
+          retried: false,
+          error: resolved.error,
+        };
+      }
+
+      const handle = runtime?.getReadOnlyDb
+        ? runtime.getReadOnlyDb()
+        : (() => {
+            const db = openReadOnlyDb();
+            return { db, close: () => db.close() };
+          })();
+
+      try {
+        return await runSqlSubAgent({
+          db: handle.db,
+          backend: resolved.backend,
+          question: args.question,
+          timeRange: args.timeRange,
+          project: args.project,
+          includeSubagents: args.includeSubagents,
+          signal: runtime?.signal,
+        });
+      } finally {
+        handle.close();
+      }
+    })
+    .build();
+}
+
+function makeSearchSessionsTool(runtime?: ToolRuntimeContext): AxFunction {
+  return fn('searchSessions')
+    .description(
+      'Semantic + FTS5 keyword search across session messages, summaries, and insights by topic, error, or concept. Returns ranked short snippets rolled up to parent sessions with facet summaries. Do NOT pass date phrases like "last week" as query; use since/until ISO bounds or use queryDatabase to list sessions by date.',
+    )
+    .arg('query', f.string('Topical search query (keywords, error messages, concepts — never date phrases)'))
+    .arg('since', f.string('Optional inclusive start ISO-8601 timestamp or YYYY-MM-DD').optional())
+    .arg('until', f.string('Optional inclusive end ISO-8601 timestamp or YYYY-MM-DD').optional())
+    .arg('projectName', f.string('Restrict to project name substring').optional())
+    .arg('projectId', f.string('Restrict to one project ID').optional())
+    .arg('sourceTool', f.string('Restrict to a source tool, e.g. claude-code, opencode, antigravity').optional())
+    .arg('limit', f.number('Max sessions (default 5, max 10)').optional())
+    .returns(f.json('Ranked session snippets rolled up to parent sessions'))
+    .handler(async (args: {
+      query: string;
+      since?: string;
+      until?: string;
+      projectName?: string;
+      projectId?: string;
+      sourceTool?: string;
+      limit?: number;
+    }) => {
+      const db = getDb();
+      let queryVector: Float32Array | null = null;
+      const embConfig = resolveEmbeddingConfig(loadConfig());
+      if (embConfig) {
+        try {
+          loadVectorExtension(db);
+          const emb = await embedOne(embConfig, 'query', args.query, {
+            maxRetries: 1,
+            timeoutMs: 3000,
+            signal: runtime?.signal,
+          });
+          queryVector = emb?.vector ?? null;
+        } catch {
+          // Embeddings are optional / may fail fast — keyword + metadata search still works.
+        }
+      }
+      const limit = Math.min(Math.max(Math.floor(args.limit ?? 5), 1), 10);
+      return {
+        results: searchSessionSnippets(
+          db,
+          args.query,
+          {
+            projectId: args.projectId,
+            projectName: args.projectName,
+            sourceTool: args.sourceTool,
+            since: args.since,
+            until: args.until,
+          },
+          limit,
+          { queryVector },
+        ),
+      };
+    })
+    .build();
+}
 
 const getSessionTool = fn('getSession')
-  .description('Read a window of turns from one session (0-based, inclusive). Returns at most 40 turns; content is truncated per turn.')
+  .description('Read a window of turns from one session (0-based, inclusive), plus its facets and child subagents. Returns at most 40 turns; content is truncated per turn.')
   .arg('sessionId', f.string('Session ID'))
   .arg('fromTurn', f.number('First turn index (default 0)').optional())
   .arg('toTurn', f.number('Last turn index, inclusive (default fromTurn + 19)').optional())
@@ -124,30 +226,6 @@ const getSessionTool = fn('getSession')
     const from = args.fromTurn ?? 0;
     const window = getSessionWindow(getDb(), args.sessionId, from, args.toTurn ?? from + 19);
     return window ?? { error: `Session not found: ${args.sessionId}` };
-  })
-  .build();
-
-const listInsightsTool = fn('listInsights')
-  .description('List LLM-generated insights (decisions, learnings, friction, patterns, summaries), highest confidence first.')
-  .arg('sessionId', f.string('Only insights for this session').optional())
-  .arg('projectId', f.string('Only insights for this project').optional())
-  .arg('type', f.string('Insight type filter, e.g. decision, learning, summary').optional())
-  .arg('limit', f.number('Max insights (default 20, max 50)').optional())
-  .returns(f.json('Insights'))
-  .handler(async (args: { sessionId?: string; projectId?: string; type?: string; limit?: number }) => ({
-    insights: listInsights(getDb(), args),
-  }))
-  .build();
-
-const getAnalyticsTool = fn('getAnalytics')
-  .description('Aggregate usage analytics (sessions, projects, tokens, cost, source tools) for a time range.')
-  .arg('range', f.string('One of 7d, 30d, 90d, all (default 30d)').optional())
-  .returns(f.json('Analytics summary'))
-  .handler(async (args: { range?: string }) => {
-    const range: AnalyticsRange = (['7d', '30d', '90d', 'all'] as const).includes(args.range as AnalyticsRange)
-      ? (args.range as AnalyticsRange)
-      : '30d';
-    return getAnalyticsSummary(getDb(), range);
   })
   .build();
 
@@ -161,9 +239,20 @@ const proposeDraftTool = fn('proposeDraft')
   .handler(async (args: Record<string, unknown>) => ({ draft: toDraftPayload(args) }))
   .build();
 
-for (const t of [searchSessionsTool, getSessionTool, listInsightsTool, getAnalyticsTool, proposeDraftTool]) {
-  toolRegistry.register({ id: t.name, group: 'core', fn: t });
-}
+toolRegistry.register({
+  id: 'queryDatabase',
+  group: 'core',
+  fn: makeQueryDatabaseTool(),
+  buildFn: makeQueryDatabaseTool,
+});
+toolRegistry.register({
+  id: 'searchSessions',
+  group: 'core',
+  fn: makeSearchSessionsTool(),
+  buildFn: makeSearchSessionsTool,
+});
+toolRegistry.register({ id: getSessionTool.name, group: 'core', fn: getSessionTool });
+toolRegistry.register({ id: proposeDraftTool.name, group: 'core', fn: proposeDraftTool });
 
 // ─── Codebase tools (optional, agent-4) ───────────────────────────────────────
 

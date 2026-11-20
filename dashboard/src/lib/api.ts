@@ -2,7 +2,7 @@
 // Base URL is relative in production (SPA served by the same server).
 // In Vite dev mode, the proxy forwards /api -> localhost:7890.
 
-import type { Project, Session, Message, Insight, DashboardStats, LLMConfig, ExportTemplate, SemanticStep, PricingPlan, ChatConversation, ChatMessage, PageContext, AnalysisRunnerName } from '@/lib/types';
+import type { Project, Session, Message, Insight, DashboardStats, LLMConfig, ExportTemplate, SemanticStep, PricingPlan, ChatConversation, ChatMessage, PageContext, AnalysisRunnerName, SqlRunnerName } from '@/lib/types';
 
 const BASE = '/api';
 
@@ -195,6 +195,7 @@ export function saveLlmConfig(body: {
     apiKey?: string;
     baseUrl?: string;
     codebaseTools?: boolean;
+    sqlRunner?: { name?: SqlRunnerName; model?: string; variant?: string } | null;
   };
   embedding?: {
     provider?: string;

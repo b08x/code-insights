@@ -8,7 +8,7 @@ import { ai, ax } from '@ax-llm/ax';
 import type { AxAIService, AxFunction } from '@ax-llm/ax';
 import { loadConfig } from '@code-insights/cli/utils/config';
 import { loadLLMConfig } from '@code-insights/cli/llm/client';
-import { SYSTEM_PROMPT } from './prompt.js';
+import { buildSystemPrompt } from './prompt.js';
 import { toDraftPayload, toolRegistry, type DraftPayload } from './tools.js';
 
 export interface PageContext {
@@ -25,9 +25,18 @@ export interface HistoryMessage {
   content: string;
 }
 
+export interface ToolCallDetail {
+  sql?: string;
+  rowCount?: number;
+  truncated?: boolean;
+  runner?: string;
+  explanation?: string;
+  error?: string;
+}
+
 export type AgentEvent =
   | { type: 'text'; text: string }
-  | { type: 'tool_call'; name: string; args: unknown; ok: boolean; ms: number }
+  | { type: 'tool_call'; name: string; args: unknown; ok: boolean; ms: number; detail?: ToolCallDetail }
   | { type: 'citation'; sessionId: string }
   | { type: 'draft'; draft: DraftPayload };
 
@@ -50,9 +59,9 @@ export function buildForwardInputs(params: Pick<RunChatAgentParams, 'userQuery' 
   };
 }
 
-export function createChatProgram() {
+export function createChatProgram(now: Date = new Date()) {
   return ax('userQuery:string, pageContext?:json, history?:json -> reply:string', {
-    description: SYSTEM_PROMPT,
+    description: buildSystemPrompt(now),
   });
 }
 
@@ -74,13 +83,22 @@ export function extractSessionIds(result: unknown, out: Set<string> = new Set())
   return out;
 }
 
+function parseToolResult(result: unknown): unknown {
+  if (typeof result !== 'string') return result;
+  try {
+    return JSON.parse(result);
+  } catch {
+    return result;
+  }
+}
+
 /**
  * Run one agent turn. Yields text deltas as they stream, plus tool_call / citation / draft
  * events as tools finish. Throws on LLM errors; the caller decides how to surface them.
  */
 export async function* runChatAgent(params: RunChatAgentParams): AsyncGenerator<AgentEvent> {
   const program = createChatProgram();
-  const tools = params.tools ?? toolRegistry.functions(loadConfig());
+  const tools = params.tools ?? toolRegistry.functions(loadConfig(), { signal: params.signal });
   const pending: AgentEvent[] = [];
   const cited = new Set<string>();
 
@@ -90,13 +108,45 @@ export async function* runChatAgent(params: RunChatAgentParams): AsyncGenerator<
     abortSignal: params.signal,
     onFunctionCall: (call) => {
       const name = call.fn;
+      const parsedResult = parseToolResult(call.result);
+
+      if ((name === 'queryDatabase' || name.endsWith('.queryDatabase')) && parsedResult && typeof parsedResult === 'object' && !Array.isArray(parsedResult)) {
+        const r = parsedResult as Record<string, unknown>;
+        const detail: ToolCallDetail = {
+          ...(typeof r.sql === 'string' && r.sql ? { sql: r.sql } : {}),
+          ...(typeof r.rowCount === 'number' ? { rowCount: r.rowCount } : {}),
+          ...(typeof r.truncated === 'boolean' ? { truncated: r.truncated } : {}),
+          ...(typeof r.runner === 'string' && r.runner ? { runner: r.runner } : {}),
+          ...(typeof r.explanation === 'string' && r.explanation ? { explanation: r.explanation } : {}),
+          ...(typeof r.error === 'string' && r.error ? { error: r.error } : {}),
+        };
+        const ok = call.ok && r.ok !== false;
+        pending.push({
+          type: 'tool_call',
+          name,
+          args: call.args,
+          ok,
+          ms: call.ms,
+          ...(Object.keys(detail).length > 0 ? { detail } : {}),
+        });
+        if (ok && Array.isArray(r.referencedSessionIds)) {
+          for (const sid of r.referencedSessionIds) {
+            if (typeof sid === 'string' && sid && !cited.has(sid)) {
+              cited.add(sid);
+              pending.push({ type: 'citation', sessionId: sid });
+            }
+          }
+        }
+        return;
+      }
+
       pending.push({ type: 'tool_call', name, args: call.args, ok: call.ok, ms: call.ms });
       if (!call.ok) return;
-      for (const sid of extractSessionIds(call.result)) {
+      for (const sid of extractSessionIds(parsedResult)) {
         if (!cited.has(sid)) { cited.add(sid); pending.push({ type: 'citation', sessionId: sid }); }
       }
       if (name === 'proposeDraft' || name.endsWith('.proposeDraft')) {
-        const r = call.result as { draft?: DraftPayload } | string;
+        const r = parsedResult as { draft?: DraftPayload } | string;
         const draft = typeof r === 'object' && r?.draft ? r.draft : toDraftPayload((call.args ?? {}) as Record<string, unknown>);
         pending.push({ type: 'draft', draft });
       }

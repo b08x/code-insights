@@ -215,6 +215,61 @@ describe('Config routes', () => {
     });
   });
 
+  describe('agent.sqlRunner', () => {
+    afterEach(() => { mockConfig = null; });
+    const put = (body: unknown) => createApp().request('/api/config/llm', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+
+    it('round-trips CLI runner, provider, and agent settings and preserves other agent fields', async () => {
+      mockConfig = {
+        sync: { claudeDir: '', excludeProjects: [] },
+        dashboard: { agent: { provider: 'mistral', model: 'mistral-small-latest', codebaseTools: true } },
+      };
+      vi.mocked(saveConfig).mockClear();
+
+      expect((await put({ agent: { sqlRunner: { name: 'opencode', model: 'openrouter/qwen/qwen3-coder', variant: 'high' } } })).status).toBe(200);
+      const savedAgent = vi.mocked(saveConfig).mock.calls[0][0].dashboard?.agent;
+      expect(savedAgent?.sqlRunner).toEqual({ name: 'opencode', model: 'openrouter/qwen/qwen3-coder', variant: 'high' });
+      expect(savedAgent?.provider).toBe('mistral');
+      expect(savedAgent?.codebaseTools).toBe(true);
+
+      mockConfig = vi.mocked(saveConfig).mock.calls[0][0];
+      const got = await (await createApp().request('/api/config/llm')).json() as any;
+      expect(got.agent.sqlRunner).toEqual({ name: 'opencode', model: 'openrouter/qwen/qwen3-coder', variant: 'high' });
+
+      vi.mocked(saveConfig).mockClear();
+      expect((await put({ agent: { sqlRunner: { name: 'agent' } } })).status).toBe(200);
+      expect(vi.mocked(saveConfig).mock.calls[0][0].dashboard?.agent?.sqlRunner).toEqual({ name: 'agent' });
+    });
+
+    it('does not fabricate a fake agent provider when saving sqlRunner before agent LLM is set', async () => {
+      mockConfig = { sync: { claudeDir: '', excludeProjects: [] } };
+      vi.mocked(saveConfig).mockClear();
+
+      expect((await put({ agent: { sqlRunner: { name: 'provider' } } })).status).toBe(200);
+      const savedAgent = vi.mocked(saveConfig).mock.calls[0][0].dashboard?.agent;
+      expect(savedAgent?.sqlRunner).toEqual({ name: 'provider' });
+      expect(savedAgent?.provider).toBeUndefined();
+    });
+
+    it('clears with null and rejects invalid sqlRunner names or flag-like models', async () => {
+      mockConfig = {
+        sync: { claudeDir: '', excludeProjects: [] },
+        dashboard: { agent: { provider: 'openai', model: 'm', sqlRunner: { name: 'claude', model: 'sonnet' } } },
+      };
+      vi.mocked(saveConfig).mockClear();
+
+      expect((await put({ agent: { sqlRunner: null } })).status).toBe(200);
+      expect(vi.mocked(saveConfig).mock.calls[0][0].dashboard?.agent?.sqlRunner).toBeUndefined();
+
+      vi.mocked(saveConfig).mockClear();
+      expect((await put({ agent: { sqlRunner: { name: 'bash' } } })).status).toBe(400);
+      expect((await put({ agent: { sqlRunner: { name: 'claude', model: '--dangerously-skip-permissions' } } })).status).toBe(400);
+      expect(vi.mocked(saveConfig)).not.toHaveBeenCalled();
+    });
+  });
+
   describe('analysis runner setting', () => {
     afterEach(() => { mockConfig = null; });
     const put = (body: unknown) => createApp().request('/api/config/llm', {

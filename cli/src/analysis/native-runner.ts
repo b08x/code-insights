@@ -39,7 +39,7 @@ function isResultEvent(e: ClaudeEvent): e is ClaudeResultEvent {
  * 1. An array of event objects (streaming style)
  * 2. A single result object (simple style)
  */
-function extractResultFromEnvelope(rawOutput: string): string {
+export function extractResultFromEnvelope(rawOutput: string): string {
   let data: any;
   try {
     data = JSON.parse(rawOutput);

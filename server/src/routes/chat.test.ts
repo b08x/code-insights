@@ -18,7 +18,7 @@ vi.mock('@code-insights/cli/utils/telemetry', () => ({
 const { createChatRouter } = await import('./chat.js');
 const { createApp } = await import('../index.js');
 const { toolRegistry, ToolRegistry } = await import('../agent/tools.js');
-const { buildForwardInputs, runChatAgent, extractSessionIds } = await import('../agent/agent.js');
+const { buildForwardInputs, createChatProgram, runChatAgent, extractSessionIds } = await import('../agent/agent.js');
 
 import type { AgentEvent, RunChatAgentParams } from '../agent/agent.js';
 
@@ -69,8 +69,11 @@ afterEach(() => testDb.close());
 describe('agent tool registry', () => {
   const names = (cfg: any) => toolRegistry.list(cfg).map(t => t.id);
 
-  it('exposes the four read tools plus draft by default (agent-2)', () => {
-    expect(names(null)).toEqual(expect.arrayContaining(['searchSessions', 'getSession', 'listInsights', 'getAnalytics', 'proposeDraft']));
+  it('exposes queryDatabase, searchSessions, getSession, and proposeDraft by default (no getAnalytics/listInsights)', () => {
+    const coreNames = names(null);
+    expect(coreNames).toEqual(expect.arrayContaining(['queryDatabase', 'searchSessions', 'getSession', 'proposeDraft']));
+    expect(coreNames).not.toContain('getAnalytics');
+    expect(coreNames).not.toContain('listInsights');
   });
 
   it('omits codebase.* tools unless dashboard.agent.codebaseTools === true (agent-4)', () => {
@@ -102,6 +105,30 @@ describe('agent tool registry', () => {
     reg.register({ id: 'gated', group: 'optimization', enabled: () => false, fn: { ...fnDef, name: 'gated' } });
     expect(reg.functions(null)).toHaveLength(1);
   });
+
+  it('wires queryDatabase tool with runtime read-only DB + sqlBackend and closes DB handle', async () => {
+    testDb.prepare("INSERT INTO projects (id, name, path, last_activity) VALUES ('p1','Proj','/p','2026-11-18')").run();
+    testDb.prepare(`INSERT INTO sessions (id, project_id, project_name, project_path, started_at, ended_at, generated_title)
+      VALUES ('s1', 'p1', 'Proj', '/p', '2026-11-18T00:00:00Z', '2026-11-18T01:00:00Z', 'Test session')`).run();
+
+    const closeSpy = vi.fn();
+    const fns = toolRegistry.functions(null, {
+      getReadOnlyDb: () => ({ db: testDb, close: closeSpy }),
+      sqlBackend: {
+        label: 'test-backend',
+        generate: async () => JSON.stringify({
+          sql: 'SELECT id AS session_id, generated_title FROM sessions WHERE deleted_at IS NULL',
+          explanation: 'Lists sessions',
+        }),
+      },
+    });
+    const qTool = fns.find(f => f.name === 'queryDatabase')!;
+    const out = await qTool.func({ question: 'list sessions', timeRange: '7d' });
+    expect(closeSpy).toHaveBeenCalledOnce();
+    expect(out.ok).toBe(true);
+    expect(out.rowCount).toBe(1);
+    expect(out.referencedSessionIds).toEqual(['s1']);
+  });
 });
 
 // ─── agent internals (agent-8, agent-5) ───────────────────────────────────────
@@ -112,7 +139,7 @@ describe('chat agent', () => {
     expect(inputs).toEqual({ userQuery: 'summarize this session', pageContext: { page: 'session', sessionId: 's1' }, history: [{ role: 'user', content: 'hi' }] });
   });
 
-  it('sends pageContext to the model and streams the reply', async () => {
+  it('sends pageContext and current UTC date in system prompt to the model', async () => {
     const requests: any[] = [];
     const llm = new AxMockAIService({
       features: { functions: true, streaming: false },
@@ -126,7 +153,73 @@ describe('chat agent', () => {
       llm: llm as any, userQuery: 'summarize this session', pageContext: { page: 'session', sessionId: 'sess-ctx-42' }, tools: [],
     })) events.push(ev);
     expect(JSON.stringify(requests[0])).toContain('sess-ctx-42');
+    const todayIsoPrefix = new Date().toISOString().slice(0, 10);
+    expect(JSON.stringify(requests[0])).toContain(todayIsoPrefix);
     expect(events.filter(e => e.type === 'text').length).toBeGreaterThan(0);
+
+    const prog = createChatProgram(new Date('2026-11-20T06:00:00.000Z'));
+    expect(JSON.stringify(prog)).toContain('2026-11-20T06:00:00.000Z');
+  });
+
+  it('extracts queryDatabase detail and verified parent citations from tool calls', async () => {
+    let step = 0;
+    const llm = new AxMockAIService({
+      features: { functions: true, streaming: false },
+      chatResponse: async () => {
+        step++;
+        if (step === 1) {
+          return {
+            results: [{
+              index: 0,
+              content: '',
+              functionCalls: [{
+                id: 'call-1',
+                type: 'function',
+                function: { name: 'queryDatabase', params: { question: 'sessions last 7 days', timeRange: '7d' } },
+              }],
+              finishReason: 'function_call',
+            }],
+          } as any;
+        }
+        return { results: [{ index: 0, content: 'Here is your 7d summary.', finishReason: 'stop' }] } as any;
+      },
+    });
+
+    const queryTool = {
+      name: 'queryDatabase',
+      description: 'query',
+      parameters: { type: 'object', properties: { question: { type: 'string' } }, required: ['question'] },
+      func: async () => ({
+        ok: true,
+        sql: 'SELECT id AS session_id FROM sessions LIMIT 10',
+        explanation: 'Lists recent sessions.',
+        runner: 'provider (openrouter/qwen)',
+        columns: ['session_id'],
+        rows: [{ session_id: 'parent-1' }],
+        rowCount: 1,
+        truncated: false,
+        referencedSessionIds: ['parent-1'],
+      }),
+    };
+
+    const events: AgentEvent[] = [];
+    for await (const ev of runChatAgent({
+      llm: llm as any,
+      userQuery: 'Summarize my sessions from the last week',
+      tools: [queryTool],
+    })) events.push(ev);
+
+    const toolEv = events.find((e): e is Extract<AgentEvent, { type: 'tool_call' }> => e.type === 'tool_call');
+    expect(toolEv).toBeDefined();
+    expect(toolEv!.ok).toBe(true);
+    expect(toolEv!.detail).toEqual({
+      sql: 'SELECT id AS session_id FROM sessions LIMIT 10',
+      rowCount: 1,
+      truncated: false,
+      runner: 'provider (openrouter/qwen)',
+      explanation: 'Lists recent sessions.',
+    });
+    expect(events.filter(e => e.type === 'citation')).toEqual([{ type: 'citation', sessionId: 'parent-1' }]);
   });
 
   it('extractSessionIds finds IDs nested in tool results (agent-5)', () => {
@@ -157,7 +250,14 @@ describe('chat routes', () => {
     const calls: RunChatAgentParams[] = [];
     const app = makeApp(async function* (params) {
       calls.push(params);
-      yield { type: 'tool_call', name: 'searchSessions', args: { query: 'x' }, ok: true, ms: 3 };
+      yield {
+        type: 'tool_call',
+        name: 'queryDatabase',
+        args: { question: 'x' },
+        ok: true,
+        ms: 3,
+        detail: { sql: 'SELECT 1', rowCount: 1, runner: 'provider (openai/gpt-4o)' },
+      };
       yield { type: 'citation', sessionId: 'sess-1' };
       yield { type: 'text', text: 'Hello ' };
       yield { type: 'text', text: 'world' };
@@ -172,7 +272,8 @@ describe('chat routes', () => {
     const done = events.at(-1)!.data;
     expect(done.content).toBe('Hello world');
     expect(done.citations).toEqual(['sess-1']);
-    expect(done.toolCalls[0].name).toBe('searchSessions');
+    expect(done.toolCalls[0].name).toBe('queryDatabase');
+    expect(done.toolCalls[0].detail).toEqual({ sql: 'SELECT 1', rowCount: 1, runner: 'provider (openai/gpt-4o)' });
 
     expect(calls[0].pageContext).toEqual(ctx);
     expect(calls[0].userQuery).toBe('summarize this session');

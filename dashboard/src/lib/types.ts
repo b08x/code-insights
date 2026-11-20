@@ -318,6 +318,7 @@ export interface LLMConfig {
     apiKey?: string;
     baseUrl?: string;
     codebaseTools?: boolean;
+    sqlRunner?: SqlRunnerSetting;
   };
   embedding?: {
     provider?: 'openai' | 'anthropic' | 'gemini' | 'ollama' | 'openrouter' | 'mistral';
@@ -334,6 +335,14 @@ export type AnalysisRunnerName = 'claude' | 'codex' | 'antigravity' | 'vibe' | '
 
 export interface AnalysisRunnerSetting {
   name: AnalysisRunnerName;
+  model?: string;
+  variant?: string;
+}
+
+export type SqlRunnerName = AnalysisRunnerName | 'agent';
+
+export interface SqlRunnerSetting {
+  name: SqlRunnerName;
   model?: string;
   variant?: string;
 }
@@ -357,11 +366,21 @@ export interface ChatConversation {
   updatedAt: string;
 }
 
+export interface ChatToolCallDetail {
+  sql?: string;
+  rowCount?: number;
+  truncated?: boolean;
+  runner?: string;
+  explanation?: string;
+  error?: string;
+}
+
 export interface ChatToolCall {
   name: string;
   args: unknown;
   ok: boolean;
   ms: number;
+  detail?: ChatToolCallDetail;
 }
 
 export type ChatDraftKind = 'note' | 'label' | 'prompt';

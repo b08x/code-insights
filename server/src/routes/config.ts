@@ -7,7 +7,13 @@ import { discoverOllamaModels } from '@code-insights/cli/llm/providers/ollama';
 import { discoverModels } from '../llm/discover.js';
 import { listRunnerModels } from './runner-models.js';
 import {
-  ANALYSIS_RUNNER_NAMES, isRunnerName, RUNNER_MODEL_RE, RUNNER_VARIANT_RE,
+  ANALYSIS_RUNNER_NAMES,
+  SQL_RUNNER_NAMES,
+  isRunnerName,
+  isSqlRunnerName,
+  RUNNER_MODEL_RE,
+  RUNNER_VARIANT_RE,
+  type SqlRunnerSetting,
 } from '@code-insights/cli/utils/runner-setting';
 
 const app = new Hono();
@@ -26,6 +32,22 @@ type RunnerSetting = NonNullable<NonNullable<NonNullable<ClaudeInsightConfig['da
 
 // Model/variant reach CLI argv; RUNNER_MODEL_RE / RUNNER_VARIANT_RE are shared with the CLI.
 
+function validateRunnerField(
+  value: unknown,
+  prior: string | undefined,
+  re: RegExp,
+  prefix: string,
+  label: string,
+): string | undefined | { error: string } {
+  if (value === undefined) return prior;
+  if (value === null || value === '') return undefined;
+  if (typeof value !== 'string') return { error: `${prefix}.${label} must be a string` };
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  if (!re.test(trimmed)) return { error: `${prefix}.${label} contains unsupported characters` };
+  return trimmed;
+}
+
 /**
  * Merge a PUT `runner` body into the saved runner. Omitted fields are kept, except that switching
  * to a different runner drops the old model/variant (model ids are runner-specific).
@@ -43,18 +65,29 @@ function mergeRunnerSetting(
   if (!name) return { error: 'runner.name is required' };
   const keep = existing?.name === name ? existing : undefined;
 
-  const field = (value: unknown, prior: string | undefined, re: RegExp, label: string): string | undefined | { error: string } => {
-    if (value === undefined) return prior;
-    if (value === null || value === '') return undefined;
-    if (typeof value !== 'string') return { error: `runner.${label} must be a string` };
-    const trimmed = value.trim();
-    if (!trimmed) return undefined;
-    if (!re.test(trimmed)) return { error: `runner.${label} contains unsupported characters` };
-    return trimmed;
-  };
-  const model = field(body.model, keep?.model, RUNNER_MODEL_RE, 'model');
+  const model = validateRunnerField(body.model, keep?.model, RUNNER_MODEL_RE, 'runner', 'model');
   if (typeof model === 'object') return model;
-  const variant = field(body.variant, keep?.variant, RUNNER_VARIANT_RE, 'variant');
+  const variant = validateRunnerField(body.variant, keep?.variant, RUNNER_VARIANT_RE, 'runner', 'variant');
+  if (typeof variant === 'object') return variant;
+  return { name, ...(model ? { model } : {}), ...(variant ? { variant } : {}) };
+}
+
+function mergeSqlRunnerSetting(
+  existing: SqlRunnerSetting | undefined,
+  body: { name?: unknown; model?: unknown; variant?: unknown } | null,
+): SqlRunnerSetting | null | { error: string } {
+  if (body === null || Object.keys(body).length === 0) return null;
+  if (body.name !== undefined && !isSqlRunnerName(body.name)) {
+    return { error: `sqlRunner.name must be one of: ${SQL_RUNNER_NAMES.join(', ')}` };
+  }
+  const name = (body.name as SqlRunnerSetting['name'] | undefined) ?? existing?.name;
+  if (!name) return { error: 'sqlRunner.name is required' };
+  if (name === 'provider' || name === 'agent') return { name };
+  const keep = existing?.name === name ? existing : undefined;
+
+  const model = validateRunnerField(body.model, keep?.model, RUNNER_MODEL_RE, 'sqlRunner', 'model');
+  if (typeof model === 'object') return model;
+  const variant = validateRunnerField(body.variant, keep?.variant, RUNNER_VARIANT_RE, 'sqlRunner', 'variant');
   if (typeof variant === 'object') return variant;
   return { name, ...(model ? { model } : {}), ...(variant ? { variant } : {}) };
 }
@@ -94,6 +127,7 @@ app.get('/llm', (c) => {
       apiKey: maskApiKey(agent.apiKey),
       baseUrl: agent.baseUrl,
       codebaseTools: agent.codebaseTools === true,
+      sqlRunner: agent.sqlRunner,
     } : undefined,
     embedding: embedding ? {
       provider: embedding.provider,
@@ -113,7 +147,10 @@ app.put('/llm', async (c) => {
     model?: string;
     apiKey?: string;
     baseUrl?: string;
-    agent?: Partial<LLMProviderConfig> & { codebaseTools?: boolean };
+    agent?: Partial<LLMProviderConfig> & {
+      codebaseTools?: boolean;
+      sqlRunner?: { name?: unknown; model?: unknown; variant?: unknown } | null;
+    };
     embedding?: Partial<LLMProviderConfig>;
     /** Analysis runner for CLI/queue. Omitted = unchanged; null or {} = cleared. */
     runner?: { name?: unknown; model?: unknown; variant?: unknown } | null;
@@ -175,19 +212,30 @@ app.put('/llm', async (c) => {
       return c.json({ error: `agent provider must be one of: ${VALID_PROVIDERS.join(', ')}` }, 400);
     }
     const existingAgent = config.dashboard?.agent ?? {} as Partial<NonNullable<NonNullable<ClaudeInsightConfig['dashboard']>['agent']>>;
-    
-    // Check if we are clearing the agent config
-    if (body.agent.provider === undefined && body.agent.model === undefined && body.agent.apiKey === undefined && body.agent.baseUrl === undefined && Object.keys(body.agent).length > 0) {
-        // Just clearing specific fields, handled below
+
+    let mergedSqlRunner: SqlRunnerSetting | null | undefined;
+    if (body.agent.sqlRunner !== undefined) {
+      if (body.agent.sqlRunner !== null && (typeof body.agent.sqlRunner !== 'object' || Array.isArray(body.agent.sqlRunner))) {
+        return c.json({ error: 'agent.sqlRunner must be an object or null' }, 400);
+      }
+      const res = mergeSqlRunnerSetting(existingAgent.sqlRunner, body.agent.sqlRunner);
+      if (res && 'error' in res) {
+        return c.json({ error: res.error }, 400);
+      }
+      mergedSqlRunner = res;
     }
 
     if (Object.keys(body.agent).length === 0) {
         config.dashboard = { ...config.dashboard, agent: undefined };
     } else {
         const codebaseTools = typeof body.agent.codebaseTools === 'boolean' ? body.agent.codebaseTools : existingAgent.codebaseTools;
+        const sqlRunner = body.agent.sqlRunner !== undefined ? (mergedSqlRunner ?? undefined) : existingAgent.sqlRunner;
+        const hasProviderOrModel = body.agent.provider !== undefined || body.agent.model !== undefined || existingAgent.provider !== undefined;
         const updatedAgent: NonNullable<NonNullable<ClaudeInsightConfig['dashboard']>['agent']> = {
-            provider: body.agent.provider ?? existingAgent.provider ?? 'openai',
-            model: body.agent.model ?? existingAgent.model ?? '',
+            ...(hasProviderOrModel ? {
+              provider: body.agent.provider ?? existingAgent.provider,
+              model: body.agent.model ?? existingAgent.model ?? '',
+            } : {}),
             ...(body.agent.apiKey !== undefined
               ? { apiKey: body.agent.apiKey || undefined }
               : existingAgent.apiKey !== undefined ? { apiKey: existingAgent.apiKey } : {}),
@@ -195,6 +243,7 @@ app.put('/llm', async (c) => {
               ? { baseUrl: body.agent.baseUrl || undefined }
               : existingAgent.baseUrl !== undefined ? { baseUrl: existingAgent.baseUrl } : {}),
             ...(codebaseTools !== undefined ? { codebaseTools } : {}),
+            ...(sqlRunner !== undefined ? { sqlRunner } : {}),
         };
         config.dashboard = { ...config.dashboard, agent: updatedAgent };
     }

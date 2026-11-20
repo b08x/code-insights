@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { LlmProviderCard } from '@/components/settings/LlmProviderCard';
 import { RunnerSettingsCard } from '@/components/settings/RunnerSettingsCard';
+import { SqlRunnerSettingsCard } from '@/components/settings/SqlRunnerSettingsCard';
 
 export default function SettingsPage() {
   const { data: llmConfig, isLoading: configLoading } = useLlmConfig();
@@ -224,6 +225,12 @@ export default function SettingsPage() {
             agent: {}, // Empty object will be treated as clear in our API handler
           });
         }}
+      />
+
+      <SqlRunnerSettingsCard
+        saved={llmConfig?.agent?.sqlRunner}
+        providerSummary={llmConfig?.provider ? `${llmConfig.provider} / ${llmConfig.model ?? ''}` : undefined}
+        agentSummary={llmConfig?.agent?.provider ? `${llmConfig.agent.provider} / ${llmConfig.agent.model ?? ''}` : undefined}
       />
 
       <Card>

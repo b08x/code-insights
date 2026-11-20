@@ -1,7 +1,7 @@
 // Ollama embedding client — HTTP wrapper around /api/embed.
 // Handles batching, retry with exponential backoff, and rate limiting.
 
-import type { EmbeddingConfig, EmbeddingResult } from './types.js';
+import type { EmbeddingConfig, EmbeddingResult, EmbedRequestOptions } from './types.js';
 
 const MAX_RETRIES = 3;
 const BASE_RETRY_MS = 1000;
@@ -22,6 +22,17 @@ export class EmbeddingError extends Error {
     super(message);
     this.name = 'EmbeddingError';
   }
+}
+
+/** Combine caller AbortSignal with an optional per-attempt timeout. */
+function buildRequestSignal(opts?: EmbedRequestOptions): AbortSignal | undefined {
+  const timeoutSignal = opts?.timeoutMs && opts.timeoutMs > 0
+    ? AbortSignal.timeout(opts.timeoutMs)
+    : undefined;
+  if (opts?.signal && timeoutSignal) {
+    return AbortSignal.any([opts.signal, timeoutSignal]);
+  }
+  return opts?.signal ?? timeoutSignal;
 }
 
 /** Sleep for ms. */
@@ -56,20 +67,27 @@ async function embedBatch(
   config: EmbeddingConfig,
   texts: string[],
   rateLimiter: { wait: () => Promise<void> },
+  opts?: EmbedRequestOptions,
 ): Promise<Float32Array[]> {
   await rateLimiter.wait();
 
   const url = `${config.baseUrl.replace(/\/+$/, '')}/api/embed`;
   const body = JSON.stringify({ model: config.model, input: texts });
+  const maxRetries = Math.max(1, opts?.maxRetries ?? MAX_RETRIES);
 
   let lastError: unknown;
 
-  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    if (opts?.signal?.aborted) {
+      throw new EmbeddingError('Embedding aborted', opts.signal.reason);
+    }
+
     try {
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body,
+        signal: buildRequestSignal(opts),
       });
 
       if (!res.ok) {
@@ -92,6 +110,7 @@ async function embedBatch(
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: fallbackBody,
+                  signal: buildRequestSignal(opts),
                 });
                 if (!fallbackRes.ok) {
                   const errText = await fallbackRes.text().catch(() => '');
@@ -131,14 +150,17 @@ async function embedBatch(
       return json.embeddings.map(e => new Float32Array(e));
     } catch (err) {
       lastError = err;
-      if (attempt < MAX_RETRIES) {
+      if (opts?.signal?.aborted) {
+        throw new EmbeddingError('Embedding aborted', err);
+      }
+      if (attempt < maxRetries) {
         await sleep(BASE_RETRY_MS * 2 ** (attempt - 1));
       }
     }
   }
 
   throw new EmbeddingError(
-    `Embedding failed after ${MAX_RETRIES} attempts`,
+    `Embedding failed after ${maxRetries} attempts`,
     lastError,
   );
 }
@@ -150,6 +172,7 @@ async function embedBatch(
 export async function embedTexts(
   config: EmbeddingConfig,
   items: Array<{ id: string; text: string }>,
+  opts?: EmbedRequestOptions,
 ): Promise<EmbeddingResult[]> {
   const rateLimiter = createRateLimiter(config.rateLimitPerMinute);
   const results: EmbeddingResult[] = [];
@@ -164,7 +187,7 @@ export async function embedTexts(
         : b.text
     );
     
-    const vectors = await embedBatch(config, texts, rateLimiter);
+    const vectors = await embedBatch(config, texts, rateLimiter, opts);
 
     for (let j = 0; j < batch.length; j++) {
       results.push({
@@ -187,7 +210,8 @@ export async function embedOne(
   config: EmbeddingConfig,
   id: string,
   text: string,
+  opts?: EmbedRequestOptions,
 ): Promise<EmbeddingResult> {
-  const results = await embedTexts(config, [{ id, text }]);
+  const results = await embedTexts(config, [{ id, text }], opts);
   return results[0];
 }
