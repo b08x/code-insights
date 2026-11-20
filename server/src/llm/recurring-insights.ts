@@ -3,6 +3,7 @@
 //
 // Architecture:
 //   1. Load insight embeddings from the sqlite-vec virtual table (vec_insights)
+//      mapped through embedding_metadata chunk provenance
 //   2. For each ungrouped insight, query its K nearest neighbors
 //   3. Filter neighbors by cosine similarity >= SIMILARITY_THRESHOLD (0.85)
 //   4. Apply MMR (Maximal Marginal Relevance) to avoid redundant groups
@@ -12,9 +13,9 @@
 // for clustering, which was slow (~30s) and expensive (~90% more tokens).
 
 import type Database from 'better-sqlite3';
-import * as sqliteVec from 'sqlite-vec';
 import { getDb } from '@code-insights/cli/db/client';
 import { createLLMClient, isLLMConfigured } from '@code-insights/cli/llm/client';
+import { loadVectorExtension, querySimilar } from '@code-insights/cli/embeddings/store';
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -100,13 +101,54 @@ function cosineSimilarity(a: Float32Array, b: Float32Array): number {
   return dotProduct(a, b) / denom;
 }
 
-/**
- * Convert sqlite-vec L2 distance to cosine similarity.
- * Only valid when vectors are unit-normalized (||v|| = 1).
- * Formula: cos_sim = 1 - (l2_dist^2 / 2)
- */
-function l2ToCosineSimilarity(l2Distance: number): number {
-  return 1 - (l2Distance * l2Distance) / 2;
+/** Decode a sqlite-vec BLOB Buffer into a Float32Array safely regardless of alignment. */
+function blobToFloat32Array(buf: Buffer): Float32Array {
+  if (buf.byteOffset % 4 === 0) {
+    return new Float32Array(buf.buffer, buf.byteOffset, buf.byteLength / 4);
+  }
+  const aligned = new Uint8Array(buf.byteLength);
+  aligned.set(buf);
+  return new Float32Array(aligned.buffer);
+}
+
+/** Return a unit-length copy of v, or a zero copy when norm is 0. */
+function normalizeVector(v: Float32Array): Float32Array {
+  const norm = l2Norm(v);
+  const out = new Float32Array(v.length);
+  if (norm === 0) return out;
+  for (let i = 0; i < v.length; i++) {
+    out[i] = v[i] / norm;
+  }
+  return out;
+}
+
+/** Pool chunk vectors for one insight by element-wise mean and L2-normalize. */
+function averageAndNormalizeVectors(vectors: Float32Array[]): Float32Array {
+  const dim = vectors[0].length;
+  const valid = vectors.filter(v => v.length === dim);
+  if (valid.length === 1) {
+    return normalizeVector(valid[0]);
+  }
+  const mean = new Float32Array(dim);
+  for (const v of valid) {
+    for (let i = 0; i < dim; i++) {
+      mean[i] += v[i];
+    }
+  }
+  for (let i = 0; i < dim; i++) {
+    mean[i] /= valid.length;
+  }
+  return l2Norm(mean) > 0 ? normalizeVector(mean) : normalizeVector(valid[0]);
+}
+
+/** Check whether both vec_insights and embedding_metadata exist in the database. */
+function hasVectorTables(db: Database.Database): boolean {
+  const rows = db
+    .prepare(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('vec_insights', 'embedding_metadata')"
+    )
+    .all() as Array<{ name: string }>;
+  return rows.length === 2;
 }
 
 // ---------------------------------------------------------------------------
@@ -115,21 +157,46 @@ function l2ToCosineSimilarity(l2Distance: number): number {
 
 /**
  * Load insight embeddings from the database.
- * Joins the insights table with the vec_insights virtual table.
+ * Maps chunk IDs in vec_insights back to insights via embedding_metadata,
+ * pooling multi-chunk insights into a single normalized vector per insight.
  */
-function loadInsightEmbeddings(db: Database.Database): InsightEmbedding[] {
-  // Ensure the sqlite-vec extension is loaded
-  sqliteVec.load(db);
+export function loadInsightEmbeddings(
+  db: Database.Database,
+  candidateIds?: string[],
+): InsightEmbedding[] {
+  loadVectorExtension(db);
 
-  // Check if the vector table exists
-  const tableCheck = db.prepare(
-    "SELECT name FROM sqlite_master WHERE type='table' AND name='vec_insights'"
-  ).get() as { name: string } | undefined;
-
-  if (!tableCheck) {
+  if (!hasVectorTables(db)) {
     return [];
   }
 
+  let targetIds: string[];
+  if (candidateIds !== undefined) {
+    targetIds = [...new Set(candidateIds)].slice(0, MAX_CANDIDATES);
+  } else {
+    const idRows = db.prepare(`
+      SELECT i.id
+      FROM insights i
+      WHERE i.type NOT IN ('summary', 'prompt_quality')
+        AND EXISTS (
+          SELECT 1
+          FROM embedding_metadata em
+          INNER JOIN vec_insights v ON v.id = em.id
+          WHERE em.entity_type = 'insight'
+            AND em.entity_id = i.id
+            AND em.entity_id != ''
+        )
+      ORDER BY i.timestamp DESC, i.id ASC
+      LIMIT ?
+    `).all(MAX_CANDIDATES) as Array<{ id: string }>;
+    targetIds = idRows.map(r => r.id);
+  }
+
+  if (targetIds.length === 0) {
+    return [];
+  }
+
+  const placeholders = targetIds.map(() => '?').join(', ');
   const rows = db.prepare(`
     SELECT
       i.id,
@@ -139,10 +206,16 @@ function loadInsightEmbeddings(db: Database.Database): InsightEmbedding[] {
       i.type,
       v.embedding
     FROM insights i
-    INNER JOIN vec_insights v ON v.id = i.id
-    WHERE i.type NOT IN ('summary', 'prompt_quality')
-    LIMIT ?
-  `).all(MAX_CANDIDATES) as Array<{
+    INNER JOIN embedding_metadata em
+      ON em.entity_type = 'insight'
+     AND em.entity_id = i.id
+     AND em.entity_id != ''
+    INNER JOIN vec_insights v
+      ON v.id = em.id
+    WHERE i.id IN (${placeholders})
+      AND i.type NOT IN ('summary', 'prompt_quality')
+    ORDER BY i.timestamp DESC, i.id ASC, em.id ASC
+  `).all(...targetIds) as Array<{
     id: string;
     session_id: string;
     title: string;
@@ -151,17 +224,41 @@ function loadInsightEmbeddings(db: Database.Database): InsightEmbedding[] {
     embedding: Buffer;
   }>;
 
-  return rows.map(r => ({
-    id: r.id,
-    sessionId: r.session_id,
-    title: r.title,
-    summary: r.summary,
-    type: r.type,
-    vector: new Float32Array(
-      r.embedding.buffer,
-      r.embedding.byteOffset,
-      r.embedding.byteLength / 4,
-    ),
+  const grouped = new Map<string, {
+    id: string;
+    sessionId: string;
+    title: string;
+    summary: string;
+    type: string;
+    vectors: Float32Array[];
+  }>();
+
+  for (const r of rows) {
+    const vec = blobToFloat32Array(r.embedding);
+    if (vec.length === 0) continue;
+
+    let entry = grouped.get(r.id);
+    if (!entry) {
+      entry = {
+        id: r.id,
+        sessionId: r.session_id,
+        title: r.title,
+        summary: r.summary,
+        type: r.type,
+        vectors: [],
+      };
+      grouped.set(r.id, entry);
+    }
+    entry.vectors.push(vec);
+  }
+
+  return Array.from(grouped.values()).map(entry => ({
+    id: entry.id,
+    sessionId: entry.sessionId,
+    title: entry.title,
+    summary: entry.summary,
+    type: entry.type,
+    vector: averageAndNormalizeVectors(entry.vectors),
   }));
 }
 
@@ -188,15 +285,9 @@ function findGroupsByVectorSimilarity(
   if (embeddings.length < 2) return [];
 
   const db = getDb();
-  sqliteVec.load(db);
+  loadVectorExtension(db);
 
-  const dim = embeddings[0].vector.length;
-
-  // Pre-compute L2 norms for cosine similarity
-  const norms = new Map<string, number>();
-  for (const e of embeddings) {
-    norms.set(e.id, l2Norm(e.vector));
-  }
+  if (!hasVectorTables(db)) return [];
 
   // Build id -> index map for fast lookup
   const idToIndex = new Map<string, number>();
@@ -205,31 +296,18 @@ function findGroupsByVectorSimilarity(
   }
 
   // For each insight, find neighbors above the similarity threshold
-  // using sqlite-vec KNN query, then re-rank by cosine similarity.
+  // using sqlite-vec KNN query (mapped through embedding_metadata),
+  // then rank by exact cosine similarity.
   const neighborMap = new Map<string, Array<{ id: string; similarity: number }>>();
 
-  const knnStmt = db.prepare(
-    `SELECT id, distance FROM vec_insights WHERE embedding MATCH ? ORDER BY distance LIMIT ?`
-  );
-
   for (const e of embeddings) {
-    const blob = Buffer.from(e.vector.buffer, e.vector.byteOffset, e.vector.byteLength);
-    const knnResults = knnStmt.all(blob, topK + 1) as Array<{ id: string; distance: number }>;
-
+    const knnResults = querySimilar(db, 'insight', e.vector, topK + 1);
     const neighbors: Array<{ id: string; similarity: number }> = [];
-    const queryNorm = norms.get(e.id)!;
 
     for (const result of knnResults) {
       // Skip self
       if (result.id === e.id) continue;
 
-      // Convert L2 distance to cosine similarity (assumes unit-normalized vectors)
-      const cosSim = l2ToCosineSimilarity(result.distance);
-
-      // Fast pre-filter using L2-derived similarity
-      if (cosSim < threshold) continue;
-
-      // Verify with exact cosine similarity (handles non-unit vectors gracefully)
       const neighborIdx = idToIndex.get(result.id);
       if (neighborIdx === undefined) continue; // not in our candidate set
 
@@ -609,26 +687,34 @@ export async function findRecurringInsights(
     return { success: false, groups: [], updatedCount: 0, error: 'LLM not configured.' };
   }
 
-  const db = getDb();
-  try {
-    sqliteVec.load(db);
-    const embeddings = loadInsightEmbeddings(db);
-    if (embeddings.length >= 2) {
-      return findRecurringInsightsByVector(embeddings);
-    }
-  } catch {
-    // sqlite-vec not available or vec_insights table missing — fall through
-  }
-
-  // Fallback: LLM-only clustering
-  return findRecurringInsightsByLLM(input as Array<{
+  const plainInsights = input as Array<{
     id: string;
     type: string;
     title: string;
     summary: string;
     project_name: string;
     session_id: string;
-  }>);
+  }>;
+
+  const candidateIds = plainInsights
+    .filter(i => i.type !== 'summary' && i.type !== 'prompt_quality')
+    .slice(0, MAX_CANDIDATES)
+    .map(i => i.id);
+
+  if (candidateIds.length >= 2) {
+    const db = getDb();
+    try {
+      const embeddings = loadInsightEmbeddings(db, candidateIds);
+      if (embeddings.length >= 2) {
+        return findRecurringInsightsByVector(embeddings);
+      }
+    } catch {
+      // sqlite-vec not available or vec_insights / embedding_metadata missing — fall through
+    }
+  }
+
+  // Fallback: LLM-only clustering
+  return findRecurringInsightsByLLM(plainInsights);
 }
 
 // ---------------------------------------------------------------------------
