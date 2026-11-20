@@ -18,8 +18,7 @@
  *  - DB:            getDb() of BOTH the cli/src copy and the cli/dist copy (the server imports
  *                   cli internals through dist via the workspace exports map) return one DB.
  *  - LLM transport: server `client.js` createLLMClient/isLLMConfigured/loadLLMConfig; CLI `_runner`.
- *  - Embeddings:    retrieval/analysis-pipeline/embed/store modules are partially mocked
- *                   (shouldUseRetrieval stays real so the long-session thresholds are exercised).
+ *  - Embeddings:    client/store modules are partially mocked (related insights only).
  *  - child_process: the CLI's `codebase-memory-mcp` architecture lookup.
  *
  * Prerequisite: `pnpm --filter @code-insights/cli build` (the server path consumes cli/dist).
@@ -80,37 +79,7 @@ vi.mock(H.paths.serverClient, () => ({
 vi.mock(H.paths.cliDist('utils/config.js'), () => ({ loadConfig: () => null }));
 vi.mock(H.paths.cliSrc('utils/config.js'), () => ({ loadConfig: () => null }));
 
-// Retrieval + embeddings. One factory, tagged by which copy (server=dist, cli=src) was called.
-function retrievalMock(tag: 'server' | 'cli') {
-  return async (importActual: () => Promise<any>) => {
-    const actual = await importActual();
-    return {
-      ...actual,
-      retrieveAnalysisChunks: async (...args: any[]) => {
-        S.retrieval.push({
-          path: tag, fn: 'retrieveAnalysisChunks',
-          sessionId: args[0], formattedMessagesLength: args[1]?.length, sessionSummary: args[2],
-          projectName: args[3], sessionMeta: args[4] ?? null, config: args[5] ?? 'DEFAULT_RETRIEVAL (module default)',
-          embeddingConfigPassed: args[6] !== undefined,
-        });
-        return { usedRetrieval: true, augmentedChunks: '<retrieved_segments>STUB-RETRIEVED-CONTEXT</retrieved_segments>', positionTags: [], estimatedTokens: 1234, chunkCount: 3 };
-      },
-    };
-  };
-}
-function pipelineMock(tag: 'server' | 'cli') {
-  return async () => ({
-    checkEmbeddingReadiness: () => ({ ready: false, status: { total: 0 } }),
-    chunkAndEmbedSession: async (...args: any[]) => {
-      S.retrieval.push({ path: tag, fn: 'chunkAndEmbedSession', sessionId: args[0], messageCount: args[1]?.length, embeddingConfigPassed: args[2] !== undefined });
-      return { embedded: true };
-    },
-  });
-}
-vi.mock(H.paths.cliDist('embeddings/retrieval.js'), async (io) => retrievalMock('server')(io as any));
-vi.mock(H.paths.cliSrc('embeddings/retrieval.js'), async (io) => retrievalMock('cli')(io as any));
-vi.mock(H.paths.cliDist('embeddings/analysis-pipeline.js'), pipelineMock('server'));
-vi.mock(H.paths.cliSrc('embeddings/analysis-pipeline.js'), pipelineMock('cli'));
+// Embeddings: related-insights mocks (client + store).
 const embeddingsClientMock = async (io: () => Promise<any>) => ({
   ...(await io()),
   embedOne: async (_cfg: unknown, id: string, text: string) => {
@@ -361,7 +330,7 @@ interface Scenario { name: string; input: string; opts: ScenarioOptions; why: st
 const SCENARIOS: Scenario[] = [
   { name: 'short', input: 'short', why: 'baseline short session; fenced+trailing-comma model output', opts: { canned: { analysis: 'analysis-messy.txt' } } },
   { name: 'short-related', input: 'short-related', why: 'related-insights retrieval (server only), compaction metadata, stored summary', opts: { related: true, canned: { analysis: 'analysis-ok.json' } } },
-  { name: 'long-retrieval', input: 'long-retrieval', why: 'retrieval fires (>102.4k tokens) on both paths; server also chunks, CLI also injects architecture context', opts: { architecture: ARCHITECTURE_STUB, canned: { analysis: 'analysis-ok.json' } } },
+  { name: 'long-retrieval', input: 'long-retrieval', why: 'huge session (>102.4k tokens): server chunks; CLI sends full conversation in a single call and injects architecture context', opts: { architecture: ARCHITECTURE_STUB, canned: { analysis: 'analysis-ok.json' } } },
   { name: 'long-chunked', input: 'long-chunked', why: '80k-102k tokens: server chunk+merge+facet pass without retrieval; CLI single call', opts: { canned: { analysis: 'analysis-ok.json', chunkVariants: true } } },
   { name: 'prompt-quality', input: 'prompt-quality', why: 'prompt-quality pass: human-message counting, tool-result rows, rage-loop signal', opts: { canned: { analysis: 'analysis-ok.json' } } },
 ];

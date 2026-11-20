@@ -275,9 +275,9 @@ OpenCode has strict opt-in / non-fallback behavior. It is excluded from the stan
 
 **`IdentityMismatchError` Retry Semantics**: When using GEPA-optimized prompts, if a tuned prompt version is requested but a fallback runner answers (identity mismatch), the queue worker halts and leaves the job in the queue to retry when the correct student model becomes available, preventing lower-quality analyses from saving.
 
-#### Retrieval-Augmented Analysis
+#### Related-Insight Retrieval
 
-Session analysis now uses a retrieval-augmented generation (RAG) pipeline. Session transcripts are chunked using an annotated chunker (respecting role boundaries, with parent/child splitting for long messages), embedded, and stored in `vec_analysis_chunks`. Relevant historical context is retrieved to enhance analysis quality.
+Session analysis retrieves semantically similar past insights from `vec_insights` (scoped to the same project) to inject relevant prior decisions and learnings as context during analysis.
 
 ```bash
 # Rich terminal output with score bars and visual indicators
@@ -339,14 +339,14 @@ code-insights queue prune --days 14
 
 ### Embeddings
 
-Manage vector embeddings for semantic search over insights and messages. Requires an Ollama instance with an embedding model (e.g., `embeddinggemma:latest`).
+Manage vector embeddings for semantic search over insights and messages. Requires an Ollama instance with an embedding model (e.g., `embeddinggemma-2:440m`).
 
 ```bash
 # Backfill pending embeddings (insights, messages, or both)
 code-insights embeddings backfill
 code-insights embeddings backfill --entity insights
 code-insights embeddings backfill --entity messages
-code-insights embeddings backfill --model embeddinggemma:latest --batch-size 50
+code-insights embeddings backfill --model embeddinggemma-2:440m --batch-size 50
 
 # Show embedding coverage and vector index stats
 code-insights embeddings status
@@ -367,14 +367,13 @@ The `embeddings status` command shows coverage across all vector tables:
 |-------|----------|
 | `vec_insights` | Insight embeddings |
 | `vec_messages` | Message embeddings |
-| `vec_analysis_chunks` | Analysis chunk embeddings (parent/child chunks from annotated chunker) |
 
 The status output includes coverage percentages, vector dimensions, parent/child chunk relationships, and index health metrics.
 
 **Ollama configuration:**
-- Ensure you have Ollama running with the `embeddinggemma` model (`ollama pull embeddinggemma`).
+- Ensure you have Ollama running with the `embeddinggemma-2:440m` model (`ollama pull embeddinggemma-2:440m`).
 - Set `OLLAMA_BASE_URL` environment variable to point to your Ollama instance (default: `http://127.0.0.1:11434`)
-- The default embedding model is `embeddinggemma:latest` (768-dim)
+- The default embedding model is `embeddinggemma-2:440m` (768-dim)
 
 ### Prompt Optimization (GEPA)
 

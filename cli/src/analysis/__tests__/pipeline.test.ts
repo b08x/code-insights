@@ -18,9 +18,6 @@ let architecture = '';
 const emb = vi.hoisted(() => ({
   related: [] as Array<{ id: string; distance: number }>,
   queries: [] as Array<{ topK: number }>,
-  retrieved: null as null | string,
-  retrievalCalls: 0,
-  embedCalls: 0,
 }));
 
 vi.mock('../../db/client.js', () => ({ getDb: () => mockDb, closeDb: () => {} }));
@@ -35,20 +32,6 @@ vi.mock('../../embeddings/store.js', async (io) => ({
   querySimilarFiltered: (_db: unknown, _e: string, _v: unknown, topK: number) => {
     emb.queries.push({ topK });
     return emb.related;
-  },
-}));
-vi.mock('../../embeddings/retrieval.js', async (io) => ({
-  ...(await io<object>()),
-  retrieveAnalysisChunks: async () => {
-    emb.retrievalCalls++;
-    return { usedRetrieval: emb.retrieved !== null, augmentedChunks: emb.retrieved ?? '', positionTags: [], estimatedTokens: 1, chunkCount: 1 };
-  },
-}));
-vi.mock('../../embeddings/analysis-pipeline.js', () => ({
-  checkEmbeddingReadiness: () => ({ ready: false, status: { total: 0 } }),
-  chunkAndEmbedSession: async () => {
-    emb.embedCalls++;
-    return { embedded: true };
   },
 }));
 vi.mock('child_process', () => ({
@@ -139,7 +122,7 @@ beforeEach(() => {
   mockDb = new Database(':memory:');
   runMigrations(mockDb);
   architecture = '';
-  emb.related = []; emb.queries = []; emb.retrieved = null; emb.retrievalCalls = 0; emb.embedCalls = 0;
+  emb.related = []; emb.queries = [];
   inFlight = 0; maxInFlight = 0;
 });
 afterEach(() => mockDb.close());
@@ -319,17 +302,6 @@ describe('analyzeSessionPipeline — persist and contexts', () => {
       expect(mockDb.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get(), table).toEqual({ n: 0 });
     }
     expect(mockDb.prepare('SELECT generated_title FROM sessions WHERE id = ?').get(id)).toEqual({ generated_title: null });
-  });
-
-  it('persist:false never embeds, even for a huge budget-less conversation', async () => {
-    const id = seed('long-chunked');
-    padPastRetrievalThreshold();
-    emb.retrieved = 'RETRIEVED-SEGMENTS';
-    const { runner } = makeRunner();
-    await analyzeSessionPipeline(id, { runner, passes: ['session'], persist: false });
-    expect(emb.embedCalls).toBe(0);
-    await analyzeSessionPipeline(id, { runner, passes: ['session'] });
-    expect(emb.embedCalls).toBe(1);
   });
 
   it("contexts:'none' disables architecture and related insights", async () => {
@@ -571,34 +543,18 @@ describe('analyzeSessionPipeline — chunk + merge driven by runner budget', () 
     expect(calls[0].userPrompt.length).toBeGreaterThan(300_000);
   });
 
-  it('budgeted runners never touch retrieval/embeddings, even for huge conversations', async () => {
+  it('above 102.4k tokens, budget-less runners still send the full conversation while budgeted runners chunk', async () => {
     const id = seed('long-chunked');
     padPastRetrievalThreshold();
-    emb.retrieved = 'RETRIEVED-SEGMENTS';
-    const budgeted = makeRunner({ maxInputTokens: 80_000 });
-    await analyzeSessionPipeline(id, { runner: budgeted.runner, passes: ['session'] });
-    expect(emb.retrievalCalls).toBe(0);
-    expect(emb.embedCalls).toBe(0);
-    expect(budgeted.calls.every(c => !c.userPrompt.includes('RETRIEVED-SEGMENTS'))).toBe(true);
-  });
 
-  it('budget-less runners below the retrieval threshold keep the full conversation', async () => {
-    const id = seed('long-chunked'); // 80k-102k tokens
-    emb.retrieved = 'RETRIEVED-SEGMENTS';
     const native = makeRunner();
     await analyzeSessionPipeline(id, { runner: native.runner, passes: ['session'] });
-    expect(native.calls[0].userPrompt).not.toContain('RETRIEVED-SEGMENTS');
-    expect(emb.embedCalls).toBe(0);
-  });
+    expect(native.calls).toHaveLength(1);
+    expect(native.calls[0].userPrompt).toContain('y'.repeat(1000));
 
-  it('above the threshold, retrieved segments replace the conversation for budget-less runners', async () => {
-    const id = seed('long-chunked');
-    emb.retrieved = 'RETRIEVED-SEGMENTS';
-    padPastRetrievalThreshold();
-    const { runner, calls } = makeRunner();
-    await analyzeSessionPipeline(id, { runner, passes: ['session'] });
-    expect(calls[0].userPrompt).toContain('--- CONVERSATION ---\nRETRIEVED-SEGMENTS\n--- END CONVERSATION ---');
-    expect(calls[0].userPrompt.length).toBeLessThan(20_000);
+    const budgeted = makeRunner({ maxInputTokens: 80_000 });
+    await analyzeSessionPipeline(id, { runner: budgeted.runner, passes: ['session'] });
+    expect(budgeted.calls.length).toBeGreaterThan(1);
   });
 
   it('all chunks unparseable -> json_parse_error, usage row still recorded with 0 parsed chunks', async () => {

@@ -7,9 +7,8 @@
  * (native CLI runner or provider transport); everything else is owned here:
  *
  *   load session + messages -> format -> related insights -> (chunk + merge when over the
- *   runner's token budget | retrieval when a budget-less runner faces a huge conversation) ->
- *   jsonrepair/parse -> persist (insights, facets, steps, title) -> usage + cost ->
- *   prompt-quality pass; `facets` runs the facet-only backfill.
+ *   runner's token budget) -> jsonrepair/parse -> persist (insights, facets, steps, title) ->
+ *   usage + cost -> prompt-quality pass; `facets` runs the facet-only backfill.
  *
  * Behavior differences that existed between the two former pipelines are resolved in
  * goals/gepa-optimization-dashboard/pipeline-map.md ("Resolutions").
@@ -27,7 +26,6 @@ import { getDb } from '../db/client.js';
 import { loadConfig } from '../utils/config.js';
 import { DEFAULT_MAX_INPUT_TOKENS } from '../llm/types.js';
 import type { ContentBlock } from '../llm/types.js';
-import type { RetrievalConfig } from '../embeddings/retrieval.js';
 import type { EmbeddingConfig } from '../embeddings/types.js';
 import type { AnalysisResponse, PromptQualityResponse, SessionMetadata, SQLiteMessageRow } from './prompt-types.js';
 import type { AnalysisRunner, RunAnalysisResult } from './runner-types.js';
@@ -481,57 +479,6 @@ async function retrieveRelatedInsights(
 }
 
 /**
- * Retrieved conversation segments for a budget-less runner facing a huge conversation, or ''.
- * Only called above the retrieval threshold; the segments REPLACE the full conversation.
- */
-async function buildRetrievedConversation(
-  session: SessionData,
-  messages: SQLiteMessageRow[],
-  formattedMessages: string,
-  sessionMeta: SessionMetadata | undefined,
-  settings: typeof DEFAULT_RETRIEVAL_SETTINGS,
-  embeddingConfig: EmbeddingConfig,
-  persist: boolean,
-  log: (m: string) => void,
-): Promise<string> {
-  try {
-    const { shouldUseRetrieval, retrieveAnalysisChunks, generateSessionSummary } = await import('../embeddings/retrieval.js');
-    // Trigger uses the module default threshold (~102k estimated tokens).
-    if (!shouldUseRetrieval(formattedMessages)) return '';
-
-    const { checkEmbeddingReadiness, chunkAndEmbedSession } = await import('../embeddings/analysis-pipeline.js');
-    log('Long conversation detected, checking retrieval readiness...');
-
-    const readiness = checkEmbeddingReadiness(getDb(), session.id);
-    if (!readiness.ready && persist) {
-      // Embedding writes vectors to SQLite, so a dry run (persist: false) never does it.
-      log(`Computing embeddings for ${readiness.status.total || messages.length} chunks...`);
-      const chunkResult = await chunkAndEmbedSession(session.id, messages, embeddingConfig);
-      if (!chunkResult.embedded) {
-        log(`Embedding failed: ${chunkResult.error}. Falling back to full conversation.`);
-      }
-    }
-
-    const config: RetrievalConfig = { ...settings, maxInputTokens: DEFAULT_MAX_INPUT_TOKENS, retrievalThresholdRatio: 0.8 };
-    const retrieved = await retrieveAnalysisChunks(
-      session.id,
-      formattedMessages,
-      session.summary || generateSessionSummary(messages),
-      session.project_name,
-      sessionMeta,
-      config,
-      embeddingConfig,
-    );
-    if (!retrieved.usedRetrieval) return '';
-
-    log(`Retrieved ${retrieved.chunkCount} relevant segments (~${retrieved.estimatedTokens} tokens)`);
-    return retrieved.augmentedChunks;
-  } catch {
-    return '';
-  }
-}
-
-/**
  * Project architecture from codebase-memory-mcp when installed and the project is indexed,
  * capped at ~4k tokens. Async (execFile) because the server runs this inside its event loop.
  */
@@ -676,7 +623,6 @@ export async function analyzeSessionPipeline(
   options: PipelineOptions,
 ): Promise<PipelineResult> {
   const { runner, onProgress, signal } = options;
-  const log = options.log ?? (() => {});
   const persist = options.persist ?? true;
   const live = (options.contexts ?? 'live') === 'live';
   const requested = options.passes ?? ['session', 'prompt_quality'];
@@ -877,17 +823,11 @@ export async function analyzeSessionPipeline(
       const instructions = (sig?: typeof loopSignal) =>
         buildSessionAnalysisInstructions(session.project_name, session.summary, sessionMeta, sig, related, sessionPrompt.components);
 
-      // Decide chunking BEFORE any retrieval/embedding work.
+      // Decide chunking before calling the runner.
       const fullPromptText = `${buildCacheableConversationBlock(formatted).text}${architectureContext}\n${instructions(loopSignal)}`;
       const chunked = budget !== undefined && estimate(fullPromptText) > budget;
 
-      // Budget-less runners cannot chunk: above the retrieval threshold, retrieved segments
-      // replace the full conversation. Budgeted runners never use retrieval (they chunk instead).
-      let conversation = formatted;
-      if (budget === undefined) {
-        const retrieved = await buildRetrievedConversation(session, messages, formatted, sessionMeta, settings, embeddingConfig, persist, log);
-        if (retrieved) conversation = retrieved;
-      }
+      const conversation = formatted;
 
       // Anthropic prompt caching pays off only if the prompt-quality pass sends the identical block.
       const cache = runner.provider === 'anthropic' && wantPQ && !chunked && conversation === formatted && pqConversation === formatted;
