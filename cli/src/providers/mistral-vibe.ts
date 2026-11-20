@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as readline from 'readline';
 import type { SessionProvider } from './types.js';
+import { resolveProjectName } from '../utils/paths.js';
 import type { 
   ParsedSession, 
   ParsedMessage, 
@@ -294,7 +295,7 @@ export class MistralVibeProvider implements SessionProvider {
 
     if (options?.projectFilter) {
       const projectPath = this.getProjectPath(sessionPath, current.generation);
-      const projectName = path.basename(projectPath);
+      const projectName = resolveProjectName(projectPath);
       if (!projectName.toLowerCase().includes(options.projectFilter.toLowerCase())) {
         return false;
       }
@@ -397,7 +398,7 @@ export class MistralVibeProvider implements SessionProvider {
 
       if (options?.projectFilter) {
         const projectPath = meta?.environment?.working_directory || '';
-        const projectName = path.basename(projectPath);
+        const projectName = resolveProjectName(projectPath);
         if (!projectName.toLowerCase().includes(options.projectFilter.toLowerCase())) {
           return;
         }
@@ -561,7 +562,7 @@ export class MistralVibeProvider implements SessionProvider {
       runtimeState?.subagents?.policy_ceiling?.workdir ||
       parentInfo?.projectPath ||
       sessionDirPath;
-    const projectName = path.basename(projectPath);
+    const projectName = resolveProjectName(projectPath);
 
     const gitBranch =
       meta?.git_branch ||
@@ -1085,7 +1086,7 @@ export class MistralVibeProvider implements SessionProvider {
     this.fixTimestamps(messages, startedAt, endedAt);
 
     const projectPath = meta.environment?.working_directory || sessionDirPath;
-    const projectName = path.basename(projectPath);
+    const projectName = resolveProjectName(projectPath);
 
     const usage: SessionUsage = {
       totalInputTokens: meta.stats?.session_prompt_tokens || 0,

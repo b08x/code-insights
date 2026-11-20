@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as os from 'os';
 import * as readline from 'readline';
 import type { SessionProvider } from './types.js';
+import { resolveProjectName } from '../utils/paths.js';
 import type { ParsedSession, ParsedMessage, ToolCall, ToolResult, SessionUsage } from '../types.js';
 import { generateTitle, detectSessionCharacter } from '../parser/titles.js';
 import { calculateCost } from '../utils/pricing.js';
@@ -226,7 +227,7 @@ export class PiProvider implements SessionProvider {
     const session: ParsedSession = {
       id: sessionId,
       projectPath,
-      projectName: path.basename(projectPath) || 'unknown',
+      projectName: resolveProjectName(projectPath),
       summary: null,
       generatedTitle: null,
       titleSource: null,

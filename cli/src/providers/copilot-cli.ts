@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import type { SessionProvider } from './types.js';
+import { resolveProjectName } from '../utils/paths.js';
 import type { ParsedSession, ParsedMessage, ToolCall, ToolResult, SessionUsage } from '../types.js';
 import { generateTitle, detectSessionCharacter } from '../parser/titles.js';
 
@@ -400,7 +401,7 @@ function parseCopilotSession(filePath: string): ParsedSession | null {
     const endedAt = timestamps.length > 0 ? new Date(Math.max(...timestamps)) : lastTimestamp;
 
     const projectPath = cwd || 'copilot://unknown';
-    const projectName = sessionName || path.basename(projectPath);
+    const projectName = sessionName || resolveProjectName(projectPath);
 
     // Build usage object if model info was extracted from events.
     // write.ts reads session.usage?.modelsUsed and session.usage?.primaryModel,

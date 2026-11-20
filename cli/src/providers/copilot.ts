@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import type { SessionProvider } from './types.js';
+import { resolveProjectName } from '../utils/paths.js';
 import type { ParsedSession, ParsedMessage, ToolCall, SessionUsage } from '../types.js';
 import { generateTitle, detectSessionCharacter } from '../parser/titles.js';
 
@@ -307,7 +308,7 @@ function parseCopilotSession(filePath: string): ParsedSession | null {
     if (chatDirName === 'chatSessions') {
       const wsDir = path.dirname(chatDir);
       projectPath = resolveWorkspacePath(wsDir) || 'copilot://unknown';
-      projectName = path.basename(projectPath);
+      projectName = resolveProjectName(projectPath);
     } else if (chatDirName === 'emptyWindowChatSessions') {
       projectPath = 'copilot://global';
       projectName = 'global';

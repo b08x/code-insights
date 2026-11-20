@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as readline from 'readline';
+import { resolveProjectName } from '../utils/paths.js';
 import type {
   JsonlEntry,
   ClaudeMessage,
@@ -510,5 +511,5 @@ function extractProjectPath(filePath: string): string {
 function extractProjectName(projectPath: string): string {
   // projectPath comes from Claude's encoded format (always forward slashes)
   // path.basename handles both separators cross-platform
-  return path.basename(projectPath) || 'unknown';
+  return resolveProjectName(projectPath);
 }

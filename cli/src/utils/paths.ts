@@ -1,3 +1,5 @@
+import * as path from 'path';
+
 /**
  * Extract real filesystem path and optional session fragment from a virtual path.
  * Virtual paths use '#' delimiter: "/path/to/state.vscdb#composerId"
@@ -12,4 +14,20 @@ export function splitVirtualPath(filePath: string): { realPath: string; sessionF
     };
   }
   return { realPath: filePath, sessionFragment: null };
+}
+
+/**
+ * Resolve a human-friendly project name from a project path.
+ * Falls back to the parent directory name when the basename is 'unknown' or 'tmp'.
+ */
+export function resolveProjectName(projectPath: string): string {
+  const base = path.basename(projectPath);
+  if (base && base !== 'unknown' && base !== 'tmp') {
+    return base;
+  }
+  const parent = path.basename(path.dirname(projectPath));
+  if (parent && parent !== 'unknown' && parent !== 'tmp' && parent !== '.' && parent !== '/') {
+    return parent;
+  }
+  return base || 'unknown';
 }

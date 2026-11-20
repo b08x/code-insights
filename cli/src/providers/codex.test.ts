@@ -237,4 +237,155 @@ describe('CodexProvider — Format A system context filtering', () => {
     expect(session!.autoCompactCount).toBe(0);
     expect(session!.slashCommands).toEqual([]);
   });
+
+  it('extracts gitBranch, turn_context model, token_count usage, compacted count, and web_search_call', async () => {
+    const content = buildJSONL([
+      JSON.stringify({
+        type: 'session_meta',
+        payload: {
+          id: 'modern-session-1',
+          timestamp: '2026-11-20T10:00:00Z',
+          cwd: '/home/user/myproject',
+          cli_version: '0.165.0',
+          git: { branch: 'feat/codex-update', commit_hash: 'abc1234' },
+        },
+      }),
+      JSON.stringify({
+        type: 'turn_context',
+        timestamp: '2026-11-20T10:00:01Z',
+        payload: { model: 'gpt-5.4', cwd: '/home/user/myproject' },
+      }),
+      userMessageLine('Search for codex rollout format'),
+      JSON.stringify({
+        type: 'response_item',
+        timestamp: '2026-11-20T10:01:30Z',
+        payload: {
+          type: 'web_search_call',
+          id: 'ws_123',
+          status: 'completed',
+          action: { type: 'search', query: 'codex rollout jsonl' },
+        },
+      }),
+      assistantLine('Here is what I found.'),
+      JSON.stringify({
+        type: 'event_msg',
+        timestamp: '2026-11-20T10:02:00Z',
+        payload: {
+          type: 'token_count',
+          info: {
+            last_token_usage: {
+              input_tokens: 1200,
+              cached_input_tokens: 300,
+              output_tokens: 150,
+            },
+          },
+        },
+      }),
+      JSON.stringify({
+        type: 'compacted',
+        timestamp: '2026-11-20T10:02:30Z',
+        payload: { message: 'Compacted history' },
+      }),
+      JSON.stringify({
+        type: 'event_msg',
+        timestamp: '2026-11-20T10:03:00Z',
+        payload: { type: 'task_complete' },
+      }),
+    ]);
+
+    const filePath = path.join(tempDir, 'rollout-modern.jsonl');
+    fs.writeFileSync(filePath, content);
+
+    const provider = new CodexProvider();
+    const session = await provider.parse(filePath);
+
+    expect(session).not.toBeNull();
+    expect(session!.gitBranch).toBe('feat/codex-update');
+    expect(session!.compactCount).toBe(1);
+    expect(session!.usage?.primaryModel).toBe('gpt-5.4');
+    expect(session!.usage?.modelsUsed).toEqual(['gpt-5.4']);
+    expect(session!.usage?.totalInputTokens).toBe(1200);
+    expect(session!.usage?.cacheReadTokens).toBe(300);
+    expect(session!.usage?.totalOutputTokens).toBe(150);
+    expect(session!.toolCallCount).toBe(1);
+    expect(session!.messages[1].toolCalls[0]).toEqual({
+      id: 'ws_123',
+      name: 'web_search',
+      input: { type: 'search', query: 'codex rollout jsonl' },
+    });
+  });
+
+  it('captures response_item/message(role=user) when event_msg/user_message is absent and deduplicates when both fire', async () => {
+    const content = buildJSONL([
+      sessionMeta(),
+      JSON.stringify({
+        type: 'response_item',
+        timestamp: '2026-11-20T10:01:00Z',
+        payload: {
+          type: 'message',
+          id: 'msg-u1',
+          role: 'user',
+          content: [{ type: 'input_text', text: 'First prompt without event_msg' }],
+        },
+      }),
+      assistantLine('First reply.'),
+      JSON.stringify({
+        type: 'response_item',
+        timestamp: '2026-11-20T10:02:00Z',
+        payload: {
+          type: 'message',
+          id: 'msg-u2',
+          role: 'user',
+          content: [{ type: 'input_text', text: 'Second prompt with both' }],
+        },
+      }),
+      userMessageLine('Second prompt with both', 'msg-u2-ev'),
+      assistantLine('Second reply.'),
+      taskCompleteLine(),
+    ]);
+
+    const filePath = path.join(tempDir, 'rollout-user-dedup.jsonl');
+    fs.writeFileSync(filePath, content);
+
+    const provider = new CodexProvider();
+    const session = await provider.parse(filePath);
+
+    expect(session).not.toBeNull();
+    expect(session!.userMessageCount).toBe(2);
+    expect(session!.assistantMessageCount).toBe(2);
+  });
+
+  it('resolves projectName from parent folder when cwd ends in tmp or unknown, and from turn_context.cwd', async () => {
+    const content = buildJSONL([
+      sessionMeta('tmp-parent-1', '/home/user/ruby-dev/tmp'),
+      userMessageLine('Hello'),
+      assistantLine('Hi!'),
+      taskCompleteLine(),
+    ]);
+    const filePath = path.join(tempDir, 'rollout-tmp-parent.jsonl');
+    fs.writeFileSync(filePath, content);
+
+    const provider = new CodexProvider();
+    const session = await provider.parse(filePath);
+    expect(session).not.toBeNull();
+    expect(session!.projectName).toBe('ruby-dev');
+
+    const content2 = buildJSONL([
+      sessionMeta('tmp-turn-1', '/tmp'),
+      JSON.stringify({
+        type: 'turn_context',
+        timestamp: '2026-11-20T10:00:01Z',
+        payload: { model: 'gpt-5.4', cwd: '/home/user/WorkspaceV3/Syncopated/antigravity-cli/plugins/ruby-dev' },
+      }),
+      userMessageLine('Hello'),
+      assistantLine('Hi!'),
+      taskCompleteLine(),
+    ]);
+    const filePath2 = path.join(tempDir, 'rollout-tmp-turn.jsonl');
+    fs.writeFileSync(filePath2, content2);
+
+    const session2 = await provider.parse(filePath2);
+    expect(session2).not.toBeNull();
+    expect(session2!.projectName).toBe('ruby-dev');
+  });
 });

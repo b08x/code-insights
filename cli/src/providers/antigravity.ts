@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as crypto from 'crypto';
 import * as readline from 'readline';
 import type { SessionProvider } from './types.js';
+import { resolveProjectName } from '../utils/paths.js';
 import type { ParsedSession, ParsedMessage, ToolCall, ToolResult } from '../types.js';
 import { getGeminiHomeDir } from '../utils/config.js';
 import { generateTitle, detectSessionCharacter } from '../parser/titles.js';
@@ -137,7 +138,7 @@ export class AntigravityProvider implements SessionProvider {
               const root = findProjectRoot(workspaceMatch[1]);
               if (root) {
                 projectPath = root;
-                projectName = path.basename(projectPath);
+                projectName = resolveProjectName(projectPath);
               }
             }
           }
@@ -332,10 +333,10 @@ export class AntigravityProvider implements SessionProvider {
           const root = findProjectRoot(fileMatch[1]);
           if (root) {
             projectPath = root;
-            projectName = path.basename(projectPath);
+            projectName = resolveProjectName(projectPath);
           } else {
             projectPath = path.dirname(fileMatch[1]);
-            projectName = path.basename(projectPath);
+            projectName = resolveProjectName(projectPath);
           }
         } else {
           // Fallback regex for paths like /home/user/Workspace/project
@@ -344,7 +345,7 @@ export class AntigravityProvider implements SessionProvider {
             const root = findProjectRoot(workspaceMatch[1]);
             if (root) {
               projectPath = root;
-              projectName = path.basename(projectPath);
+              projectName = resolveProjectName(projectPath);
             }
           }
         }

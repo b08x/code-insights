@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { SessionProvider } from './types.js';
+import { resolveProjectName } from '../utils/paths.js';
 import type { ParsedSession } from '../types.js';
 import { parseJsonlFile } from '../parser/jsonl.js';
 import { getClaudeDesktopDir } from '../utils/config.js';
@@ -78,10 +79,10 @@ export class ClaudeDesktopProvider implements SessionProvider {
         // Enhance project path extraction: audit.jsonl messages lack cwd
         if (meta.userSelectedFolders && meta.userSelectedFolders.length > 0) {
           session.projectPath = meta.userSelectedFolders[0];
-          session.projectName = path.basename(meta.userSelectedFolders[0]) || 'unknown';
+          session.projectName = resolveProjectName(meta.userSelectedFolders[0]);
         } else if (meta.cwd) {
           session.projectPath = meta.cwd;
-          session.projectName = path.basename(meta.cwd) || 'unknown';
+          session.projectName = resolveProjectName(meta.cwd);
         }
       }
     } catch (err) {

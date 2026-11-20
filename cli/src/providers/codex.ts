@@ -4,6 +4,7 @@ import * as os from 'os';
 import type { SessionProvider } from './types.js';
 import type { ParsedSession, ParsedMessage, ToolCall, ToolResult, SessionUsage, MessageUsage } from '../types.js';
 import { generateTitle, detectSessionCharacter } from '../parser/titles.js';
+import { resolveProjectName } from '../utils/paths.js';
 
 /**
  * OpenAI Codex CLI session provider.
@@ -88,8 +89,8 @@ function filterByProject(files: string[], projectFilter: string): string[] {
   for (const filePath of files) {
     try {
       const fd = fs.openSync(filePath, 'r');
-      const buf = Buffer.alloc(2048);
-      const bytesRead = fs.readSync(fd, buf, 0, 2048, 0);
+      const buf = Buffer.alloc(16384);
+      const bytesRead = fs.readSync(fd, buf, 0, 16384, 0);
       fs.closeSync(fd);
 
       const firstLine = buf.toString('utf-8', 0, bytesRead).split('\n')[0];
@@ -122,6 +123,11 @@ interface CodexSessionMeta {
   source?: string;
   cli_version?: string;
   model?: string;
+  git?: {
+    branch?: string;
+    commit_hash?: string;
+    repository_url?: string;
+  };
 }
 
 // Format A: each line is a RolloutLine envelope
@@ -206,7 +212,9 @@ function parseFormatA(content: string): ParsedSession | null {
   const messages: ParsedMessage[] = [];
   const usageEntries: CodexUsage[] = [];
   let model = meta.model || '';
+  let projectPath = meta.cwd || 'codex://unknown';
   let lastTimestamp = new Date(meta.timestamp);
+  let compactCount = 0;
 
   // Accumulator for current assistant turn
   let currentAssistantText = '';
@@ -284,32 +292,55 @@ function parseFormatA(content: string): ParsedSession | null {
           }
           lastTimestamp = parseEnvelopeTimestamp(event) || lastTimestamp;
         }
-        // Skip role === 'user' — handled by event_msg/user_message case.
-        // Both response_item/message(role=user) and event_msg/user_message fire for
-        // every user prompt, so only capturing from one source avoids doubling the count.
+        if (role === 'user') {
+          const userText = extractContent(payload);
+          if (userText && !isSystemContextMessage(userText)) {
+            const sliced = userText.slice(0, 10000);
+            const prev = messages[messages.length - 1];
+            if (!prev || prev.type !== 'user' || prev.content !== sliced) {
+              flushAssistantTurn();
+              messages.push({
+                id: (payload.id as string) || `codex-user-${messages.length}`,
+                sessionId: sessionId,
+                type: 'user',
+                content: sliced,
+                thinking: null,
+                toolCalls: [],
+                toolResults: [],
+                usage: null,
+                timestamp: parseEnvelopeTimestamp(event) || lastTimestamp,
+                parentId: null,
+              });
+              lastTimestamp = messages[messages.length - 1].timestamp;
+            }
+          }
+        }
         break;
       }
 
       case 'user_message':
       case 'userMessage': {
         // event_msg/user_message: the real user prompt (payload.message = text string)
-        flushAssistantTurn();
-        // event_msg user_message stores the text directly in payload.message
         const msgText = (payload.message as string) || '';
         if (msgText && !isSystemContextMessage(msgText)) {
-          messages.push({
-            id: (payload.id as string) || `codex-user-${messages.length}`,
-            sessionId: sessionId,
-            type: 'user',
-            content: msgText.slice(0, 10000),
-            thinking: null,
-            toolCalls: [],
-            toolResults: [],
-            usage: null,
-            timestamp: parseEnvelopeTimestamp(event) || lastTimestamp,
-            parentId: null,
-          });
-          lastTimestamp = messages[messages.length - 1].timestamp;
+          const sliced = msgText.slice(0, 10000);
+          const prev = messages[messages.length - 1];
+          if (!prev || prev.type !== 'user' || prev.content !== sliced) {
+            flushAssistantTurn();
+            messages.push({
+              id: (payload.id as string) || `codex-user-${messages.length}`,
+              sessionId: sessionId,
+              type: 'user',
+              content: sliced,
+              thinking: null,
+              toolCalls: [],
+              toolResults: [],
+              usage: null,
+              timestamp: parseEnvelopeTimestamp(event) || lastTimestamp,
+              parentId: null,
+            });
+            lastTimestamp = messages[messages.length - 1].timestamp;
+          }
         }
         break;
       }
@@ -438,12 +469,54 @@ function parseFormatA(content: string): ParsedSession | null {
         break;
       }
 
+      case 'turn_context': {
+        // TurnContextItem carries the active model and cwd for the turn
+        if (typeof payload.model === 'string' && payload.model) {
+          model = payload.model;
+        }
+        if (typeof payload.cwd === 'string' && payload.cwd) {
+          const currentBase = path.basename(projectPath);
+          if (!currentBase || currentBase === 'unknown' || currentBase === 'tmp') {
+            projectPath = payload.cwd;
+          }
+        }
+        break;
+      }
+
+      case 'token_count': {
+        // event_msg/token_count: payload.info.last_token_usage has per-response token counts
+        const info = payload.info as Record<string, unknown> | undefined;
+        const lastUsage = info?.last_token_usage as CodexUsage | undefined;
+        if (lastUsage && (lastUsage.input_tokens || lastUsage.output_tokens)) {
+          turnUsage = lastUsage;
+          usageEntries.push(lastUsage);
+        }
+        break;
+      }
+
+      case 'compacted': {
+        // RolloutItem::Compacted: context window compaction checkpoint
+        compactCount++;
+        break;
+      }
+
+      case 'web_search_call': {
+        // response_item/web_search_call: Responses API web search tool
+        toolCounter++;
+        const wsCallId = (payload.id as string) || `codex-websearch-${toolCounter}`;
+        currentToolCalls.push({
+          id: wsCallId,
+          name: 'web_search',
+          input: (payload.action as Record<string, unknown>) || {},
+        });
+        lastTimestamp = parseEnvelopeTimestamp(event) || lastTimestamp;
+        break;
+      }
+
       case 'turn.started':
       case 'thread.started':
       case 'session_meta':
       case 'task_started':
-      case 'token_count':
-      case 'turn_context':
         // Lifecycle/telemetry events — skip
         break;
 
@@ -455,7 +528,17 @@ function parseFormatA(content: string): ParsedSession | null {
   // Flush any remaining assistant content after all lines processed
   flushAssistantTurn();
 
-  return buildSession(sessionId, meta.cwd || 'codex://unknown', meta.cli_version || null, meta.timestamp, messages, usageEntries, model);
+  return buildSession(
+    sessionId,
+    projectPath,
+    meta.cli_version || null,
+    meta.timestamp,
+    messages,
+    usageEntries,
+    model,
+    meta.git?.branch || null,
+    compactCount,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -608,6 +691,8 @@ function buildSession(
   messages: ParsedMessage[],
   usageEntries: CodexUsage[],
   model: string,
+  gitBranch: string | null = null,
+  compactCount = 0,
 ): ParsedSession | null {
   if (messages.length === 0) return null;
 
@@ -634,7 +719,7 @@ function buildSession(
     usageSource: 'jsonl',
   } : undefined;
 
-  const projectName = path.basename(projectPath);
+  const projectName = resolveProjectName(projectPath);
 
   const session: ParsedSession = {
     id: sessionId,
@@ -650,10 +735,10 @@ function buildSession(
     userMessageCount: userMessages.length,
     assistantMessageCount: assistantMessages.length,
     toolCallCount,
-    compactCount: 0,
+    compactCount,
     autoCompactCount: 0,
     slashCommands: [],
-    gitBranch: null,
+    gitBranch,
     claudeVersion: cliVersion,
     sourceTool: 'codex-cli',
     usage,

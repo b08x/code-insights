@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as os from 'os';
 import Database from 'better-sqlite3';
 import type { SessionProvider } from './types.js';
+import { resolveProjectName } from '../utils/paths.js';
 import type { ParsedSession, ParsedMessage, ToolCall } from '../types.js';
 import { generateTitle, detectSessionCharacter } from '../parser/titles.js';
 import { isVerbose } from './context.js';
@@ -466,7 +467,7 @@ function parseCursorSession(dbPath: string, composerId: string): ParsedSession |
       `cursor://workspace-${workspaceHash.slice(0, 8)}`;
     const projectName = projectPath.startsWith('cursor://')
       ? projectPath.replace('cursor://', '')
-      : path.basename(projectPath);
+      : resolveProjectName(projectPath);
 
     // Build timestamps from messages
     const timestamps = messages.map(m => m.timestamp.getTime()).filter(t => t > 0);
