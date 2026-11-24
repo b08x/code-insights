@@ -218,3 +218,14 @@ describe('execCliAsync', () => {
     expect(child.kill).toHaveBeenCalledWith('SIGTERM');
   });
 });
+
+describe('parseSqlAgentResponse non-string guard', () => {
+  it('returns an error object instead of throwing when given non-string input', () => {
+    expect(parseSqlAgentResponse([{ type: 'text', text: 'SELECT 1' }] as unknown as string)).toEqual({
+      error: 'SQL sub-agent returned non-string output (array)',
+    });
+    expect(parseSqlAgentResponse(null as unknown as string)).toEqual({
+      error: 'SQL sub-agent returned non-string output (null)',
+    });
+  });
+});

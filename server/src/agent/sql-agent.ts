@@ -108,6 +108,10 @@ SQL RECIPES:
  * slightly malformed JSON (via jsonrepair), or plain SQL blocks.
  */
 export function parseSqlAgentResponse(raw: string): { sql: string; explanation: string } | { error: string } {
+  if (typeof raw !== 'string') {
+    const kind = raw === null ? 'null' : Array.isArray(raw) ? 'array' : typeof raw;
+    return { error: `SQL sub-agent returned non-string output (${kind})` };
+  }
   const trimmed = raw.trim();
   if (!trimmed) return { error: 'SQL sub-agent returned an empty response' };
 

@@ -25,6 +25,28 @@ export function flattenContent(content: string | ContentBlock[]): string {
   return content.map(b => b.text).join('');
 }
 
+/**
+ * Normalize an OpenAI-compatible `message.content` field (plain string, null, or array of
+ * content/thinking chunks as returned by newer Mistral/reasoning models) into a plain string.
+ */
+export function extractTextContent(content: unknown): string {
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return '';
+  return content
+    .map((part) => {
+      if (typeof part === 'string') return part;
+      if (part && typeof part === 'object') {
+        const record = part as { type?: unknown; text?: unknown };
+        if (typeof record.text === 'string' && (record.type === undefined || record.type === 'text')) {
+          return record.text;
+        }
+      }
+      return '';
+    })
+    .filter(Boolean)
+    .join('\n');
+}
+
 export interface LLMMessage {
   role: 'system' | 'user' | 'assistant';
   content: string | ContentBlock[];

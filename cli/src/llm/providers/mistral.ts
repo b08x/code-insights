@@ -1,7 +1,7 @@
 // Mistral provider implementation (server-side)
 
 import type { LLMClient, LLMMessage, LLMResponse, ChatOptions } from '../types.js';
-import { flattenContent } from '../types.js';
+import { flattenContent, extractTextContent } from '../types.js';
 
 export function createMistralClient(apiKey: string, model: string): LLMClient {
   return {
@@ -33,12 +33,12 @@ export function createMistralClient(apiKey: string, model: string): LLMClient {
       }
 
       const data = await response.json() as {
-        choices: Array<{ message: { content: string } }>;
+        choices: Array<{ message: { content: unknown } }>;
         usage?: { prompt_tokens: number; completion_tokens: number };
       };
 
       return {
-        content: data.choices[0]?.message?.content || '',
+        content: extractTextContent(data.choices[0]?.message?.content),
         usage: data.usage ? {
           inputTokens: data.usage.prompt_tokens,
           outputTokens: data.usage.completion_tokens,
